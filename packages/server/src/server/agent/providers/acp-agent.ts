@@ -269,6 +269,11 @@ export function buildACPClientCapabilities(
 const PROBE_ENV: Record<string, string> = { NO_BROWSER: "true" };
 const ACP_CATALOG_TIMEOUT_MS = 60_000;
 const ACP_DIAGNOSTIC_PHASE_TIMEOUT_MS = 20_000;
+// Upper bound on session updates buffered while `session/new` is still in
+// flight. The real-world window holds only a handful of updates (commands,
+// config options, usage); the cap only guards against a misbehaving agent
+// streaming unbounded notifications before it returns a session id.
+const MAX_PENDING_PRE_SESSION_UPDATES = 256;
 
 function summarizeMalformedACPStdoutError(error: unknown): { type: string; message: string } {
   return {
@@ -1385,6 +1390,16 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   private cachedCommands: AgentSlashCommand[] = [];
   private commandsReadyDeferred: { promise: Promise<void>; resolve: () => void } | null = null;
   private commandsReadySettled = false;
+  /**
+   * Session updates that arrived before `session/new` resolved, i.e. while
+   * `this.sessionId` was still null. Some agents (CodeBuddy Code, and any ACP
+   * agent that pushes state eagerly) emit `available_commands_update`,
+   * `config_option_update` and `usage_update` *before* returning the
+   * `session/new` response. Dropping them on the sessionId guard loses the
+   * initial slash-command batch permanently, because those agents never
+   * re-send it. Buffer instead, then replay once the id is known.
+   */
+  private pendingPreSessionUpdates: SessionNotification[] = [];
   private waitForInitialCommands: boolean;
   private initialCommandsWaitTimeoutMs: number;
   private readonly extensionCommandsParser?: ACPExtensionCommandsParser;
@@ -1449,6 +1464,10 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       );
       this.sessionId = response.sessionId;
       this.bootstrapThreadEventPending = true;
+      // Replay before applySessionState: these notifications genuinely arrived
+      // earlier on the wire, so the session/new response stays authoritative
+      // for any state both of them touch (e.g. configOptions).
+      this.flushPendingPreSessionUpdates();
       this.applySessionState(response);
       await this.applyConfiguredOverrides();
     } catch (error) {
@@ -1476,6 +1495,8 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       this.agentCapabilities = spawned.initialize.agentCapabilities ?? null;
       this.sessionId = handle.sessionId;
       this.bootstrapThreadEventPending = true;
+      // Covers the narrow window between process spawn and this assignment.
+      this.flushPendingPreSessionUpdates();
 
       const sessionCapabilities = this.agentCapabilities?.sessionCapabilities;
       if (this.agentCapabilities?.loadSession) {
@@ -2123,6 +2144,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
 
     this.deliverTranslatedEvents(this.flushPendingUserMessage());
     this.settleCommandsReady();
+    this.pendingPreSessionUpdates = [];
 
     for (const pending of this.pendingPermissions.values()) {
       pending.resolve({ outcome: { outcome: "cancelled" } });
@@ -2219,6 +2241,25 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       },
       "provider.acp.raw_event",
     );
+    if (this.sessionId === null) {
+      // `session/new` has not resolved yet, so we cannot match against a known
+      // id. Buffer rather than drop: the initial available_commands_update
+      // batch commonly lands in this window and is never re-sent.
+      if (this.pendingPreSessionUpdates.length < MAX_PENDING_PRE_SESSION_UPDATES) {
+        this.pendingPreSessionUpdates.push(params);
+      } else {
+        this.logger.warn(
+          {
+            agentId: this.agentId,
+            provider: this.provider,
+            limit: MAX_PENDING_PRE_SESSION_UPDATES,
+          },
+          "Dropping pre-session ACP update; buffer limit reached",
+        );
+      }
+      return;
+    }
+
     if (params.sessionId !== this.sessionId) {
       return;
     }
@@ -2273,7 +2314,40 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     }
   }
 
+  // Replay updates buffered while `session/new` was in flight, now that the
+  // session id is known. Notifications addressed to a different session are
+  // discarded here — the same check `sessionUpdate()` would have applied had
+  // the id been available when they arrived. Order is preserved so state
+  // updates settle exactly as they would have in the live path.
+  private flushPendingPreSessionUpdates(): void {
+    if (this.pendingPreSessionUpdates.length === 0) {
+      return;
+    }
+
+    const buffered = this.pendingPreSessionUpdates;
+    this.pendingPreSessionUpdates = [];
+
+    for (const params of buffered) {
+      if (params.sessionId !== this.sessionId) {
+        continue;
+      }
+      const events = this.translateSessionUpdate(params.update);
+      this.logger.trace(
+        {
+          agentId: this.agentId,
+          provider: this.provider,
+          sessionId: this.sessionId,
+          rawEvent: params,
+          events,
+        },
+        "provider.acp.parsed_event.replayed_pre_session",
+      );
+      this.deliverTranslatedEvents(events);
+    }
+  }
+
   // Cache an asynchronously-delivered slash-command batch and unblock any
+
   // listCommands() call that is waiting on the initial batch. Used when a
   // provider supplies an extensionCommandsParser whose result arrives after
   // session/new (e.g. via a vendor extension notification). The ready gate is
