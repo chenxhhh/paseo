@@ -1,4 +1,4 @@
-import { MoreVertical, Pause, Pencil, Play, RotateCw, Trash2 } from "lucide-react-native";
+import { History, MoreVertical, Pause, Pencil, Play, RotateCw, Trash2 } from "lucide-react-native";
 import { useCallback, useState, type ReactElement } from "react";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -33,6 +33,7 @@ const ThemedPlay = withUnistyles(Play);
 const ThemedRotateCw = withUnistyles(RotateCw);
 const ThemedTrash2 = withUnistyles(Trash2);
 const ThemedKebab = withUnistyles(MoreVertical);
+const ThemedHistory = withUnistyles(History);
 
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
@@ -55,6 +56,7 @@ export interface ScheduleRowActions {
   onPause: () => void;
   onResume: () => void;
   onRunNow: () => void;
+  onViewRuns: () => void;
   onDelete: () => void;
 }
 
@@ -150,6 +152,7 @@ export function ScheduleRow({
   onPause,
   onResume,
   onRunNow,
+  onViewRuns,
   onDelete,
 }: ScheduleRowProps): ReactElement {
   const isCompact = useIsCompactFormFactor();
@@ -214,6 +217,7 @@ export function ScheduleRow({
             onPause={onPause}
             onResume={onResume}
             onRunNow={onRunNow}
+            onViewRuns={onViewRuns}
             onDelete={onDelete}
           />
         </View>
@@ -226,6 +230,7 @@ const editLeading = <ThemedPencil size={MENU_ICON_SIZE} uniProps={mutedColorMapp
 const pauseLeading = <ThemedPause size={MENU_ICON_SIZE} uniProps={mutedColorMapping} />;
 const resumeLeading = <ThemedPlay size={MENU_ICON_SIZE} uniProps={mutedColorMapping} />;
 const runLeading = <ThemedRotateCw size={MENU_ICON_SIZE} uniProps={mutedColorMapping} />;
+const historyLeading = <ThemedHistory size={MENU_ICON_SIZE} uniProps={mutedColorMapping} />;
 const deleteLeading = <ThemedTrash2 size={MENU_ICON_SIZE} uniProps={destructiveColorMapping} />;
 
 function ScheduleExecutionMenuItems({
@@ -305,10 +310,18 @@ function ScheduleKebabMenu({
   onPause,
   onResume,
   onRunNow,
+  onViewRuns,
   onDelete,
 }: Pick<
   ScheduleRowProps,
-  "schedule" | "pending" | "onEdit" | "onPause" | "onResume" | "onRunNow" | "onDelete"
+  | "schedule"
+  | "pending"
+  | "onEdit"
+  | "onPause"
+  | "onResume"
+  | "onRunNow"
+  | "onViewRuns"
+  | "onDelete"
 > & {
   canRun: boolean;
 }): ReactElement {
@@ -341,6 +354,15 @@ function ScheduleKebabMenu({
           onResume={onResume}
           onRunNow={onRunNow}
         />
+        {schedule.target.type !== "agent" ? (
+          <DropdownMenuItem
+            leading={historyLeading}
+            onSelect={onViewRuns}
+            testID={`schedule-menu-runs-${schedule.id}`}
+          >
+            View run history
+          </DropdownMenuItem>
+        ) : null}
         <DropdownMenuSeparator />
         <DropdownMenuItem
           leading={deleteLeading}
