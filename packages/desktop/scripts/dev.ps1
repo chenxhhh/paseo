@@ -109,10 +109,13 @@ Write-Host @"
 ======================================================
 "@
 
-# Launch Metro + Electron together, kill both on exit
+# Launch Metro + Electron together, kill both on exit. The protocol workspace
+# is watched too so new/updated protocol sources are compiled into dist before
+# Metro resolves them (dist is gitignored and would otherwise go stale).
 concurrently `
     --kill-others `
-    --names "metro,electron" `
-    --prefix-colors "magenta,cyan" `
+    --names "protocol,metro,electron" `
+    --prefix-colors "green,magenta,cyan" `
+    "cd `"$RootDir`" && npm run watch:protocol" `
     "cd `"$AppDir`" && cross-env PASEO_WEB_PLATFORM=electron npx expo start --port $($env:EXPO_PORT)" `
     "npx wait-on tcp:$($env:EXPO_PORT) && npx electron `"$DesktopDir`""
