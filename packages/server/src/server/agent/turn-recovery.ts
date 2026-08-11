@@ -13,17 +13,15 @@ import type { AgentTimelineItem } from "./agent-sdk-types.js";
  *
  * The recovery loop mirrors the user's manual "继续" nudge: after a detected
  * abnormal ending, schedule a system-injected continuation prompt with
- * exponential backoff so the agent survives transient 429/5xx/network failures
+ * linear backoff so the agent survives transient 429/5xx/network failures
  * unattended.
  */
 
 /** Maximum consecutive auto-continue attempts before we give up and flag the agent. */
-export const MAX_AUTO_CONTINUE_ATTEMPTS = 5;
+export const MAX_AUTO_CONTINUE_ATTEMPTS = 10;
 
-/** Base delay before the first retry; each attempt doubles it (15s, 30s, 60s, ...). */
-export const AUTO_CONTINUE_BASE_DELAY_MS = 15_000;
-
-const JITTER_FRACTION = 0.3;
+/** Base delay before the first retry; each retry adds the base (5s, 10s, 15s, ...). */
+export const AUTO_CONTINUE_BASE_DELAY_MS = 5_000;
 
 export type TurnRecoveryReason = "rate_limit" | "server_error" | "network_error" | "abnormal_end";
 
@@ -117,6 +115,9 @@ export function classifyTurnEnding(input: ClassifyTurnEndingInput): TurnRecovery
   if (lastTimelineItem?.type === "user_message" || lastTimelineItem?.type === "error") {
     return { retryable: false };
   }
+  if (isIntentionalManualCompactionEnd(lastTimelineItem)) {
+    return { retryable: false };
+  }
   if (lastTimelineItem?.type === "tool_call") {
     if (
       lastTimelineItem.status === "running" ||
@@ -140,16 +141,28 @@ export function classifyTurnEnding(input: ClassifyTurnEndingInput): TurnRecovery
     }
     return { retryable: false };
   }
-  // reasoning / todo / compaction / null → the model never got to speak after
-  // its last action. Retry.
+  // reasoning / todo / null / an unfinished (loading) or auto-triggered
+  // compaction → the model never got to speak after its last action. Retry.
   return { retryable: true, reason: "abnormal_end" };
 }
 
-/** Exponential backoff with jitter so concurrent agents don't re-hit the rate limit in lockstep. */
+/**
+ * A manual /compact that finished cleanly is an intentional user action, not
+ * an abnormal ending — never auto-continue after it. A compaction left in
+ * "loading" (or an auto-triggered one interrupted mid-flight) still falls
+ * through to the abnormal-end retry.
+ */
+function isIntentionalManualCompactionEnd(lastTimelineItem: AgentTimelineItem | null): boolean {
+  return (
+    lastTimelineItem?.type === "compaction" &&
+    lastTimelineItem.status === "completed" &&
+    lastTimelineItem.trigger === "manual"
+  );
+}
+
+/** Linear backoff: first retry waits 5s, each retry adds 5s (5s, 10s, 15s, ...). */
 export function autoContinueDelayMs(attempt: number): number {
-  const base = AUTO_CONTINUE_BASE_DELAY_MS * 2 ** Math.max(0, attempt);
-  const jitter = Math.floor(Math.random() * JITTER_FRACTION * base);
-  return base + jitter;
+  return AUTO_CONTINUE_BASE_DELAY_MS * (attempt + 1);
 }
 
 const REASON_LABELS: Record<TurnRecoveryReason, string> = {

@@ -161,15 +161,43 @@ describe("classifyTurnEnding", () => {
       }).retryable,
     ).toBe(false);
   });
+
+  test("completed turn ending on a finished manual /compact is not retryable", () => {
+    const decision = classifyTurnEnding({
+      outcome: "completed",
+      lastTimelineItem: { type: "compaction", status: "completed", trigger: "manual" },
+      hadToolActivity: true,
+    });
+    expect(decision.retryable).toBe(false);
+  });
+
+  test("completed turn ending on a finished auto-triggered compaction is retryable", () => {
+    const decision = classifyTurnEnding({
+      outcome: "completed",
+      lastTimelineItem: { type: "compaction", status: "completed", trigger: "auto" },
+      hadToolActivity: true,
+    });
+    expect(decision.retryable).toBe(true);
+    expect(decision.reason).toBe("abnormal_end");
+  });
+
+  test("completed turn ending on a compaction still loading is retryable regardless of trigger", () => {
+    const decision = classifyTurnEnding({
+      outcome: "completed",
+      lastTimelineItem: { type: "compaction", status: "loading", trigger: "manual" },
+      hadToolActivity: true,
+    });
+    expect(decision.retryable).toBe(true);
+    expect(decision.reason).toBe("abnormal_end");
+  });
 });
 
 describe("autoContinueDelayMs", () => {
-  test("delays grow exponentially from a 15s base", () => {
-    expect(autoContinueDelayMs(0)).toBeGreaterThanOrEqual(15_000);
-    expect(autoContinueDelayMs(0)).toBeLessThan(20_000);
-    expect(autoContinueDelayMs(1)).toBeGreaterThan(autoContinueDelayMs(0));
-    expect(autoContinueDelayMs(2)).toBeGreaterThan(autoContinueDelayMs(1));
-    expect(autoContinueDelayMs(4)).toBeLessThan(15_000 * 2 ** 4 * 1.3);
+  test("delays grow linearly from a 5s base, adding 5s per retry", () => {
+    expect(autoContinueDelayMs(0)).toBe(5_000);
+    expect(autoContinueDelayMs(1)).toBe(10_000);
+    expect(autoContinueDelayMs(2)).toBe(15_000);
+    expect(autoContinueDelayMs(9)).toBe(50_000);
   });
 });
 
@@ -184,6 +212,6 @@ describe("formatRecoveryReason", () => {
   });
 
   test("MAX_AUTO_CONTINUE_ATTEMPTS is exported for consumers", () => {
-    expect(MAX_AUTO_CONTINUE_ATTEMPTS).toBe(5);
+    expect(MAX_AUTO_CONTINUE_ATTEMPTS).toBe(10);
   });
 });
