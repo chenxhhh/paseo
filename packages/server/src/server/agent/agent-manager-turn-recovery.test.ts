@@ -249,7 +249,8 @@ describe("turn auto-recovery", () => {
       expect(recoveryNotices(manager, agent.id).length).toBeGreaterThan(0);
 
       const promptsBefore = client.session?.prompts.length ?? 0;
-      await vi.advanceTimersByTimeAsync(20_000);
+      // First backoff is now 5s; a 6s advance fires exactly one continuation.
+      await vi.advanceTimersByTimeAsync(6_000);
       expect(client.session?.prompts.length).toBe(promptsBefore + 1);
       expect(String(client.session?.prompts[promptsBefore])).toContain("请自动继续之前的任务");
     } finally {
@@ -303,7 +304,8 @@ describe("turn auto-recovery", () => {
       await run;
 
       expect(recoveryNotices(manager, agent.id).length).toBeGreaterThan(0);
-      await vi.advanceTimersByTimeAsync(20_000);
+      // First backoff is now 5s; a 6s advance fires exactly one continuation.
+      await vi.advanceTimersByTimeAsync(6_000);
       expect(client.session?.prompts).toHaveLength(2);
     } finally {
       await manager.closeAgent(agent.id);
@@ -362,8 +364,8 @@ describe("turn auto-recovery", () => {
       await vi.advanceTimersByTimeAsync(0);
       await run;
 
-      // One long advance fires the whole backoff chain (15s→30s→60s→120s→240s,
-      // cumulative ~465s), each continuation ending abnormally again, until
+      // One long advance fires the whole backoff chain (5s→10s→…→50s,
+      // cumulative ~275s), each continuation ending abnormally again, until
       // attempts are exhausted.
       await vi.advanceTimersByTimeAsync(600_000);
 
