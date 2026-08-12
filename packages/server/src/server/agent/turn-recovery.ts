@@ -115,7 +115,7 @@ export function classifyTurnEnding(input: ClassifyTurnEndingInput): TurnRecovery
   if (lastTimelineItem?.type === "user_message" || lastTimelineItem?.type === "error") {
     return { retryable: false };
   }
-  if (isIntentionalManualCompactionEnd(lastTimelineItem)) {
+  if (isCompletedCompactionEnd(lastTimelineItem)) {
     return { retryable: false };
   }
   if (lastTimelineItem?.type === "tool_call") {
@@ -141,23 +141,21 @@ export function classifyTurnEnding(input: ClassifyTurnEndingInput): TurnRecovery
     }
     return { retryable: false };
   }
-  // reasoning / todo / null / an unfinished (loading) or auto-triggered
-  // compaction → the model never got to speak after its last action. Retry.
+  // reasoning / todo / null / an unfinished (loading) compaction → the model
+  // never got to speak after its last action. Retry.
   return { retryable: true, reason: "abnormal_end" };
 }
 
 /**
- * A manual /compact that finished cleanly is an intentional user action, not
- * an abnormal ending — never auto-continue after it. A compaction left in
- * "loading" (or an auto-triggered one interrupted mid-flight) still falls
- * through to the abnormal-end retry.
+ * A compaction that finished cleanly is an intentional turn ending, not an
+ * abnormal one — never auto-continue after it. This holds regardless of the
+ * recorded trigger: OMP/Pi only tag `trigger` on the completed marker (their
+ * loading marker omits it), so keying on `trigger === "manual"` misses cases
+ * where the trigger was not preserved. Only a compaction still "loading"
+ * (interrupted mid-flight) falls through to the abnormal-end retry.
  */
-function isIntentionalManualCompactionEnd(lastTimelineItem: AgentTimelineItem | null): boolean {
-  return (
-    lastTimelineItem?.type === "compaction" &&
-    lastTimelineItem.status === "completed" &&
-    lastTimelineItem.trigger === "manual"
-  );
+function isCompletedCompactionEnd(lastTimelineItem: AgentTimelineItem | null): boolean {
+  return lastTimelineItem?.type === "compaction" && lastTimelineItem.status === "completed";
 }
 
 /** Linear backoff: first retry waits 5s, each retry adds 5s (5s, 10s, 15s, ...). */

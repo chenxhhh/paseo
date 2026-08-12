@@ -171,14 +171,24 @@ describe("classifyTurnEnding", () => {
     expect(decision.retryable).toBe(false);
   });
 
-  test("completed turn ending on a finished auto-triggered compaction is retryable", () => {
+  test("completed turn ending on a finished auto-triggered compaction is not retryable", () => {
     const decision = classifyTurnEnding({
       outcome: "completed",
       lastTimelineItem: { type: "compaction", status: "completed", trigger: "auto" },
       hadToolActivity: true,
     });
-    expect(decision.retryable).toBe(true);
-    expect(decision.reason).toBe("abnormal_end");
+    expect(decision.retryable).toBe(false);
+  });
+
+  test("completed turn ending on a finished compaction with no recorded trigger is not retryable", () => {
+    // OMP/Pi only tag trigger on the completed marker and omit it elsewhere, so
+    // a missing trigger must not fall through to the abnormal-end retry.
+    const decision = classifyTurnEnding({
+      outcome: "completed",
+      lastTimelineItem: { type: "compaction", status: "completed" },
+      hadToolActivity: true,
+    });
+    expect(decision.retryable).toBe(false);
   });
 
   test("completed turn ending on a compaction still loading is retryable regardless of trigger", () => {
