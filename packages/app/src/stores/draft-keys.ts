@@ -7,6 +7,15 @@ export function generateDraftId(): string {
   return `draft_${generateMessageId()}`;
 }
 
+export function isDraftId(value: string): boolean {
+  const id = value.trim();
+  return (
+    id.startsWith("draft_") ||
+    id === NEW_WORKSPACE_DRAFT_KEY ||
+    id.startsWith(NEW_WORKSPACE_FORK_DRAFT_PREFIX)
+  );
+}
+
 export function buildNewWorkspaceDraftKey(draftId?: string): string {
   const explicitDraftId = draftId?.trim();
   if (explicitDraftId) {

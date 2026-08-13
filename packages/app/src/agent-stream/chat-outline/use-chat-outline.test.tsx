@@ -174,4 +174,27 @@ describe("useChatOutline", () => {
 
     await waitFor(() => expect(onJumpError).toHaveBeenCalledOnce());
   });
+
+  it("does not request a prompt index for a draft tab", async () => {
+    const viewportRef = createRef<StreamViewportHandle>();
+    renderHook(() =>
+      useChatOutline({
+        agentId: "draft_msg_1786603298040_j3k5p5bp5",
+        serverId: "server-1",
+        timelineEpoch: null,
+        tail: [],
+        head: [],
+        enabled: true,
+        viewportRef,
+        onJumpError: vi.fn(),
+      }),
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(runtime.listAgentTimelinePrompts).not.toHaveBeenCalled();
+    expect(runtime.on).not.toHaveBeenCalled();
+  });
 });

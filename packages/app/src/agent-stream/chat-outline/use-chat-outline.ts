@@ -3,6 +3,7 @@ import type { AgentTimelinePromptIndexPayload } from "@getpaseo/client/internal/
 import { isWeb } from "@/constants/platform";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
+import { isDraftId } from "@/stores/draft-keys";
 import { planTimelinePromptJump } from "@/timeline/timeline-sync-plan";
 import type { StreamItem } from "@/types/stream";
 import type { StreamViewportHandle } from "../strategy";
@@ -59,10 +60,11 @@ export function useChatOutline({
   const nextJumpRequestIdRef = useRef(0);
   const nextIndexRequestIdRef = useRef(0);
   const loadedItems = useMemo(() => [...tail, ...(head ?? NO_STREAM_ITEMS)], [head, tail]);
-  const prompts = enabled ? (index?.prompts ?? NO_PROMPTS) : NO_PROMPTS;
+  const canFetchPromptIndex = enabled && !isDraftId(agentId);
+  const prompts = canFetchPromptIndex ? (index?.prompts ?? NO_PROMPTS) : NO_PROMPTS;
 
   useEffect(() => {
-    if (!isWeb || !enabled) {
+    if (!isWeb || !canFetchPromptIndex) {
       setIndex(null);
       return;
     }
@@ -101,7 +103,7 @@ export function useChatOutline({
       active = false;
       unsubscribe();
     };
-  }, [agentId, enabled, serverId, timelineEpoch]);
+  }, [agentId, canFetchPromptIndex, serverId, timelineEpoch]);
 
   // The transcript names the row it is showing; the outline turns that into a prompt using the
   // complete index, so unloaded rows never have to exist in the DOM to be marked.
