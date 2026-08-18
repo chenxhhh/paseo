@@ -1,4 +1,5 @@
 import { isSyntaxThemeId, type SyntaxThemeId } from "@getpaseo/highlight";
+import type { ActiveTurnBehavior } from "@getpaseo/protocol/messages";
 import type { QueryClient } from "@tanstack/react-query";
 import type { DesktopSettings } from "@/desktop/settings/desktop-settings";
 import { parseAppLanguage, type AppLanguage } from "@/i18n/locales";
@@ -13,7 +14,8 @@ import {
   parseSidebarRowItems,
   type SidebarRowItems,
 } from "@/components/sidebar/display-preferences/row-items";
-import { THEME_OPTIONS, type ThemePreference } from "@/styles/theme";
+import { isNative } from "@/constants/platform";
+import { FONT_SIZE, THEME_OPTIONS, type ThemePreference } from "@/styles/theme";
 import { z } from "zod";
 import { readValidatedJson } from "@/storage/validated-storage";
 
@@ -21,7 +23,7 @@ export const APP_SETTINGS_KEY = "@paseo:app-settings";
 export const APP_SETTINGS_QUERY_KEY = ["app-settings"];
 const LEGACY_SETTINGS_KEY = "@paseo:settings";
 
-export type SendBehavior = "interrupt" | "queue";
+export type SendBehavior = ActiveTurnBehavior | "queue";
 export type ReleaseChannel = "stable" | "beta";
 export type ServiceUrlBehavior = "ask" | "in-app" | "external";
 export type WorkspaceTitleSource = "title" | "branch";
@@ -42,9 +44,13 @@ const VALID_TOOL_CALL_DETAIL_LEVELS = new Set<ToolCallDetailLevel>(["overview", 
 export const DEFAULT_TERMINAL_SCROLLBACK_LINES = 10_000;
 export const MIN_TERMINAL_SCROLLBACK_LINES = 0;
 export const MAX_TERMINAL_SCROLLBACK_LINES = 1_000_000;
-export const DEFAULT_UI_FONT_SIZE = 16; // == FONT_SIZE.base
-export const MIN_UI_FONT_SIZE = 11;
-export const MAX_UI_FONT_SIZE = 24;
+export function defaultUiBaseFontSize(native: boolean): number {
+  return native ? 15 : FONT_SIZE.base;
+}
+
+export const DEFAULT_UI_BASE_FONT_SIZE = defaultUiBaseFontSize(isNative);
+export const MIN_UI_BASE_FONT_SIZE = 10;
+export const MAX_UI_BASE_FONT_SIZE = 21;
 export const DEFAULT_CODE_FONT_SIZE = 12; // == FONT_SIZE.code
 export const MIN_CODE_FONT_SIZE = 9;
 export const MAX_CODE_FONT_SIZE = 22; // line-height 1.5×22=33 stays safe
@@ -59,7 +65,7 @@ export interface AppSettings {
   useLegacyTerminalRenderer: boolean;
   uiFontFamily: string; // "" = platform default UI stack
   monoFontFamily: string; // "" = platform default mono stack
-  uiFontSize: number; // clamped px, default 16
+  uiBaseFontSize: number; // clamped px, platform default 14 or 15
   codeFontSize: number; // clamped px, default 12
   syntaxTheme: SyntaxThemeId; // default "one"
   workspaceTitleSource: WorkspaceTitleSource;
@@ -78,6 +84,8 @@ export interface Settings extends AppSettings {
 }
 
 const SidebarRowItemsSchema = z.strictObject({
+  branch: z.boolean().optional(),
+  project: z.boolean().optional(),
   host: z.boolean().optional(),
   changeRequest: z.boolean().optional(),
   services: z.boolean().optional(),
@@ -90,12 +98,14 @@ const StoredAppSettingsSchema = z.strictObject({
   language: z
     .enum(["system", "ar", "en", "es", "fr", "ja", "ko", "pt-BR", "ru", "zh-CN"])
     .optional(),
-  sendBehavior: z.enum(["interrupt", "queue"]).optional(),
+  sendBehavior: z.enum(["interrupt", "steer", "queue"]).optional(),
   serviceUrlBehavior: z.enum(["ask", "in-app", "external"]).optional(),
   terminalScrollbackLines: z.union([z.number(), z.string()]).optional(),
   useLegacyTerminalRenderer: z.boolean().optional(),
   uiFontFamily: z.string().optional(),
   monoFontFamily: z.string().optional(),
+  uiBaseFontSize: z.union([z.number(), z.string()]).optional(),
+  // COMPAT(uiFontSizeScale): replaced by the literal base size in v0.4, remove after 2027-08-17.
   uiFontSize: z.union([z.number(), z.string()]).optional(),
   codeFontSize: z.union([z.number(), z.string()]).optional(),
   syntaxTheme: z.string().refine(isSyntaxThemeId).optional(),
@@ -126,7 +136,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   useLegacyTerminalRenderer: false,
   uiFontFamily: "",
   monoFontFamily: "",
-  uiFontSize: DEFAULT_UI_FONT_SIZE,
+  uiBaseFontSize: DEFAULT_UI_BASE_FONT_SIZE,
   codeFontSize: DEFAULT_CODE_FONT_SIZE,
   syntaxTheme: "one",
   workspaceTitleSource: "title",
@@ -183,7 +193,11 @@ export async function loadAppSettingsFromStorage(deps: SettingsDeps): Promise<Ap
   try {
     const stored = await readValidatedJson(deps.storage, APP_SETTINGS_KEY, StoredAppSettingsSchema);
     if (stored) {
-      return normalizeAppSettings(stored);
+      const normalized = normalizeAppSettings(stored);
+      if (stored.uiBaseFontSize === undefined && stored.uiFontSize !== undefined) {
+        await deps.storage.setItem(APP_SETTINGS_KEY, JSON.stringify(normalized));
+      }
+      return normalized;
     }
 
     const legacyStored = await readValidatedJson(
@@ -294,7 +308,11 @@ function pickEnumAppSettings(stored: StoredAppSettings): Partial<AppSettings> {
   if (typeof stored.theme === "string" && VALID_THEMES.has(stored.theme)) {
     result.theme = stored.theme;
   }
-  if (stored.sendBehavior === "interrupt" || stored.sendBehavior === "queue") {
+  if (
+    stored.sendBehavior === "interrupt" ||
+    stored.sendBehavior === "steer" ||
+    stored.sendBehavior === "queue"
+  ) {
     result.sendBehavior = stored.sendBehavior;
   }
   if (
@@ -347,12 +365,20 @@ function pickAppSettings(stored: StoredAppSettings): Partial<AppSettings> {
   if (monoFontFamily !== null) {
     result.monoFontFamily = monoFontFamily;
   }
-  const uiFontSize = parseClampedFontSize(stored.uiFontSize, {
-    min: MIN_UI_FONT_SIZE,
-    max: MAX_UI_FONT_SIZE,
+  const uiBaseFontSize = parseClampedFontSize(stored.uiBaseFontSize, {
+    min: MIN_UI_BASE_FONT_SIZE,
+    max: MAX_UI_BASE_FONT_SIZE,
   });
-  if (uiFontSize !== null) {
-    result.uiFontSize = uiFontSize;
+  if (uiBaseFontSize !== null) {
+    result.uiBaseFontSize = uiBaseFontSize;
+  } else {
+    const legacyUiFontSize = parseClampedFontSize(stored.uiFontSize, {
+      min: 11,
+      max: 24,
+    });
+    if (legacyUiFontSize !== null) {
+      result.uiBaseFontSize = Math.round((FONT_SIZE.base * legacyUiFontSize) / 16);
+    }
   }
   const codeFontSize = parseClampedFontSize(stored.codeFontSize, {
     min: MIN_CODE_FONT_SIZE,

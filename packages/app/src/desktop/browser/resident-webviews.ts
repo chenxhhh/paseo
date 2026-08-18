@@ -15,7 +15,6 @@ const RESIDENT_VIEWPORT_HEIGHT = 800;
 const residentWebviewsByBrowserId = new Map<string, HTMLElement>();
 const residentSurfacesByBrowserId = new Map<string, HTMLElement>();
 const residentWebviewSizesByBrowserId = new Map<string, { width: number; height: number }>();
-const readyResidentWebviews = new WeakSet<HTMLElement>();
 
 interface BrowserWebviewElement extends HTMLElement {
   src: string;
@@ -110,15 +109,6 @@ function registerBrowserWhenAttached(
   };
 
   webview.addEventListener("did-attach", registerWhenGuestIsReady);
-}
-
-function registerBrowserReadiness(webview: HTMLElement): void {
-  webview.addEventListener("did-start-loading", () => {
-    readyResidentWebviews.delete(webview);
-  });
-  webview.addEventListener("dom-ready", () => {
-    readyResidentWebviews.add(webview);
-  });
 }
 
 function trimNonEmpty(value: string | null | undefined): string | null {
@@ -359,11 +349,6 @@ export function prepareBrowserWebview(
     (webview as BrowserWebviewElement).src = input.initialUrl;
   }
   registerBrowserWhenAttached(webview as BrowserWebviewElement, input, browser);
-  registerBrowserReadiness(webview);
-}
-
-export function isResidentBrowserWebviewReady(webview: HTMLElement): boolean {
-  return readyResidentWebviews.has(webview);
 }
 
 export function ensureResidentBrowserWebview(input: {
