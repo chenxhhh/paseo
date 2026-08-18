@@ -10,16 +10,15 @@ import { schedulesQueryBaseKey } from "@/schedules/aggregated-schedules";
  * sheet whenever any schedule mutation settles (e.g. "Run now" after starting
  * a new run).
  *
- * Known limitation: there is no server-side push when a run flips
- * running → succeeded, so the sheet refreshes on open (`refetchOnMount`) and
- * on mutation settle. Polling to watch a run finish is intentionally out of
- * scope for now.
+ * There is no server-side push when a run flips running → succeeded, so the
+ * sheet also polls while any run is still running.
  */
 export function scheduleRunsQueryKey(serverId: string, scheduleId: string) {
   return [...schedulesQueryBaseKey, "runs", serverId, scheduleId] as const;
 }
 
 const SCHEDULE_RUNS_STALE_TIME_MS = 10_000;
+const SCHEDULE_RUNS_LIVE_POLL_MS = 5_000;
 
 export interface UseScheduleRunsOptions {
   serverId: string;
@@ -46,7 +45,7 @@ interface ResolveScheduleRunsQueryResultInput {
 /**
  * Mirror of the use-commits-query resolver: translate raw react-query state
  * into a small UI-facing union. There is no `unsupported` state here — the
- * schedule/logs RPC has no capability gate (see docs/handoff).
+ * schedule/logs RPC has no capability gate.
  */
 export function resolveScheduleRunsQueryResult({
   enabled,
@@ -104,6 +103,10 @@ export function useScheduleRuns({
     },
     enabled: queryEnabled,
     staleTimeMs: SCHEDULE_RUNS_STALE_TIME_MS,
+    refetchInterval: (activeQuery) =>
+      activeQuery.state.data?.some((run) => run.status === "running")
+        ? SCHEDULE_RUNS_LIVE_POLL_MS
+        : false,
     dataShape: "list",
   });
 
