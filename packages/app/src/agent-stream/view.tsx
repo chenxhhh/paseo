@@ -70,7 +70,6 @@ import { type StreamSegmentRenderers, type StreamViewportHandle } from "./strate
 import { ChatOutlineRail } from "@/agent-stream/chat-outline/rail";
 import { useChatOutline } from "@/agent-stream/chat-outline/use-chat-outline";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
-import { isDraftId } from "@/stores/draft-keys";
 import { planTimelineTailFetch } from "@/timeline/timeline-sync-plan";
 import {
   CompletedTurnFooterRow,
@@ -548,7 +547,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       timelineEpoch,
       tail: effectiveStreamItems,
       head: effectiveStreamHead,
-      enabled: supportsChatOutline && chatOutlineEnabled && !isDraftId(agentId),
+      enabled: supportsChatOutline && chatOutlineEnabled,
       viewportRef,
       onJumpError: handleTimelineHistoryLoadError,
     });
