@@ -228,7 +228,7 @@ function recoveryNotices(manager: AgentManager, agentId: string): string[] {
     .getTimeline(agentId)
     .filter(
       (item): item is Extract<AgentTimelineItem, { type: "assistant_message" }> =>
-        item.type === "assistant_message" && item.text.includes("[自动续跑]"),
+        item.type === "assistant_message" && item.text.includes("[Auto-continue]"),
     )
     .map((item) => item.text);
 }
@@ -252,7 +252,9 @@ describe("turn auto-recovery", () => {
       // First backoff is now 5s; a 6s advance fires exactly one continuation.
       await vi.advanceTimersByTimeAsync(6_000);
       expect(client.session?.prompts.length).toBe(promptsBefore + 1);
-      expect(String(client.session?.prompts[promptsBefore])).toContain("请自动继续之前的任务");
+      expect(String(client.session?.prompts[promptsBefore])).toContain(
+        "Continue the task without asking the user",
+      );
     } finally {
       await manager.closeAgent(agent.id);
       rmSync(workdir, { recursive: true, force: true });
@@ -372,9 +374,9 @@ describe("turn auto-recovery", () => {
       const snapshot = manager.getAgent(agent.id);
       expect(snapshot?.attention.requiresAttention).toBe(true);
       expect(snapshot?.attention.attentionReason).toBe("error");
-      expect(recoveryNotices(manager, agent.id).some((notice) => notice.includes("已达上限"))).toBe(
-        true,
-      );
+      expect(
+        recoveryNotices(manager, agent.id).some((notice) => notice.includes("gave up after")),
+      ).toBe(true);
 
       // No further auto-continue after exhaustion.
       const promptsAfter = client.session?.prompts.length ?? 0;
@@ -404,7 +406,7 @@ describe("turn auto-recovery", () => {
           event.type === "agent_stream" &&
           event.event.type === "timeline" &&
           event.event.item.type === "assistant_message" &&
-          event.event.item.text.includes("[自动续跑]"),
+          event.event.item.text.includes("[Auto-continue]"),
       );
       expect(hasNotice).toBe(true);
     } finally {

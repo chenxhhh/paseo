@@ -2,10 +2,14 @@ import { describe, expect, test } from "vitest";
 
 import type { AgentTimelineItem } from "./agent-sdk-types.js";
 import {
+  AUTO_CONTINUE_PROMPT,
   MAX_AUTO_CONTINUE_ATTEMPTS,
+  RECOVERY_NOTICE_PREFIX,
   autoContinueDelayMs,
   classifyTurnEnding,
+  formatRecoveryExhaustedNotice,
   formatRecoveryReason,
+  formatRecoveryScheduledNotice,
 } from "./turn-recovery.js";
 
 function toolItem(
@@ -213,12 +217,24 @@ describe("autoContinueDelayMs", () => {
 
 describe("formatRecoveryReason", () => {
   test("maps reasons to labels", () => {
-    expect(formatRecoveryReason({ retryable: true, reason: "rate_limit" })).toBe("模型限流");
-    expect(formatRecoveryReason({ retryable: true, reason: "abnormal_end" })).toBe("异常中断");
+    expect(formatRecoveryReason({ retryable: true, reason: "rate_limit" })).toBe("rate limited");
+    expect(formatRecoveryReason({ retryable: true, reason: "abnormal_end" })).toBe("abnormal end");
   });
 
   test("defaults for missing reason", () => {
-    expect(formatRecoveryReason({ retryable: true })).toBe("异常中断");
+    expect(formatRecoveryReason({ retryable: true })).toBe("abnormal end");
+  });
+
+  test("formats scheduled and exhausted notices", () => {
+    const decision = { retryable: true, reason: "abnormal_end" as const };
+    expect(formatRecoveryScheduledNotice(decision, 5_000, 1)).toBe(
+      "[Auto-continue] abnormal end, retrying in 5s (1/10)",
+    );
+    expect(formatRecoveryExhaustedNotice(decision)).toBe(
+      "[Auto-continue] gave up after 10 attempts (abnormal end); check the agent",
+    );
+    expect(AUTO_CONTINUE_PROMPT.length).toBeGreaterThan(0);
+    expect(RECOVERY_NOTICE_PREFIX).toBe("[Auto-continue]");
   });
 
   test("MAX_AUTO_CONTINUE_ATTEMPTS is exported for consumers", () => {
