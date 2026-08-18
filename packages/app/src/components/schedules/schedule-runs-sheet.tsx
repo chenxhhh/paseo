@@ -35,7 +35,7 @@ const ThemedExternalLink = withUnistyles(ExternalLink);
 
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
-// Runs have no server-side cap on output length (see docs/handoff); truncate
+// Runs have no server-side cap on output length; truncate
 // before handing the text to the markdown renderer to bound render cost.
 export const MAX_OUTPUT_CHARS = 50_000;
 
