@@ -79,10 +79,12 @@ import {
 } from "./agent-prompt.js";
 import { stripInternalPaseoMcpServer, withRuntimePaseoMcpServer } from "./runtime-mcp-config.js";
 import {
+  AUTO_CONTINUE_PROMPT,
   MAX_AUTO_CONTINUE_ATTEMPTS,
   autoContinueDelayMs,
   classifyTurnEnding,
-  formatRecoveryReason,
+  formatRecoveryExhaustedNotice,
+  formatRecoveryScheduledNotice,
   type TurnRecoveryDecision,
 } from "./turn-recovery.js";
 import { resolveCreateAgentTitles } from "./create-agent-title.js";
@@ -511,7 +513,6 @@ interface AgentMetadataPatch {
 }
 
 const SYSTEM_ERROR_PREFIX = "[System Error]";
-const RECOVERY_NOTICE_PREFIX = "[自动续跑]";
 
 interface TurnRecoveryState {
   /** Consecutive abnormal turn endings that scheduled an auto-continue. */
@@ -4517,9 +4518,13 @@ export class AgentManager {
     }
     const delayMs = autoContinueDelayMs(state.consecutive - 1);
     this.turnRecovery.set(agent.id, state);
-    void this.appendRecoveryNotice(
-      agent,
-      `检测到异常中断（${formatRecoveryReason(decision)}），${Math.round(delayMs / 1000)} 秒后自动续跑（${state.consecutive}/${MAX_AUTO_CONTINUE_ATTEMPTS}）`,
+    this.recordAndDispatchTimelineItem(
+      agent.id,
+      {
+        type: "assistant_message",
+        text: formatRecoveryScheduledNotice(decision, delayMs, state.consecutive),
+      },
+      agent.provider,
     );
     state.timer = setTimeout(() => {
       state.timer = null;
@@ -4557,7 +4562,7 @@ export class AgentManager {
     await startAgentRun(
       this,
       agentId,
-      formatSystemNotificationPrompt("检测到异常中断，请自动继续之前的任务（无需询问用户）。"),
+      formatSystemNotificationPrompt(AUTO_CONTINUE_PROMPT),
       this.logger,
       { replaceRunning: false },
     );
@@ -4572,7 +4577,6 @@ export class AgentManager {
   }
 
   private exhaustTurnRecovery(agent: ActiveManagedAgent, decision: TurnRecoveryDecision): void {
-    const reason = formatRecoveryReason(decision);
     const mutableAgent = agent as ManagedAgent;
     mutableAgent.attention = {
       requiresAttention: true,
@@ -4581,24 +4585,13 @@ export class AgentManager {
     };
     this.broadcastAgentAttention(agent, "error");
     this.emitState(agent);
-    void this.appendRecoveryNotice(
-      agent,
-      `自动续跑已达上限（${MAX_AUTO_CONTINUE_ATTEMPTS} 次，原因：${reason}），请手动检查`,
-    );
-  }
-
-  private async appendRecoveryNotice(agent: ActiveManagedAgent, message: string): Promise<void> {
-    const text = `${RECOVERY_NOTICE_PREFIX} ${message.trim()}`;
-    const item: AgentTimelineItem = { type: "assistant_message", text };
-    const row = this.recordTimeline(agent.id, item);
-    this.dispatchStream(
+    this.recordAndDispatchTimelineItem(
       agent.id,
-      { type: "timeline", item, provider: agent.provider },
       {
-        seq: row.seq,
-        epoch: this.timelineStore.getEpoch(agent.id),
-        timestamp: row.timestamp,
+        type: "assistant_message",
+        text: formatRecoveryExhaustedNotice(decision),
       },
+      agent.provider,
     );
   }
 

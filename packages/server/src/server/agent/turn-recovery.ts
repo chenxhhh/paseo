@@ -11,7 +11,7 @@ import type { AgentTimelineItem } from "./agent-sdk-types.js";
  * the turn ending: a healthy turn closes with an assistant message, an
  * interrupted one typically ends on a tool call / reasoning item.
  *
- * The recovery loop mirrors the user's manual "继续" nudge: after a detected
+ * The recovery loop mirrors a manual "continue" nudge: after a detected
  * abnormal ending, schedule a system-injected continuation prompt with
  * linear backoff so the agent survives transient 429/5xx/network failures
  * unattended.
@@ -164,15 +164,30 @@ export function autoContinueDelayMs(attempt: number): number {
 }
 
 const REASON_LABELS: Record<TurnRecoveryReason, string> = {
-  rate_limit: "模型限流",
-  server_error: "服务端错误",
-  network_error: "网络中断",
-  abnormal_end: "异常中断",
+  rate_limit: "rate limited",
+  server_error: "server error",
+  network_error: "network error",
+  abnormal_end: "abnormal end",
 };
 
+export const RECOVERY_NOTICE_PREFIX = "[Auto-continue]";
+
+export const AUTO_CONTINUE_PROMPT =
+  "The previous turn ended abnormally. Continue the task without asking the user.";
+
 export function formatRecoveryReason(decision: TurnRecoveryDecision): string {
-  if (!decision.reason) {
-    return "异常中断";
-  }
-  return REASON_LABELS[decision.reason];
+  return decision.reason ? REASON_LABELS[decision.reason] : REASON_LABELS.abnormal_end;
+}
+
+export function formatRecoveryScheduledNotice(
+  decision: TurnRecoveryDecision,
+  delayMs: number,
+  consecutive: number,
+): string {
+  const seconds = Math.round(delayMs / 1000);
+  return `${RECOVERY_NOTICE_PREFIX} ${formatRecoveryReason(decision)}, retrying in ${seconds}s (${consecutive}/${MAX_AUTO_CONTINUE_ATTEMPTS})`;
+}
+
+export function formatRecoveryExhaustedNotice(decision: TurnRecoveryDecision): string {
+  return `${RECOVERY_NOTICE_PREFIX} gave up after ${MAX_AUTO_CONTINUE_ATTEMPTS} attempts (${formatRecoveryReason(decision)}); check the agent`;
 }
