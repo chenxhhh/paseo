@@ -54,6 +54,16 @@ function getBrowserBridge(override?: BrowserWebviewProfileHost): BrowserWebviewP
   return browser;
 }
 
+function readWebContentsId(webview: BrowserWebviewElement): number | null {
+  try {
+    return webview.getWebContentsId();
+  } catch {
+    // Electron only exposes the guest id after the webview is in the DOM and
+    // has emitted dom-ready. did-attach can fire earlier than that.
+    return null;
+  }
+}
+
 function registerBrowserWhenAttached(
   webview: BrowserWebviewElement,
   identity: BrowserWebviewIdentity,
@@ -61,8 +71,14 @@ function registerBrowserWhenAttached(
 ): void {
   // Reparenting a webview can replace its guest WebContents without replacing
   // this DOM element, so every attachment needs a fresh main-process registration.
-  webview.addEventListener("did-attach", () => {
-    const webContentsId = webview.getWebContentsId();
+  // The guest id is only readable after dom-ready, so wait when did-attach is early.
+  let waitingForDomReady = false;
+
+  const register = (): boolean => {
+    const webContentsId = readWebContentsId(webview);
+    if (webContentsId == null) {
+      return false;
+    }
     void browser
       .registerAttachedBrowser({
         browserId: identity.browserId,
@@ -72,7 +88,28 @@ function registerBrowserWhenAttached(
       .catch((error) => {
         console.error("[browser-webview] attached registration failed", error);
       });
-  });
+    return true;
+  };
+
+  const registerWhenGuestIsReady = () => {
+    if (register()) {
+      return;
+    }
+    if (waitingForDomReady) {
+      return;
+    }
+    waitingForDomReady = true;
+    webview.addEventListener(
+      "dom-ready",
+      () => {
+        waitingForDomReady = false;
+        register();
+      },
+      { once: true },
+    );
+  };
+
+  webview.addEventListener("did-attach", registerWhenGuestIsReady);
 }
 
 function registerBrowserReadiness(webview: HTMLElement): void {

@@ -273,6 +273,39 @@ describe("resident browser webviews", () => {
     ]);
   });
 
+  it("waits for dom-ready when getWebContentsId is not available on did-attach", () => {
+    const webview = ensureTestBrowser({
+      browserId: "browser-late-guest",
+      workspaceId: "workspace-late-guest",
+      url: "https://example.com/late",
+    });
+    if (!webview) {
+      throw new Error("Expected resident webview");
+    }
+
+    let guestReady = false;
+    Object.assign(webview, {
+      getWebContentsId: () => {
+        if (!guestReady) {
+          throw new Error(
+            "The WebView must be attached to the DOM and the dom-ready event emitted before this method can be called.",
+          );
+        }
+        return 303;
+      },
+    });
+
+    expect(() => webview.dispatchEvent(new Event("did-attach"))).not.toThrow();
+    expect(attachedBrowsers).toEqual([]);
+
+    guestReady = true;
+    webview.dispatchEvent(new Event("dom-ready"));
+
+    expect(attachedBrowsers).toEqual([
+      { browserId: "browser-late-guest", workspaceId: "workspace-late-guest", webContentsId: 303 },
+    ]);
+  });
+
   it("normalizes an existing resident host back to permanent parking", () => {
     const staleHost = document.createElement("div");
     staleHost.id = RESIDENT_HOST_ID;
