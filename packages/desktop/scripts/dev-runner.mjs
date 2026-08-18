@@ -165,6 +165,8 @@ function canConnect(port, host) {
 
 registerDevRunnerShutdownSignals({ signalSource: process, stop: stopAll });
 
+spawnChild("protocol", "npm", ["run", "watch:protocol"]);
+
 spawnChild("metro", "npx", ["expo", "start", "--port", String(expoPort)], {
   cwd: appDir,
   detached: true,
