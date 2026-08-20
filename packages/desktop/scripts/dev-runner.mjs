@@ -197,6 +197,7 @@ if (!stopping) {
       env: process.env,
       colorEnv,
       expoDevUrl,
+      devBuildLabel,
     }),
   );
 }

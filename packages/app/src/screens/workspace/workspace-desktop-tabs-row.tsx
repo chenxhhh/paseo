@@ -104,6 +104,7 @@ import { useWorkspaceDirectory } from "@/stores/session-store-hooks";
 import { useCheckoutStatusQuery } from "@/git/use-status-query";
 import { TrailingActionScrim } from "@/components/ui/trailing-action-scrim";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
+import { buildWorkspaceKeyboardHandlerId } from "@/keyboard/handler-id";
 import type { KeyboardActionDefinition } from "@/keyboard/keyboard-action-dispatcher";
 
 const DROPDOWN_WIDTH = 220;
@@ -1182,7 +1183,6 @@ function ResolvedWorkspaceDesktopTabsRow({
     serverId: normalizedServerId,
     workspaceId: normalizedWorkspaceId,
   });
-  const focusPane = useWorkspaceLayoutStore((state) => state.focusPane);
   const openTabFocused = useWorkspaceLayoutStore((state) => state.openTabFocused);
 
   const handleTabsContainerLayout = useCallback((event: LayoutChangeEvent) => {
@@ -1425,12 +1425,9 @@ function ResolvedWorkspaceDesktopTabsRow({
       if (!workspaceKey) {
         return;
       }
-      if (paneId) {
-        focusPane(workspaceKey, paneId);
-      }
-      openTabFocused(workspaceKey, target);
+      openTabFocused(workspaceKey, target, { paneId });
     },
-    [focusPane, openTabFocused, paneId, workspaceKey],
+    [openTabFocused, paneId, workspaceKey],
   );
   const handleOpenChanges = useCallback(() => openPanelTarget(CHANGES_TARGET), [openPanelTarget]);
   const handleOpenFiles = useCallback(() => openPanelTarget(FILES_TARGET), [openPanelTarget]);
@@ -1489,7 +1486,12 @@ function ResolvedWorkspaceDesktopTabsRow({
   );
 
   useKeyboardActionHandler({
-    handlerId: `workspace-new-tab-menu:${normalizedServerId}:${paneId ?? "main"}`,
+    handlerId: buildWorkspaceKeyboardHandlerId({
+      name: "workspace-new-tab-menu",
+      serverId: normalizedServerId,
+      workspaceId: normalizedWorkspaceId,
+      paneId,
+    }),
     actions: [
       "workspace.tab.menu.open",
       "workspace.tab.target.agent",
