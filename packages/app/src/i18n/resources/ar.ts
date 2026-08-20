@@ -2111,6 +2111,7 @@ export const ar: TranslationResources = {
         toggleFocusMode: "تبديل وضع التركيز",
         toggleExplorerPaneMaximization: "تبديل تكبير جزء المستكشف",
         cycleTheme: "موضوع الدورة",
+        cycleToolCallDetail: "تبديل عرض استدعاءات الأدوات",
         focusMessageInput: "التركيز على إدخال الرسالة",
         cycleAgentMode: "تبديل وضع الوكيل",
         toggleVoiceMode: "تبديل الوضع الصوتي",

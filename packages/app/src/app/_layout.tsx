@@ -114,6 +114,7 @@ import { applyAppearance } from "@/screens/settings/appearance/apply-appearance"
 import { selectIsAgentListOpen, usePanelStore } from "@/stores/panel-store";
 import { flushDraftPersistStorage } from "@/stores/draft-store";
 import { getNextThemePreference, THEME_TO_UNISTYLES } from "@/styles/theme";
+import { getNextToolCallDetailLevel } from "@/tool-calls/detail-level/levels";
 import { useSessionStore } from "@/stores/session-store";
 import { installWebScrollbarStyles } from "@/styles/install-web-scrollbar-styles";
 import type { HostProfile } from "@/types/host-connection";
@@ -472,6 +473,12 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
     void updateSettings({ theme: getNextThemePreference(settings.theme) });
   }, [settings.theme, updateSettings]);
 
+  const cycleToolCallDetail = useCallback(() => {
+    void updateSettings({
+      toolCallDetailLevel: getNextToolCallDetailLevel(settings.toolCallDetailLevel),
+    });
+  }, [settings.toolCallDetailLevel, updateSettings]);
+
   const isCompactLayout = useIsCompactFormFactor();
   useCompactWebViewportZoomLock(isCompactLayout);
   const pathname = usePathname();
@@ -505,6 +512,7 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
     toggleBothSidebars: toggleDesktopSidebars,
     exitFocusMode,
     cycleTheme,
+    cycleToolCallDetail,
   });
 
   useActiveWorktreeNewAction();

@@ -2087,6 +2087,7 @@ export const zhCN: TranslationResources = {
         toggleFocusMode: "切换专注模式",
         toggleExplorerPaneMaximization: "切换资源管理器窗格最大化",
         cycleTheme: "循环切换主题",
+        cycleToolCallDetail: "循环切换工具调用显示",
         focusMessageInput: "聚焦消息输入框",
         cycleAgentMode: "循环切换代理模式",
         toggleVoiceMode: "切换语音模式",

@@ -2175,6 +2175,7 @@ export const en = {
         toggleFocusMode: "Toggle focus mode",
         toggleExplorerPaneMaximization: "Toggle Explorer pane maximization",
         cycleTheme: "Cycle theme",
+        cycleToolCallDetail: "Cycle tool call display",
         focusMessageInput: "Focus message input",
         cycleAgentMode: "Cycle agent mode",
         toggleVoiceMode: "Toggle voice mode",

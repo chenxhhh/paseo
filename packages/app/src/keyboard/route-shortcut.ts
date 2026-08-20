@@ -20,7 +20,11 @@ export interface ShortcutRoutingInput {
   payload: KeyboardShortcutPayload;
 }
 
-export type ShortcutCallbackName = "toggle-agent-list" | "toggle-both-sidebars" | "cycle-theme";
+export type ShortcutCallbackName =
+  | "toggle-agent-list"
+  | "toggle-both-sidebars"
+  | "cycle-theme"
+  | "cycle-tool-call-detail";
 
 export type ShortcutAction =
   | { kind: "none" }
@@ -75,6 +79,7 @@ const SIMPLE_CALLBACKS: Record<string, ShortcutCallbackName> = {
   "sidebar.toggle.left": "toggle-agent-list",
   "sidebar.toggle.both": "toggle-both-sidebars",
   "theme.cycle": "cycle-theme",
+  "toolCalls.cycleDetailLevel": "cycle-tool-call-detail",
 };
 
 const MESSAGE_INPUT_DISPATCH: Record<

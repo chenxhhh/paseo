@@ -2129,6 +2129,7 @@ export const ja: TranslationResources = {
         toggleFocusMode: "フォーカスモードを切り替え",
         toggleExplorerPaneMaximization: "エクスプローラーペインの最大化を切り替え",
         cycleTheme: "テーマを順に切り替え",
+        cycleToolCallDetail: "ツール呼び出しの表示を順に切り替え",
         focusMessageInput: "メッセージ入力にフォーカス",
         cycleAgentMode: "エージェントモードを順に切り替え",
         toggleVoiceMode: "音声モードを切り替え",
