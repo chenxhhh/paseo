@@ -221,6 +221,7 @@ function ChatOutlineRow({ value, onChange }: ChatOutlineRowProps) {
 
 const TOOL_CALL_DETAIL_LEVELS: readonly AppSettings["toolCallDetailLevel"][] = [
   "detailed",
+  "balanced",
   "overview",
 ];
 

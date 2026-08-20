@@ -39,6 +39,7 @@ import {
 import { SplitContainer } from "@/components/split-container";
 import { RetainedPanel } from "@/components/retained-panel";
 import { WorkspaceActions } from "@/git/workspace-actions";
+import { ToolCallDetailMenu } from "@/components/tool-call-detail-menu";
 import { WorkspaceOpenInEditorButton } from "@/screens/workspace/workspace-open-in-editor-button";
 import { WorkspaceScriptsButton } from "@/screens/workspace/workspace-scripts-button";
 import { ImportSessionSheet } from "@/components/import-session-sheet";
@@ -3276,6 +3277,7 @@ function WorkspaceScreenContent({
             </HeaderToggleButton>
           </>
         ) : null}
+        <ToolCallDetailMenu />
         {isMobile ? (
           <HeaderToggleButton
             testID="workspace-explorer-toggle"
