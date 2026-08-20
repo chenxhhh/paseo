@@ -4552,10 +4552,12 @@ export class AgentManager {
     if (
       agent.pendingReplacement ||
       agent.activeForegroundTurnId ||
+      agent.activeTurnId ||
       this.runs.hasRun(agentId) ||
       !agent.persistence?.sessionId
     ) {
-      // Someone took over (new user message / close / another run). Drop the loop.
+      // Someone took over (new user message / autonomous turn / close / another
+      // run). Drop the loop.
       this.cancelScheduledTurnRecovery(agentId);
       return;
     }
@@ -4564,7 +4566,9 @@ export class AgentManager {
       agentId,
       formatSystemNotificationPrompt(AUTO_CONTINUE_PROMPT),
       this.logger,
-      { replaceRunning: false },
+      // Steer covers the race between the guard above and dispatch: a turn
+      // started in between absorbs the continuation instead of racing it.
+      { replaceRunning: false, activeTurnBehavior: "steer" },
     );
   }
 
