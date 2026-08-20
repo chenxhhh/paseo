@@ -83,23 +83,23 @@ function buildCanonicalDetailDisplay(input: ToolCallDisplayInput): DetailDisplay
   switch (input.detail.type) {
     case "shell":
       return {
-        displayName: "Shell",
+        displayName: "Ran",
         summary: input.detail.command,
       };
     case "read":
       return buildFilePathDisplay("Read", input.detail.filePath, input.cwd);
     case "edit":
-      return buildFilePathDisplay("Edit", input.detail.filePath, input.cwd);
+      return buildFilePathDisplay("Edited", input.detail.filePath, input.cwd);
     case "write":
-      return buildFilePathDisplay("Write", input.detail.filePath, input.cwd);
+      return buildFilePathDisplay("Wrote", input.detail.filePath, input.cwd);
     case "search":
       return {
-        displayName: "Search",
+        displayName: "Searched",
         summary: input.detail.query,
       };
     case "fetch":
       return {
-        displayName: "Fetch",
+        displayName: "Fetched",
         summary: input.detail.url,
       };
     case "worktree_setup":

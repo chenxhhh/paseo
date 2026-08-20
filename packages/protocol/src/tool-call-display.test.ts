@@ -190,4 +190,94 @@ describe("shared tool-call display mapping", () => {
       displayName: "Plan",
     });
   });
+
+  it("labels shell detail rows as Ran", () => {
+    const display = buildToolCallDisplayModel({
+      name: "shell",
+      status: "running",
+      error: null,
+      detail: {
+        type: "shell",
+        command: "npm test",
+      },
+    });
+
+    expect(display).toEqual({
+      displayName: "Ran",
+      summary: "npm test",
+    });
+  });
+
+  it("labels edit detail rows as Edited", () => {
+    const display = buildToolCallDisplayModel({
+      name: "edit",
+      status: "completed",
+      error: null,
+      detail: {
+        type: "edit",
+        filePath: "/tmp/repo/src/index.ts",
+        oldString: "a",
+        newString: "b",
+      },
+      cwd: "/tmp/repo",
+    });
+
+    expect(display).toEqual({
+      displayName: "Edited",
+      summary: "src/index.ts",
+    });
+  });
+
+  it("labels write detail rows as Wrote", () => {
+    const display = buildToolCallDisplayModel({
+      name: "write",
+      status: "completed",
+      error: null,
+      detail: {
+        type: "write",
+        filePath: "/tmp/repo/README.md",
+        content: "# hi",
+      },
+      cwd: "/tmp/repo",
+    });
+
+    expect(display).toEqual({
+      displayName: "Wrote",
+      summary: "README.md",
+    });
+  });
+
+  it("labels search detail rows as Searched", () => {
+    const display = buildToolCallDisplayModel({
+      name: "search",
+      status: "completed",
+      error: null,
+      detail: {
+        type: "search",
+        query: "paseo",
+      },
+    });
+
+    expect(display).toEqual({
+      displayName: "Searched",
+      summary: "paseo",
+    });
+  });
+
+  it("labels fetch detail rows as Fetched", () => {
+    const display = buildToolCallDisplayModel({
+      name: "fetch",
+      status: "completed",
+      error: null,
+      detail: {
+        type: "fetch",
+        url: "https://paseo.sh",
+      },
+    });
+
+    expect(display).toEqual({
+      displayName: "Fetched",
+      summary: "https://paseo.sh",
+    });
+  });
 });

@@ -68,6 +68,8 @@ import type { AgentAttachment } from "@getpaseo/protocol/messages";
 import type { ToolCallDetail } from "@getpaseo/protocol/agent-types";
 import { buildToolCallPresentation } from "@/tool-calls/presentation";
 import { resolveToolCallIcon } from "@/utils/tool-call-icon";
+import { computeToolCallDiffStat } from "@/tool-calls/diff-stat";
+import { DiffStat } from "@/components/diff-stat";
 import { getMarkdownListMarker, getMarkdownListSpacing } from "@/utils/markdown-list";
 import { markdownNodeContainsType } from "@/utils/markdown-ast";
 import { useStableEvent } from "@/hooks/use-stable-event";
@@ -1116,6 +1118,10 @@ const expandableBadgeStylesheet = StyleSheet.create((theme) => ({
   },
   secondaryLabelActive: {
     color: theme.colors.foreground,
+  },
+  trailing: {
+    marginLeft: theme.spacing[2],
+    flexShrink: 0,
   },
   shimmerText: {
     color: "transparent",
@@ -2320,6 +2326,7 @@ export const TodoListCard = memo(function TodoListCard({
 interface ExpandableBadgeProps {
   label: string;
   secondaryLabel?: string;
+  trailing?: ReactNode;
   icon?: ComponentType<{ size?: number; color?: string }>;
   isExpanded: boolean;
   style?: StyleProp<ViewStyle>;
@@ -2404,6 +2411,7 @@ interface ExpandableBadgeLabelRowProps {
   labelStyle: StyleProp<TextStyle>;
   secondaryLabel?: string;
   secondaryLabelStyle: StyleProp<TextStyle>;
+  trailingNode?: ReactNode;
   shouldMeasureWebShimmer: boolean;
   shouldMeasureNativeShimmer: boolean;
   isWebShimmer: boolean;
@@ -2430,6 +2438,7 @@ function ExpandableBadgeLabelRow({
   labelStyle,
   secondaryLabel,
   secondaryLabelStyle,
+  trailingNode,
   shouldMeasureWebShimmer,
   shouldMeasureNativeShimmer,
   isWebShimmer,
@@ -2469,6 +2478,7 @@ function ExpandableBadgeLabelRow({
         shouldMeasureWebShimmer={shouldMeasureWebShimmer}
         onSecondaryLayout={onSecondaryLayout}
       />
+      {trailingNode ? <View style={expandableBadgeStylesheet.trailing}>{trailingNode}</View> : null}
       {showOpenFileButton ? (
         <Pressable
           onPress={onOpenFilePress}
@@ -2684,6 +2694,7 @@ export const ExpandableBadge = memo(function ExpandableBadge({
   label,
   style,
   secondaryLabel,
+  trailing,
   icon,
   isExpanded,
   onToggle,
@@ -2969,6 +2980,7 @@ export const ExpandableBadge = memo(function ExpandableBadge({
             labelStyle={labelStyle}
             secondaryLabel={secondaryLabel}
             secondaryLabelStyle={secondaryLabelStyle}
+            trailingNode={trailing}
             shouldMeasureWebShimmer={shouldMeasureWebShimmer}
             shouldMeasureNativeShimmer={shouldMeasureNativeShimmer}
             isWebShimmer={isWebShimmer}
@@ -3008,6 +3020,7 @@ export const ExpandableBadge = memo(function ExpandableBadge({
 function areExpandableBadgePropsEqual(previous: ExpandableBadgeProps, next: ExpandableBadgeProps) {
   if (previous.label !== next.label) return false;
   if (previous.secondaryLabel !== next.secondaryLabel) return false;
+  if (previous.trailing !== next.trailing) return false;
   if (previous.icon !== next.icon) return false;
   if (previous.isExpanded !== next.isExpanded) return false;
   if (previous.style !== next.style) return false;
@@ -3093,6 +3106,18 @@ export const ToolCall = memo(function ToolCall({
         resolveIcon: resolveToolCallIcon,
       }),
     [toolName, status, error, effectiveDetail, metadata, cwd],
+  );
+  const diffStat = useMemo(() => computeToolCallDiffStat(effectiveDetail), [effectiveDetail]);
+  const trailingNode = useMemo(
+    () =>
+      diffStat ? (
+        <DiffStat
+          additions={diffStat.additions}
+          deletions={diffStat.deletions}
+          testID="tool-call-diff-stat"
+        />
+      ) : null,
+    [diffStat],
   );
   const handleOpenFile = useMemo(() => {
     const openFilePath = presentation.openFilePath;
@@ -3187,6 +3212,7 @@ export const ToolCall = memo(function ToolCall({
       testID="tool-call-badge"
       label={presentation.displayName}
       secondaryLabel={presentation.summary}
+      trailing={trailingNode}
       icon={presentation.icon}
       isExpanded={shouldRenderInline && isExpanded}
       onToggle={presentation.canOpenDetails ? handleToggle : undefined}
