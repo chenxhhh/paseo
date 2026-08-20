@@ -38,12 +38,16 @@ export function computeToolCallDiffStat(
       return normalizeDiffStat(countDiffLines(diff));
     }
     if (detail.oldString !== undefined || detail.newString !== undefined) {
-      const oldLines = detail.oldString ?? "";
-      const newLines = detail.newString ?? "";
-      if (oldLines.length * newLines.length > MAX_DIFF_CELL_PRODUCT) {
+      const oldString = detail.oldString ?? "";
+      const newString = detail.newString ?? "";
+      // buildLineDiff allocates one DP cell per old×new line pair, so the guard
+      // is on line counts — long single lines are cheap, wide files are not.
+      const oldLineCount = oldString.split("\n").length;
+      const newLineCount = newString.split("\n").length;
+      if (oldLineCount * newLineCount > MAX_DIFF_CELL_PRODUCT) {
         return null;
       }
-      const diff = buildLineDiff(oldLines, newLines);
+      const diff = buildLineDiff(oldString, newString);
       return normalizeDiffStat(countDiffLines(diff));
     }
     return null;

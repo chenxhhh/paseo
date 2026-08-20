@@ -32,11 +32,22 @@ describe("computeToolCallDiffStat", () => {
     const detail: ToolCallDetail = {
       type: "edit",
       filePath: "/repo/a.ts",
+      oldString: `${"old line\n".repeat(600)}old tail`,
+      newString: `${"new line\n".repeat(600)}new tail`,
+    };
+
+    expect(computeToolCallDiffStat(detail)).toBeNull();
+  });
+
+  it("computes chips for long but narrow single-line edits", () => {
+    const detail: ToolCallDetail = {
+      type: "edit",
+      filePath: "/repo/a.ts",
       oldString: "a".repeat(600),
       newString: "b".repeat(600),
     };
 
-    expect(computeToolCallDiffStat(detail)).toBeNull();
+    expect(computeToolCallDiffStat(detail)).toEqual({ additions: 1, deletions: 1 });
   });
 
   it("returns null when an edit has no old or new string", () => {
