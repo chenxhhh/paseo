@@ -16,10 +16,23 @@ export interface ToolCallRun {
   isSealed: boolean;
 }
 
+export interface ToolCallHostPlacement<TGroup> {
+  host: ToolCallItem;
+  /** Index of this placement's last call within run.calls. */
+  lastIndex: number;
+  group?: TGroup; // absent for balanced signal pass-throughs
+}
+
+export type BuildToolCallHosts<TGroup> = (
+  run: ToolCallRun,
+) => readonly ToolCallHostPlacement<TGroup>[];
+
 export interface GroupedHistory<TGroup> {
   tail: StreamItem[];
   groupsByHostId: Map<string, TGroup>;
   pendingCalls: readonly ToolCallItem[];
+  /** Host ids the trailing pending run already emitted into `tail`, in order. */
+  pendingHostIds: readonly string[];
 }
 
 export interface GroupedToolCalls<TGroup> {
@@ -70,7 +83,7 @@ export function isGroupableToolCall(item: StreamItem): item is ToolCallItem {
   return descriptor.detail.type !== "plan" && descriptor.name.trim().toLowerCase() !== "speak";
 }
 
-function createRun(calls: readonly ToolCallItem[], isSealed: boolean): ToolCallRun {
+export function createRun(calls: readonly ToolCallItem[], isSealed: boolean): ToolCallRun {
   const first = calls[0];
   const latest = calls.at(-1);
   if (!first || !latest) {
@@ -91,58 +104,75 @@ function isRunning(call: ToolCallItem): boolean {
   return status === "running" || status === "executing";
 }
 
+/** Single host per run — byte-identical to the pre-refactor overview behavior. */
+export function createRunHosts<TGroup>(
+  buildGroup: (run: ToolCallRun) => TGroup,
+): BuildToolCallHosts<TGroup> {
+  return (run) => {
+    const host = createHost(run);
+    return [{ host, lastIndex: run.calls.length - 1, group: buildGroup(run) }];
+  };
+}
+
 function appendRun<TGroup>(input: {
   calls: readonly ToolCallItem[];
   isSealed: boolean;
   output: StreamItem[];
   groups: Map<string, TGroup>;
-  buildGroup: (run: ToolCallRun) => TGroup;
-}): void {
+  buildHosts: BuildToolCallHosts<TGroup>;
+}): readonly ToolCallHostPlacement<TGroup>[] {
   if (input.calls.length === 0) {
-    return;
+    return [];
   }
   const run = createRun(input.calls, input.isSealed);
-  const host = createHost(run);
-  input.output.push(host);
-  input.groups.set(host.id, input.buildGroup(run));
+  const placements = input.buildHosts(run);
+  for (const placement of placements) {
+    input.output.push(placement.host);
+    if (placement.group !== undefined) {
+      input.groups.set(placement.host.id, placement.group);
+    }
+  }
+  return placements;
 }
 
 export function prepareGroupedHistory<TGroup>(input: {
   tail: StreamItem[];
-  buildGroup: (run: ToolCallRun) => TGroup;
+  buildHosts: BuildToolCallHosts<TGroup>;
 }): GroupedHistory<TGroup> {
   const output: StreamItem[] = [];
   const groups = new Map<string, TGroup>();
   let pending: ToolCallItem[] = [];
+  let finalPlacements: readonly ToolCallHostPlacement<TGroup>[] = [];
 
   for (const item of input.tail) {
     if (isGroupableToolCall(item)) {
       pending.push(item);
       continue;
     }
-    appendRun({
+    finalPlacements = appendRun({
       calls: pending,
       isSealed: true,
       output,
       groups,
-      buildGroup: input.buildGroup,
+      buildHosts: input.buildHosts,
     });
     pending = [];
     output.push(item);
   }
 
-  appendRun({
+  finalPlacements = appendRun({
     calls: pending,
     isSealed: true,
     output,
     groups,
-    buildGroup: input.buildGroup,
+    buildHosts: input.buildHosts,
   });
 
   return {
     tail: groups.size > 0 ? output : input.tail,
     groupsByHostId: groups,
     pendingCalls: pending,
+    pendingHostIds: pending.length > 0 ? finalPlacements.map((placement) => placement.host.id) : [],
   };
 }
 
@@ -150,28 +180,38 @@ export function groupLiveToolCalls<TGroup>(input: {
   history: GroupedHistory<TGroup>;
   head: StreamItem[];
   isTurnActive: boolean;
-  buildGroup: (run: ToolCallRun) => TGroup;
+  buildHosts: BuildToolCallHosts<TGroup>;
 }): GroupedToolCalls<TGroup> {
   const head: StreamItem[] = [];
   const liveGroups = new Map<string, TGroup>();
   let pending = [...input.history.pendingCalls];
   let hostPlacement: "history" | "head" | null = pending.length > 0 ? "history" : null;
-  let pendingIncludesHead = false;
 
   const flush = (isSealed: boolean) => {
     if (pending.length === 0) {
       return;
     }
     const run = createRun(pending, isSealed);
-    if (hostPlacement === "head") {
-      head.push(createHost(run));
-    }
-    if (hostPlacement === "head" || pendingIncludesHead || !isSealed) {
-      liveGroups.set(run.id, input.buildGroup(run));
+    const historyPendingCount = input.history.pendingCalls.length;
+    const retainedHostIds = hostPlacement === "history" ? input.history.pendingHostIds : [];
+    const placements = input.buildHosts(run);
+    for (let i = 0; i < placements.length; i += 1) {
+      const placement = placements[i];
+      const isRetained = i < retainedHostIds.length; // host already sits in the history tail
+      if (!isRetained) {
+        head.push(placement.host); // new hosts (incl. signal pass-throughs) join the head
+      }
+      if (placement.group === undefined) {
+        continue;
+      }
+      const includesHeadCall = placement.lastIndex >= historyPendingCount;
+      const isTrailing = i === placements.length - 1;
+      if (!isRetained || includesHeadCall || (!isSealed && isTrailing)) {
+        liveGroups.set(placement.host.id, placement.group);
+      }
     }
     pending = [];
     hostPlacement = null;
-    pendingIncludesHead = false;
   };
 
   for (const item of input.head) {
@@ -180,7 +220,6 @@ export function groupLiveToolCalls<TGroup>(input: {
         hostPlacement = "head";
       }
       pending.push(item);
-      pendingIncludesHead = true;
       continue;
     }
     flush(true);

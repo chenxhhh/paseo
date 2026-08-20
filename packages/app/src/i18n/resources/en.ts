@@ -1770,6 +1770,10 @@ export const en = {
       one: "searched {{count}} time",
       other: "searched {{count}} times",
     },
+    fetches: {
+      one: "fetched {{count}} page",
+      other: "fetched {{count}} pages",
+    },
     otherTools: {
       one: "used {{count}} other tool",
       other: "used {{count}} other tools",

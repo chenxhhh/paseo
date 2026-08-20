@@ -1811,6 +1811,10 @@ export const fr: TranslationResources = {
       one: "a effectué {{count}} recherche",
       other: "a effectué {{count}} recherches",
     },
+    fetches: {
+      one: "a récupéré {{count}} page",
+      other: "a récupéré {{count}} pages",
+    },
     otherTools: {
       one: "a utilisé {{count}} autre outil",
       other: "a utilisé {{count}} autres outils",

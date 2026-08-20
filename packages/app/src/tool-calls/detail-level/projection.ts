@@ -3,22 +3,34 @@ import type { ToolCallDetailLevel } from "@/hooks/use-settings/storage";
 import {
   groupLiveToolCalls,
   prepareGroupedHistory,
+  createRunHosts,
+  type BuildToolCallHosts,
   type GroupedHistory,
   type GroupedToolCalls,
 } from "./grouping";
 import { buildOverviewGroup, type OverviewToolCallGroup } from "./overview/model";
+import { buildBalancedHosts, type BalancedToolCallGroup } from "./balanced/model";
 
 export type { ToolCallDetailLevel } from "@/hooks/use-settings/storage";
-export type ToolCallDetailGroup = OverviewToolCallGroup;
+export type ToolCallDetailGroup = OverviewToolCallGroup | BalancedToolCallGroup;
 
 export interface PreparedToolCallHistory {
-  mode: "overview";
+  mode: "overview" | "balanced";
   grouped: GroupedHistory<ToolCallDetailGroup>;
 }
 
 export interface ToolCallDetailProjection extends GroupedToolCalls<ToolCallDetailGroup> {}
 
 const EMPTY_TOOL_CALL_GROUPS = new Map<string, ToolCallDetailGroup>();
+
+function getBuildHostsForLevel(
+  level: "overview" | "balanced",
+): BuildToolCallHosts<ToolCallDetailGroup> {
+  if (level === "overview") {
+    return createRunHosts(buildOverviewGroup);
+  }
+  return buildBalancedHosts;
+}
 
 export function prepareToolCallHistory(
   level: ToolCallDetailLevel,
@@ -28,8 +40,8 @@ export function prepareToolCallHistory(
     return null;
   }
   return {
-    mode: "overview",
-    grouped: prepareGroupedHistory({ tail, buildGroup: buildOverviewGroup }),
+    mode: level,
+    grouped: prepareGroupedHistory({ tail, buildHosts: getBuildHostsForLevel(level) }),
   };
 }
 
@@ -55,6 +67,6 @@ export function projectToolCallDetailLevel(input: {
     history: input.preparedHistory.grouped,
     head: input.head,
     isTurnActive: input.isTurnActive,
-    buildGroup: buildOverviewGroup,
+    buildHosts: getBuildHostsForLevel(input.level),
   });
 }

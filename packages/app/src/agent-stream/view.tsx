@@ -65,6 +65,7 @@ import {
   projectToolCallDetailLevel,
 } from "@/tool-calls/detail-level/projection";
 import { OverviewToolCallGroupView } from "@/tool-calls/detail-level/overview/view";
+import { BalancedToolCallGroupView } from "@/tool-calls/detail-level/balanced/view";
 import { type AgentStreamRenderModel, buildAgentStreamRenderModel } from "./model";
 import { resolveStreamRenderStrategy } from "./strategy-resolver";
 import { type StreamSegmentRenderers, type StreamViewportHandle } from "./strategy";
@@ -759,25 +760,35 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           return renderSingleToolCallItem(item, layoutItem.isLastInToolSequence);
         }
         const expanded = expandedToolCallGroupIds.has(group.run.id);
-        return (
+        const groupChildren = expanded
+          ? group.run.calls.map((call, index) => (
+              <React.Fragment key={call.id}>
+                {renderSingleToolCallItem(
+                  call,
+                  index === group.run.calls.length - 1,
+                  GROUPED_TOOL_CALL_DETAIL_MAX_HEIGHT,
+                )}
+              </React.Fragment>
+            ))
+          : null;
+        return group.mode === "overview" ? (
           <OverviewToolCallGroupView
             group={group}
             expanded={expanded}
             isLastInSequence={layoutItem.isLastInToolSequence}
             onExpandedChange={setToolCallGroupExpanded}
           >
-            {expanded
-              ? group.run.calls.map((call, index) => (
-                  <React.Fragment key={call.id}>
-                    {renderSingleToolCallItem(
-                      call,
-                      index === group.run.calls.length - 1,
-                      GROUPED_TOOL_CALL_DETAIL_MAX_HEIGHT,
-                    )}
-                  </React.Fragment>
-                ))
-              : null}
+            {groupChildren}
           </OverviewToolCallGroupView>
+        ) : (
+          <BalancedToolCallGroupView
+            group={group}
+            expanded={expanded}
+            isLastInSequence={layoutItem.isLastInToolSequence}
+            onExpandedChange={setToolCallGroupExpanded}
+          >
+            {groupChildren}
+          </BalancedToolCallGroupView>
         );
       },
       [

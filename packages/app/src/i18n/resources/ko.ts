@@ -1770,6 +1770,10 @@ export const ko: TranslationResources = {
       one: "{{count}}회 검색함",
       other: "{{count}}회 검색함",
     },
+    fetches: {
+      one: "페이지 {{count}}개 가져옴",
+      other: "페이지 {{count}}개 가져옴",
+    },
     otherTools: {
       one: "기타 도구 {{count}}개 사용함",
       other: "기타 도구 {{count}}개 사용함",

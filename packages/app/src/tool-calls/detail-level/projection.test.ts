@@ -458,3 +458,199 @@ describe("tool call detail-level projection", () => {
     expect(result.groupsByHostId.size).toBe(1);
   });
 });
+
+describe("balanced tool call detail level", () => {
+  it("splits a mixed tail run into noise groups and signal pass-throughs", () => {
+    const readA = toolCall("1", { type: "read", filePath: "/repo/a.ts" });
+    const readB = toolCall("2", { type: "read", filePath: "/repo/b.ts" });
+    const edit = toolCall("3", { type: "edit", filePath: "/repo/a.ts" });
+    const shell = toolCall("4", { type: "shell", command: "npm test" });
+    const search = toolCall("5", { type: "search", query: "paseo" });
+    const tail = [readA, readB, edit, shell, search, assistant("boundary")];
+
+    const prepared = prepareToolCallHistory("balanced", tail);
+    if (!prepared) {
+      throw new Error("Balanced history must be prepared");
+    }
+
+    // tail hosts: read-a host (grouped), edit + shell pass through, search host (grouped)
+    expect(prepared.grouped.tail).toEqual([
+      expect.objectContaining({ id: "1" }),
+      edit,
+      shell,
+      expect.objectContaining({ id: "5" }),
+      tail[5],
+    ]);
+    expect(prepared.grouped.groupsByHostId.get("1")).toMatchObject({
+      mode: "balanced",
+      summary: { readFileCount: 2, searchCount: 0, otherToolCount: 0 },
+    });
+    expect(prepared.grouped.groupsByHostId.get("5")).toMatchObject({
+      mode: "balanced",
+      summary: { readFileCount: 0, searchCount: 1 },
+    });
+    expect(prepared.grouped.groupsByHostId.has("3")).toBe(false);
+    expect(prepared.grouped.groupsByHostId.has("4")).toBe(false);
+  });
+
+  it("counts unique read paths across a noise segment", () => {
+    const tail = [
+      toolCall("1", { type: "read", filePath: "/repo/a.ts" }),
+      toolCall("2", { type: "read", filePath: "/repo/a.ts" }),
+      toolCall("3", { type: "read", filePath: "/repo/b.ts" }),
+      assistant("boundary"),
+    ];
+
+    const prepared = prepareToolCallHistory("balanced", tail);
+    if (!prepared) {
+      throw new Error("Balanced history must be prepared");
+    }
+
+    expect(prepared.grouped.groupsByHostId.get("1")).toMatchObject({
+      summary: { readFileCount: 2 },
+    });
+  });
+
+  it("passes thinking tool calls through as signal rows", () => {
+    const read = toolCall("1", { type: "read", filePath: "/repo/a.ts" });
+    const thinking = toolCall(
+      "2",
+      { type: "unknown", input: null, output: null },
+      { name: "thinking" },
+    );
+    const tail = [read, thinking, assistant("boundary")];
+
+    const prepared = prepareToolCallHistory("balanced", tail);
+    if (!prepared) {
+      throw new Error("Balanced history must be prepared");
+    }
+
+    expect(prepared.grouped.tail).toEqual([
+      expect.objectContaining({ id: "1" }),
+      thinking,
+      tail[2],
+    ]);
+    expect(prepared.grouped.groupsByHostId.has("2")).toBe(false);
+    expect(prepared.grouped.pendingCalls).toEqual([]);
+  });
+
+  it("grows a live noise segment and updates the retained history host", () => {
+    const read1 = toolCall("1", { type: "read", filePath: "/repo/a.ts" });
+    const tail = [read1];
+    const prepared = prepareToolCallHistory("balanced", tail);
+    if (!prepared) {
+      throw new Error("Balanced history must be prepared");
+    }
+
+    const read2 = toolCall("2", { type: "read", filePath: "/repo/b.ts" });
+    const grown = project({
+      level: "balanced",
+      tail,
+      head: [read2],
+      isTurnActive: true,
+      preparedHistory: prepared,
+    });
+
+    expect(grown.tail).toEqual([expect.objectContaining({ id: "1" })]);
+    expect(grown.head).toEqual([]);
+    expect(grown.historyGroupUpdatesByHostId.get("1")).toMatchObject({
+      summary: { readFileCount: 2 },
+    });
+
+    const edit3 = toolCall("3", { type: "edit", filePath: "/repo/a.ts" });
+    const extended = project({
+      level: "balanced",
+      tail,
+      head: [read2, edit3],
+      isTurnActive: true,
+      preparedHistory: prepared,
+    });
+
+    expect(extended.head).toEqual([edit3]);
+    expect(extended.groupsByHostId.get("1")).toMatchObject({
+      summary: { readFileCount: 2 },
+    });
+  });
+
+  it("keeps segmentation host ids stable as the head run grows", () => {
+    const read1 = toolCall("1", { type: "read", filePath: "/repo/a.ts" });
+    const edit2 = toolCall("2", { type: "edit", filePath: "/repo/a.ts" });
+    const prepared = prepareToolCallHistory("balanced", []);
+
+    const first = project({
+      level: "balanced",
+      head: [read1, edit2],
+      isTurnActive: true,
+      preparedHistory: prepared,
+    });
+    const read3 = toolCall("3", { type: "read", filePath: "/repo/b.ts" });
+    const second = project({
+      level: "balanced",
+      head: [read1, edit2, read3],
+      isTurnActive: true,
+      preparedHistory: prepared,
+    });
+
+    expect(first.groupsByHostId.get("1")).toMatchObject({
+      summary: { readFileCount: 1 },
+    });
+    expect(second.groupsByHostId.get("1")).toMatchObject({
+      summary: { readFileCount: 1 },
+    });
+    expect(second.groupsByHostId.get("3")).toMatchObject({
+      summary: { readFileCount: 1 },
+    });
+  });
+
+  it("keeps a trailing noise segment unsealed while a call runs", () => {
+    const read1 = toolCall("1", { type: "read", filePath: "/repo/a.ts" }, { status: "running" });
+    const prepared = prepareToolCallHistory("balanced", []);
+
+    const active = project({
+      level: "balanced",
+      head: [read1],
+      isTurnActive: true,
+      preparedHistory: prepared,
+    });
+    expect(active.groupsByHostId.get("1")).toMatchObject({
+      mode: "balanced",
+      run: { isSealed: false },
+      isLoading: true,
+    });
+
+    const runningIdle = project({
+      level: "balanced",
+      head: [read1],
+      isTurnActive: false,
+      preparedHistory: prepared,
+    });
+    expect(runningIdle.groupsByHostId.get("1")).toMatchObject({
+      run: { isSealed: false },
+    });
+  });
+
+  it("seals an idle trailing noise segment with only completed calls", () => {
+    const read1 = toolCall("1", { type: "read", filePath: "/repo/a.ts" });
+    const prepared = prepareToolCallHistory("balanced", []);
+
+    const idle = project({
+      level: "balanced",
+      head: [read1],
+      isTurnActive: false,
+      preparedHistory: prepared,
+    });
+    expect(idle.groupsByHostId.get("1")).toMatchObject({
+      run: { isSealed: true },
+    });
+  });
+
+  it("counts fetch calls into fetchCount, not otherToolCount", () => {
+    const fetch = toolCall("1", { type: "fetch", url: "https://paseo.sh" });
+    const shell = toolCall("2", { type: "shell", command: "npm test" });
+    const result = project({ level: "balanced", head: [fetch, shell] });
+
+    expect(result.groupsByHostId.get("1")).toMatchObject({
+      summary: { fetchCount: 1, otherToolCount: 0 },
+    });
+  });
+});

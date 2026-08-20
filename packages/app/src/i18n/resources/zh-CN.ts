@@ -1740,6 +1740,10 @@ export const zhCN: TranslationResources = {
       one: "搜索了 {{count}} 次",
       other: "搜索了 {{count}} 次",
     },
+    fetches: {
+      one: "抓取了 {{count}} 个页面",
+      other: "抓取了 {{count}} 个页面",
+    },
     otherTools: {
       one: "使用了 {{count}} 个其他工具",
       other: "使用了 {{count}} 个其他工具",

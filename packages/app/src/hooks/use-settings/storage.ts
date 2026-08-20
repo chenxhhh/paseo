@@ -30,7 +30,7 @@ export type ServiceUrlBehavior = "ask" | "in-app" | "external";
 export type WorkspaceTitleSource = "title" | "branch";
 /** What a sidebar workspace row shows in the space to the right of its title. */
 export type SidebarWorkspaceTrailing = "diff" | "timestamp" | "none";
-export type ToolCallDetailLevel = "overview" | "detailed";
+export type ToolCallDetailLevel = "overview" | "balanced" | "detailed";
 
 const VALID_THEMES = new Set<string>(THEME_OPTIONS.map((option) => option.name));
 const ThemePreferenceSchema = z.enum(THEME_OPTIONS.map((option) => option.name));
@@ -41,7 +41,11 @@ const VALID_SIDEBAR_WORKSPACE_TRAILINGS = new Set<SidebarWorkspaceTrailing>([
   "timestamp",
   "none",
 ]);
-const VALID_TOOL_CALL_DETAIL_LEVELS = new Set<ToolCallDetailLevel>(["overview", "detailed"]);
+const VALID_TOOL_CALL_DETAIL_LEVELS = new Set<ToolCallDetailLevel>([
+  "overview",
+  "balanced",
+  "detailed",
+]);
 export const DEFAULT_TERMINAL_SCROLLBACK_LINES = 10_000;
 export const MIN_TERMINAL_SCROLLBACK_LINES = 0;
 export const MAX_TERMINAL_SCROLLBACK_LINES = 1_000_000;
@@ -120,7 +124,7 @@ const StoredAppSettingsSchema = z.strictObject({
   sidebarRowItems: SidebarRowItemsSchema.optional(),
   sidebarChecksDisplay: z.enum(["iconAndText", "icon", "none"]).optional(),
   autoExpandReasoning: z.boolean().optional(),
-  toolCallDetailLevel: z.enum(["overview", "detailed"]).optional(),
+  toolCallDetailLevel: z.enum(["overview", "balanced", "detailed"]).optional(),
   compactToolCalls: z.boolean().optional(),
   chatOutlineEnabled: z.boolean().optional(),
   vimKeybindings: z.boolean().optional(),

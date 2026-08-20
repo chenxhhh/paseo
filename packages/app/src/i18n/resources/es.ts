@@ -1806,6 +1806,10 @@ export const es: TranslationResources = {
       one: "buscó {{count}} vez",
       other: "buscó {{count}} veces",
     },
+    fetches: {
+      one: "obtuvo {{count}} página",
+      other: "obtuvo {{count}} páginas",
+    },
     otherTools: {
       one: "usó {{count}} herramienta adicional",
       other: "usó {{count}} herramientas adicionales",

@@ -1792,6 +1792,10 @@ export const ptBR: TranslationResources = {
       one: "pesquisou {{count}} vez",
       other: "pesquisou {{count}} vezes",
     },
+    fetches: {
+      one: "buscou {{count}} página",
+      other: "buscou {{count}} páginas",
+    },
     otherTools: {
       one: "usou {{count}} outra ferramenta",
       other: "usou {{count}} outras ferramentas",

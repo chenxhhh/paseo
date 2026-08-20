@@ -1796,6 +1796,10 @@ export const ru: TranslationResources = {
       one: "выполнен {{count}} поиск",
       other: "выполнено {{count}} поисков",
     },
+    fetches: {
+      one: "получена {{count}} страница",
+      other: "получено {{count}} страниц",
+    },
     otherTools: {
       one: "использован {{count}} другой инструмент",
       other: "использовано {{count}} других инструментов",

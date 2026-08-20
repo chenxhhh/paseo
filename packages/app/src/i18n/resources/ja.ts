@@ -1778,6 +1778,10 @@ export const ja: TranslationResources = {
       one: "{{count}}回検索",
       other: "{{count}}回検索",
     },
+    fetches: {
+      one: "{{count}}ページを取得",
+      other: "{{count}}ページを取得",
+    },
     otherTools: {
       one: "その他のツールを{{count}}回使用",
       other: "その他のツールを{{count}}回使用",

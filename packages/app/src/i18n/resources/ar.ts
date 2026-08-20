@@ -1760,6 +1760,10 @@ export const ar: TranslationResources = {
       one: "بحث {{count}} مرة",
       other: "بحث {{count}} مرات",
     },
+    fetches: {
+      one: "جلب {{count}} صفحة",
+      other: "جلب {{count}} صفحات",
+    },
     otherTools: {
       one: "استخدم {{count}} أداة أخرى",
       other: "استخدم {{count}} أدوات أخرى",

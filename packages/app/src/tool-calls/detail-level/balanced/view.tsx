@@ -1,39 +1,38 @@
 import { memo, type ReactNode } from "react";
-import { type OverviewSummary, type OverviewToolCallGroup } from "./model";
+import { type BalancedSummary, type BalancedToolCallGroup } from "./model";
 import { ToolCallGroupBadge } from "../tool-call-group-badge";
 import { useToolCallSummarySentence } from "../summary-text";
 
-interface OverviewGroupProps {
-  group: OverviewToolCallGroup;
+interface BalancedGroupProps {
+  group: BalancedToolCallGroup;
   expanded: boolean;
   isLastInSequence: boolean;
   onExpandedChange: (groupId: string, expanded: boolean) => void;
   children: ReactNode;
 }
 
-function useOverviewSummary(summary: OverviewSummary): string {
+function useBalancedSummary(summary: BalancedSummary): string {
   return useToolCallSummarySentence([
-    { count: summary.editedFileCount, keyRoot: "toolCallGroup.editedFiles" },
-    { count: summary.commandCount, keyRoot: "toolCallGroup.commands" },
     { count: summary.readFileCount, keyRoot: "toolCallGroup.readFiles" },
     { count: summary.searchCount, keyRoot: "toolCallGroup.searches" },
+    { count: summary.fetchCount, keyRoot: "toolCallGroup.fetches" },
     { count: summary.otherToolCount, keyRoot: "toolCallGroup.otherTools" },
     { count: summary.paseoCallCount, keyRoot: "toolCallGroup.paseoCalls" },
   ]);
 }
 
-export const OverviewToolCallGroupView = memo(function OverviewToolCallGroupView({
+export const BalancedToolCallGroupView = memo(function BalancedToolCallGroupView({
   group,
   expanded,
   isLastInSequence,
   onExpandedChange,
   children,
-}: OverviewGroupProps) {
-  const aggregateSummary = useOverviewSummary(group.summary);
+}: BalancedGroupProps) {
+  const aggregateSummary = useBalancedSummary(group.summary);
 
   return (
     <ToolCallGroupBadge
-      testID="tool-call-group"
+      testID="balanced-tool-call-group"
       label={aggregateSummary}
       isLoading={group.isLoading}
       isExpanded={expanded}
