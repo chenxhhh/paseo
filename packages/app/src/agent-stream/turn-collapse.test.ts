@@ -313,7 +313,7 @@ describe("collapseCompletedTurns", () => {
     ]);
   });
 
-  it("keys summaries by the final assistant item id", () => {
+  it("keys summaries by the last trailing assistant fragment", () => {
     const user = userMessage("u1");
     const mid = assistant("a-mid");
     const final = assistant("a-final");
@@ -326,7 +326,7 @@ describe("collapseCompletedTurns", () => {
 
     expect([...result.summariesByAnchorItemId.keys()]).toEqual(["a-final"]);
     expect(result.summariesByAnchorItemId.has("a-mid")).toBe(false);
-    expect(result.tail).toEqual([user, final]);
+    expect(result.tail).toEqual([user, mid, final]);
   });
 
   it("keeps consecutive user messages that belong to the same response", () => {
@@ -347,10 +347,30 @@ describe("collapseCompletedTurns", () => {
     expect(result.summariesByHeaderItemId.has("u2")).toBe(false);
   });
 
-  it("passes through a tool-bearing response with no user message", () => {
+  it("collapses a window slice with no user message and hosts the header on the first cell", () => {
+    const thinking = thought("th1");
     const read = toolCall("1", { type: "read", filePath: "/repo/a.ts" });
+    const first = assistant("F1");
+    const second = assistant("F2");
+    const tail = [thinking, read, first, second];
+    const result = collapseCompletedTurns({
+      tail,
+      enabled: true,
+      expandedAnchorItemIds: EMPTY_EXPANDED,
+      isTurnActive: false,
+    });
+
+    expect(result.tail).toEqual([first, second]);
+    expect(result.summariesByAnchorItemId.get("F2")?.headerItemId).toBe("th1");
+    expect(result.summariesByHeaderItemId.get("th1")?.anchorItemId).toBe("F2");
+    expect(result.summariesByHeaderItemId.get("F1")?.headerItemId).toBe("th1");
+  });
+
+  it("passes through a tool-bearing response that does not end in an assistant segment", () => {
+    const user = userMessage("u1");
     const reply = assistant("a1");
-    const tail = [read, reply];
+    const read = toolCall("1", { type: "read", filePath: "/repo/a.ts" });
+    const tail = [user, reply, read];
     const result = collapseCompletedTurns({
       tail,
       enabled: true,
@@ -360,7 +380,6 @@ describe("collapseCompletedTurns", () => {
 
     expect(result.tail).toBe(tail);
     expect(result.summariesByAnchorItemId.size).toBe(0);
-    expect(result.summariesByHeaderItemId.size).toBe(0);
   });
 
   it("hides unknown item kinds when collapsing a tool-bearing response", () => {
@@ -382,5 +401,58 @@ describe("collapseCompletedTurns", () => {
 
     expect(result.tail).toEqual([user, reply]);
     expect(result.summariesByAnchorItemId.get("a1")?.hiddenItemCount).toBe(2);
+  });
+
+  it("keeps the trailing assistant fragment stream and hides earlier assistant segments", () => {
+    const user = userMessage("u1");
+    const thinking = thought("th1");
+    const firstTool = toolCall("1", { type: "read", filePath: "/repo/a.ts" });
+    const midA = assistant("A");
+    const midB = assistant("B");
+    const secondTool = toolCall("2", { type: "shell", command: "ls" });
+    const c1 = assistant("C1");
+    const c2 = assistant("C2");
+    const c3 = assistant("C3");
+    const result = collapseCompletedTurns({
+      tail: [user, thinking, firstTool, midA, midB, secondTool, c1, c2, c3],
+      enabled: true,
+      expandedAnchorItemIds: EMPTY_EXPANDED,
+      isTurnActive: false,
+    });
+
+    expect(result.tail).toEqual([user, c1, c2, c3]);
+    expect(result.summariesByAnchorItemId.get("C3")?.hiddenItemCount).toBe(5);
+    expect(result.summariesByHeaderItemId.get("u1")?.anchorItemId).toBe("C3");
+  });
+
+  it("keeps every trailing assistant fragment when nothing splits the closing segment", () => {
+    const user = userMessage("u1");
+    const x = assistant("X");
+    const y = assistant("Y");
+    const result = collapseCompletedTurns({
+      tail: [user, toolCall("1", { type: "shell", command: "ls" }), x, y],
+      enabled: true,
+      expandedAnchorItemIds: EMPTY_EXPANDED,
+      isTurnActive: false,
+    });
+
+    expect(result.tail).toEqual([user, x, y]);
+    expect(result.summariesByAnchorItemId.get("Y")?.headerItemId).toBe("u1");
+  });
+
+  it("treats a thought as a break in the trailing assistant segment", () => {
+    const user = userMessage("u1");
+    const a = assistant("A");
+    const thinking = thought("th1");
+    const b = assistant("B");
+    const result = collapseCompletedTurns({
+      tail: [user, toolCall("1", { type: "shell", command: "ls" }), a, thinking, b],
+      enabled: true,
+      expandedAnchorItemIds: EMPTY_EXPANDED,
+      isTurnActive: false,
+    });
+
+    expect(result.tail).toEqual([user, b]);
+    expect(result.summariesByAnchorItemId.get("B")?.hiddenItemCount).toBe(3);
   });
 });

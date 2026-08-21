@@ -60,18 +60,69 @@ function splitIntoResponses(tail: StreamItem[]): StreamItem[][] {
   return responses;
 }
 
-function findLastAssistant(response: StreamItem[]): StreamItem | undefined {
-  for (let index = response.length - 1; index >= 0; index -= 1) {
-    const item = response[index];
-    if (item?.kind === "assistant_message") {
-      return item;
-    }
-  }
-  return undefined;
+function isMechanicalNoise(item: StreamItem): boolean {
+  return item.kind === "tool_call" || item.kind === "todo_list";
 }
 
-function findFirstUserMessage(response: StreamItem[]): StreamItem | undefined {
-  return response.find((item) => item.kind === "user_message");
+function trailingAssistantSegment(response: StreamItem[]): StreamItem[] {
+  let start = response.length;
+  for (let index = response.length - 1; index >= 0; index -= 1) {
+    if (response[index]?.kind !== "assistant_message") {
+      break;
+    }
+    start = index;
+  }
+  return response.slice(start);
+}
+
+function isKeptWhenCollapsed(item: StreamItem, trailingAssistantIds: ReadonlySet<string>): boolean {
+  return item.kind === "user_message" || trailingAssistantIds.has(item.id);
+}
+
+function responseHasMechanicalNoise(response: StreamItem[]): boolean {
+  return response.some((item) => isMechanicalNoise(item));
+}
+
+function buildSummary(
+  response: StreamItem[],
+  anchorItemId: string,
+  headerItemId: string,
+  trailingAssistantIds: ReadonlySet<string>,
+): TurnCollapseSummary | null {
+  if (!responseHasMechanicalNoise(response)) {
+    return null;
+  }
+  let hiddenItemCount = 0;
+  for (const item of response) {
+    if (!isKeptWhenCollapsed(item, trailingAssistantIds)) {
+      hiddenItemCount += 1;
+    }
+  }
+  if (hiddenItemCount <= 0) {
+    return null;
+  }
+
+  const filesByPath = new Map<string, TurnResultFileCard>();
+  const webPagesByUrl = new Map<string, TurnResultWebCard>();
+  let commandCount = 0;
+
+  for (const item of response) {
+    if (item.kind !== "tool_call") {
+      continue;
+    }
+    commandCount += accumulateToolCall(item, filesByPath, webPagesByUrl);
+  }
+
+  const files = [...filesByPath.values()];
+  return {
+    anchorItemId,
+    headerItemId,
+    hiddenItemCount,
+    editedFileCount: files.length,
+    commandCount,
+    files,
+    webPages: [...webPagesByUrl.values()],
+  };
 }
 
 function getEditedFilePath(detail: ToolCallDetail): string | null {
@@ -135,59 +186,6 @@ function accumulateToolCall(
   return 0;
 }
 
-function isMechanicalNoise(item: StreamItem): boolean {
-  return item.kind === "tool_call" || item.kind === "todo_list";
-}
-
-function isKeptWhenCollapsed(item: StreamItem, anchorItemId: string): boolean {
-  return item.kind === "user_message" || item.id === anchorItemId;
-}
-
-function responseHasMechanicalNoise(response: StreamItem[]): boolean {
-  return response.some((item) => isMechanicalNoise(item));
-}
-
-function buildSummary(
-  response: StreamItem[],
-  anchorItemId: string,
-  headerItemId: string,
-): TurnCollapseSummary | null {
-  if (!responseHasMechanicalNoise(response)) {
-    return null;
-  }
-  let hiddenItemCount = 0;
-  for (const item of response) {
-    if (!isKeptWhenCollapsed(item, anchorItemId)) {
-      hiddenItemCount += 1;
-    }
-  }
-  if (hiddenItemCount <= 0) {
-    return null;
-  }
-
-  const filesByPath = new Map<string, TurnResultFileCard>();
-  const webPagesByUrl = new Map<string, TurnResultWebCard>();
-  let commandCount = 0;
-
-  for (const item of response) {
-    if (item.kind !== "tool_call") {
-      continue;
-    }
-    commandCount += accumulateToolCall(item, filesByPath, webPagesByUrl);
-  }
-
-  const files = [...filesByPath.values()];
-  return {
-    anchorItemId,
-    headerItemId,
-    hiddenItemCount,
-    editedFileCount: files.length,
-    commandCount,
-    files,
-    webPages: [...webPagesByUrl.values()],
-  };
-}
-
 export function collapseCompletedTurns(input: {
   tail: StreamItem[];
   enabled: boolean;
@@ -219,34 +217,44 @@ export function collapseCompletedTurns(input: {
       continue;
     }
 
-    const anchor = findLastAssistant(response);
+    const trailingAssistants = trailingAssistantSegment(response);
+    const anchor = trailingAssistants.at(-1);
     if (!anchor) {
       nextTail.push(...response);
       continue;
     }
 
-    const header = findFirstUserMessage(response);
+    const header = response[0];
     if (!header) {
       nextTail.push(...response);
       continue;
     }
 
-    const summary = buildSummary(response, anchor.id, header.id);
+    const trailingAssistantIds = new Set(trailingAssistants.map((item) => item.id));
+    const summary = buildSummary(response, anchor.id, header.id, trailingAssistantIds);
     if (summary) {
       summariesByAnchorItemId.set(anchor.id, summary);
       summariesByHeaderItemId.set(header.id, summary);
     }
 
-    const passThrough = !summary || input.expandedAnchorItemIds.has(anchor.id);
-    if (passThrough) {
+    if (!summary || input.expandedAnchorItemIds.has(anchor.id)) {
       nextTail.push(...response);
       continue;
     }
 
     collapsedAny = true;
+    let hostedHeaderOnKeptItem = false;
     for (const item of response) {
-      if (isKeptWhenCollapsed(item, anchor.id)) {
-        nextTail.push(item);
+      if (!isKeptWhenCollapsed(item, trailingAssistantIds)) {
+        continue;
+      }
+      nextTail.push(item);
+      if (hostedHeaderOnKeptItem) {
+        continue;
+      }
+      hostedHeaderOnKeptItem = true;
+      if (item.id !== header.id) {
+        summariesByHeaderItemId.set(item.id, summary);
       }
     }
   }
