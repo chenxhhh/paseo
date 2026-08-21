@@ -76,7 +76,10 @@ import type {
   ProjectRegistry,
   WorkspaceRegistry,
 } from "../../workspace-registry.js";
-import { resolveWorktreeSourceCwd } from "../../workspace-source.js";
+import {
+  resolveInheritedProjectIdForWorktreeCreate as lookupInheritedProjectIdForWorktreeCreate,
+  resolveWorktreeSourceCwd,
+} from "../../workspace-source.js";
 import type { WorkspaceScriptsService } from "../../session/workspace-scripts/workspace-scripts-service.js";
 import {
   type ArchiveCommandDependencies,
@@ -703,6 +706,20 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
     throw new Error("workspaceId is required outside an agent-scoped session");
   }
 
+  async function resolveInheritedProjectIdForWorktreeCreate(
+    resolvedSourceCwd: string,
+  ): Promise<string | undefined> {
+    if (!callerAgentId) {
+      return undefined;
+    }
+    const callerAgent = agentManager.getAgent(callerAgentId);
+    return lookupInheritedProjectIdForWorktreeCreate({
+      callerWorkspaceId: callerAgent?.workspaceId,
+      resolvedSourceCwd,
+      workspaceRegistry: options.workspaceRegistry,
+    });
+  }
+
   const buildCallerAgentScheduleConfigExtras = (
     callerAgent: NonNullable<ReturnType<typeof resolveCallerAgent>>,
     resolvedProvider: string,
@@ -1220,7 +1237,12 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
           .string()
           .optional()
           .describe("Local directory or source checkout. Defaults to your current workspace."),
-        projectId: z.string().optional().describe("Existing project id to own the workspace."),
+        projectId: z
+          .string()
+          .optional()
+          .describe(
+            "Existing project id to own the workspace. Defaults to your current workspace's project when creating from your own checkout.",
+          ),
         title: z.string().trim().min(1).optional(),
         mode: z
           .enum(["branch-off", "checkout-branch", "checkout-pr"])
@@ -1305,6 +1327,8 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
           prNumber,
           forge,
         });
+        const inheritedProjectId = await resolveInheritedProjectIdForWorktreeCreate(cwd);
+        const effectiveProjectId = projectId ?? inheritedProjectId;
         const result = await createPaseoWorktreeCommand(
           {
             paseoHome: options.paseoHome,
@@ -1313,7 +1337,7 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
           },
           {
             cwd,
-            ...(projectId ? { projectId } : {}),
+            ...(effectiveProjectId ? { projectId: effectiveProjectId } : {}),
             ...(worktreeSlug ? { worktreeSlug } : {}),
             ...worktreeTarget,
             ...(title ? { title } : {}),
@@ -1445,6 +1469,7 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
           terminalManager,
           providerSnapshotManager,
           createPaseoWorktree: options.createPaseoWorktree,
+          ...(options.workspaceRegistry ? { workspaceRegistry: options.workspaceRegistry } : {}),
           ...(options.ensureWorkspaceForCreate
             ? { ensureWorkspaceForCreate: options.ensureWorkspaceForCreate }
             : {}),
