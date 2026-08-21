@@ -8,6 +8,7 @@ import type {
   SidebarProjectEntry,
   SidebarWorkspaceEntry,
 } from "@/hooks/use-sidebar-workspaces-list";
+import { groupProjectWorkspaces } from "@/hooks/sidebar-workspaces-view-model";
 import type { SidebarGroupMode } from "@/stores/sidebar-view-store";
 import {
   resolveSidebarProjectIconTargets,
@@ -67,12 +68,31 @@ export function buildSidebarProjection(input: SidebarProjectionInput): SidebarPr
     sections.push({ workspaces: pinnedGroups.pinnedChats });
   }
   if (input.groupMode === "project") {
-    sections.push(
-      ...pinnedGroups.unpinnedProjects.map((project) => ({
+    for (const project of pinnedGroups.unpinnedProjects) {
+      const projectCollapsed = input.collapsedProjectKeys.has(project.viewKey);
+      if (projectCollapsed) {
+        sections.push({ workspaces: project.workspaces, collapsed: true });
+        continue;
+      }
+      const grouping = groupProjectWorkspaces({
+        projectViewKey: project.viewKey,
         workspaces: project.workspaces,
-        collapsed: input.collapsedProjectKeys.has(project.viewKey),
-      })),
-    );
+        workspaceEntriesByKey: input.workspaceEntriesByKey,
+      });
+      if (grouping.branchGroups.length === 0 && grouping.worktreeGroups.length === 0) {
+        sections.push({ workspaces: project.workspaces });
+        continue;
+      }
+      if (grouping.ungrouped.length > 0) {
+        sections.push({ workspaces: grouping.ungrouped });
+      }
+      for (const group of [...grouping.branchGroups, ...grouping.worktreeGroups]) {
+        sections.push({
+          workspaces: group.workspaces,
+          collapsed: input.collapsedWorkspaceGroupKeys.has(group.key),
+        });
+      }
+    }
   } else {
     sections.push(
       ...workspaceGroups.map((group) => ({
