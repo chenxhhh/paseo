@@ -191,9 +191,37 @@ function renderStreamItemWithTurnFooter(input: {
   supportsTimelineCursor: boolean;
   onForkAssistantTurn?: AssistantTurnForkHandler;
   turnCollapse?: TurnCollapsePresenter;
+  summariesByHeaderItemId: ReadonlyMap<string, TurnCollapseSummary>;
+  expandedTurnAnchorIds: ReadonlySet<string>;
+  timingByAnchorItemId: ReadonlyMap<string, number>;
+  onToggleCollapseAnchor: (anchorItemId: string, expanded: boolean) => void;
 }): ReactNode {
   if (!input.content) {
     return null;
+  }
+
+  const summary = input.summariesByHeaderItemId.get(input.layoutItem.item.id);
+  let inner = input.content;
+  if (summary) {
+    const header = (
+      <UserMessageCollapseHeader
+        summary={summary}
+        expanded={input.expandedTurnAnchorIds.has(summary.anchorItemId)}
+        durationMs={input.timingByAnchorItemId.get(summary.anchorItemId)}
+        onToggleAnchor={input.onToggleCollapseAnchor}
+      />
+    );
+    const [first, second] = orderUserMessageCollapseHeader(
+      input.layoutItem.frameOrder,
+      input.content,
+      header,
+    );
+    inner = (
+      <>
+        {first}
+        {second}
+      </>
+    );
   }
 
   const footerHost = input.layoutItem.completedFooter;
@@ -210,7 +238,7 @@ function renderStreamItemWithTurnFooter(input: {
   ) : null;
   const content = (
     <StreamItemWrapper itemId={input.layoutItem.item.id} gapBelow={input.layoutItem.gapBelow}>
-      {input.content}
+      {inner}
     </StreamItemWrapper>
   );
 
@@ -759,7 +787,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
 
     const renderUserMessageItem = useCallback(
       (layoutItem: StreamLayoutItem, item: Extract<StreamItem, { kind: "user_message" }>) => {
-        const message = (
+        return (
           <UserMessage
             serverId={resolvedServerId}
             agentId={agentId}
@@ -778,41 +806,8 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             }
           />
         );
-        const summary = collapsedTurns.summariesByHeaderItemId.get(item.id);
-        if (!summary) {
-          return message;
-        }
-        const header = (
-          <UserMessageCollapseHeader
-            summary={summary}
-            expanded={expandedTurnAnchorIds.has(summary.anchorItemId)}
-            durationMs={timingByAnchorItemId.get(summary.anchorItemId)}
-            onToggleAnchor={setTurnAnchorExpanded}
-          />
-        );
-        const [first, second] = orderUserMessageCollapseHeader(
-          layoutItem.frameOrder,
-          message,
-          header,
-        );
-        return (
-          <>
-            {first}
-            {second}
-          </>
-        );
       },
-      [
-        collapsedTurns.summariesByHeaderItemId,
-        context.capabilities,
-        agentId,
-        client,
-        expandedTurnAnchorIds,
-        pendingClientMessageIds,
-        resolvedServerId,
-        setTurnAnchorExpanded,
-        timingByAnchorItemId,
-      ],
+      [context.capabilities, agentId, client, pendingClientMessageIds, resolvedServerId],
     );
 
     const renderAssistantMessageItem = useCallback(
@@ -1020,15 +1015,23 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           supportsTimelineCursor: supportsAgentForkContextCursor,
           onForkAssistantTurn: readOnly ? undefined : handleForkAssistantTurn,
           turnCollapse: footerHost ? buildTurnCollapsePresenter(footerHost) : undefined,
+          summariesByHeaderItemId: collapsedTurns.summariesByHeaderItemId,
+          expandedTurnAnchorIds,
+          timingByAnchorItemId,
+          onToggleCollapseAnchor: setTurnAnchorExpanded,
         });
       },
       [
         buildTurnCollapsePresenter,
+        collapsedTurns.summariesByHeaderItemId,
+        expandedTurnAnchorIds,
         handleForkAssistantTurn,
         readOnly,
         renderStreamItemContent,
+        setTurnAnchorExpanded,
         streamRenderStrategy,
         supportsAgentForkContextCursor,
+        timingByAnchorItemId,
       ],
     );
 
