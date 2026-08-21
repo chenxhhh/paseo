@@ -19,18 +19,15 @@ export interface TurnResultWebCard {
 
 export interface TurnCollapseSummary {
   anchorItemId: string;
-  headerItemId: string;
-  hiddenItemCount: number;
   editedFileCount: number;
   commandCount: number;
   files: TurnResultFileCard[];
   webPages: TurnResultWebCard[];
 }
 
-export interface TurnCollapseProjection {
+export interface TurnResultSummaryProjection {
   tail: StreamItem[];
   summariesByAnchorItemId: Map<string, TurnCollapseSummary>;
-  summariesByHeaderItemId: Map<string, TurnCollapseSummary>;
 }
 
 const EMPTY_SUMMARIES = new Map<string, TurnCollapseSummary>();
@@ -60,69 +57,14 @@ function splitIntoResponses(tail: StreamItem[]): StreamItem[][] {
   return responses;
 }
 
-function isMechanicalNoise(item: StreamItem): boolean {
-  return item.kind === "tool_call" || item.kind === "todo_list";
-}
-
-function trailingAssistantSegment(response: StreamItem[]): StreamItem[] {
-  let start = response.length;
+function findLastAssistant(response: StreamItem[]): StreamItem | undefined {
   for (let index = response.length - 1; index >= 0; index -= 1) {
-    if (response[index]?.kind !== "assistant_message") {
-      break;
-    }
-    start = index;
-  }
-  return response.slice(start);
-}
-
-function isKeptWhenCollapsed(item: StreamItem, trailingAssistantIds: ReadonlySet<string>): boolean {
-  return item.kind === "user_message" || trailingAssistantIds.has(item.id);
-}
-
-function responseHasMechanicalNoise(response: StreamItem[]): boolean {
-  return response.some((item) => isMechanicalNoise(item));
-}
-
-function buildSummary(
-  response: StreamItem[],
-  anchorItemId: string,
-  headerItemId: string,
-  trailingAssistantIds: ReadonlySet<string>,
-): TurnCollapseSummary | null {
-  if (!responseHasMechanicalNoise(response)) {
-    return null;
-  }
-  let hiddenItemCount = 0;
-  for (const item of response) {
-    if (!isKeptWhenCollapsed(item, trailingAssistantIds)) {
-      hiddenItemCount += 1;
+    const item = response[index];
+    if (item?.kind === "assistant_message") {
+      return item;
     }
   }
-  if (hiddenItemCount <= 0) {
-    return null;
-  }
-
-  const filesByPath = new Map<string, TurnResultFileCard>();
-  const webPagesByUrl = new Map<string, TurnResultWebCard>();
-  let commandCount = 0;
-
-  for (const item of response) {
-    if (item.kind !== "tool_call") {
-      continue;
-    }
-    commandCount += accumulateToolCall(item, filesByPath, webPagesByUrl);
-  }
-
-  const files = [...filesByPath.values()];
-  return {
-    anchorItemId,
-    headerItemId,
-    hiddenItemCount,
-    editedFileCount: files.length,
-    commandCount,
-    files,
-    webPages: [...webPagesByUrl.values()],
-  };
+  return undefined;
 }
 
 function getEditedFilePath(detail: ToolCallDetail): string | null {
@@ -186,92 +128,56 @@ function accumulateToolCall(
   return 0;
 }
 
-export function collapseCompletedTurns(input: {
-  tail: StreamItem[];
-  enabled: boolean;
-  expandedAnchorItemIds: ReadonlySet<string>;
-  isTurnActive: boolean;
-}): TurnCollapseProjection {
-  if (!input.enabled || input.tail.length === 0) {
-    return {
-      tail: input.tail,
-      summariesByAnchorItemId: EMPTY_SUMMARIES,
-      summariesByHeaderItemId: EMPTY_SUMMARIES,
-    };
+function buildSummary(response: StreamItem[], anchorItemId: string): TurnCollapseSummary | null {
+  const filesByPath = new Map<string, TurnResultFileCard>();
+  const webPagesByUrl = new Map<string, TurnResultWebCard>();
+  let commandCount = 0;
+
+  for (const item of response) {
+    if (item.kind !== "tool_call") {
+      continue;
+    }
+    commandCount += accumulateToolCall(item, filesByPath, webPagesByUrl);
   }
 
-  const responses = splitIntoResponses(input.tail);
-  const summariesByAnchorItemId = new Map<string, TurnCollapseSummary>();
-  const summariesByHeaderItemId = new Map<string, TurnCollapseSummary>();
-  const nextTail: StreamItem[] = [];
-  let collapsedAny = false;
-
-  for (let index = 0; index < responses.length; index += 1) {
-    const response = responses[index];
-    if (!response) {
-      continue;
-    }
-    const isTrailingActive = input.isTurnActive && index === responses.length - 1;
-    if (isTrailingActive) {
-      nextTail.push(...response);
-      continue;
-    }
-
-    const trailingAssistants = trailingAssistantSegment(response);
-    const anchor = trailingAssistants.at(-1);
-    if (!anchor) {
-      nextTail.push(...response);
-      continue;
-    }
-
-    const header = response[0];
-    if (!header) {
-      nextTail.push(...response);
-      continue;
-    }
-
-    const trailingAssistantIds = new Set(trailingAssistants.map((item) => item.id));
-    const summary = buildSummary(response, anchor.id, header.id, trailingAssistantIds);
-    if (summary) {
-      summariesByAnchorItemId.set(anchor.id, summary);
-      summariesByHeaderItemId.set(header.id, summary);
-    }
-
-    if (!summary || input.expandedAnchorItemIds.has(anchor.id)) {
-      nextTail.push(...response);
-      continue;
-    }
-
-    collapsedAny = true;
-    let hostedHeaderOnKeptItem = false;
-    for (const item of response) {
-      if (!isKeptWhenCollapsed(item, trailingAssistantIds)) {
-        continue;
-      }
-      nextTail.push(item);
-      if (hostedHeaderOnKeptItem) {
-        continue;
-      }
-      hostedHeaderOnKeptItem = true;
-      if (item.id !== header.id) {
-        summariesByHeaderItemId.set(item.id, summary);
-      }
-    }
-  }
-
-  if (!collapsedAny) {
-    return {
-      tail: input.tail,
-      summariesByAnchorItemId:
-        summariesByAnchorItemId.size === 0 ? EMPTY_SUMMARIES : summariesByAnchorItemId,
-      summariesByHeaderItemId:
-        summariesByHeaderItemId.size === 0 ? EMPTY_SUMMARIES : summariesByHeaderItemId,
-    };
+  const files = [...filesByPath.values()];
+  const webPages = [...webPagesByUrl.values()];
+  if (files.length === 0 && webPages.length === 0 && commandCount === 0) {
+    return null;
   }
 
   return {
-    tail: nextTail,
-    summariesByAnchorItemId,
-    summariesByHeaderItemId,
+    anchorItemId,
+    editedFileCount: files.length,
+    commandCount,
+    files,
+    webPages,
+  };
+}
+
+export function buildTurnResultSummaries(tail: StreamItem[]): TurnResultSummaryProjection {
+  if (tail.length === 0) {
+    return {
+      tail,
+      summariesByAnchorItemId: EMPTY_SUMMARIES,
+    };
+  }
+
+  const summariesByAnchorItemId = new Map<string, TurnCollapseSummary>();
+  for (const response of splitIntoResponses(tail)) {
+    const anchor = findLastAssistant(response);
+    if (!anchor) {
+      continue;
+    }
+    const summary = buildSummary(response, anchor.id);
+    if (summary) {
+      summariesByAnchorItemId.set(anchor.id, summary);
+    }
+  }
+
+  return {
+    tail,
+    summariesByAnchorItemId:
+      summariesByAnchorItemId.size === 0 ? EMPTY_SUMMARIES : summariesByAnchorItemId,
   };
 }

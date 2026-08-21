@@ -80,8 +80,6 @@ const completedFooterItems = [
 const collapsePresenter: TurnCollapsePresenter = {
   summary: {
     anchorItemId: "a1",
-    headerItemId: "u1",
-    hiddenItemCount: 3,
     editedFileCount: 2,
     commandCount: 1,
     files: [],

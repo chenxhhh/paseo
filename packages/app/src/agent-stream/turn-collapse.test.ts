@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ToolCallDetail } from "@getpaseo/protocol/agent-types";
 import type { StreamItem, ToolCallItem } from "@/types/stream";
-import { collapseCompletedTurns } from "./turn-collapse";
-
-type AssistantMessageItem = Extract<StreamItem, { kind: "assistant_message" }>;
-type UserMessageItem = Extract<StreamItem, { kind: "user_message" }>;
+import { buildTurnResultSummaries } from "./turn-collapse";
 
 function toolCall(id: string, detail: ToolCallDetail, name?: string): ToolCallItem {
   return {
@@ -25,7 +22,7 @@ function toolCall(id: string, detail: ToolCallDetail, name?: string): ToolCallIt
   };
 }
 
-function assistant(id: string): AssistantMessageItem {
+function assistant(id: string): Extract<StreamItem, { kind: "assistant_message" }> {
   return {
     kind: "assistant_message",
     id,
@@ -34,210 +31,76 @@ function assistant(id: string): AssistantMessageItem {
   };
 }
 
-function userMessage(id: string, turnId?: string): UserMessageItem {
+function userMessage(id: string): Extract<StreamItem, { kind: "user_message" }> {
   return {
     kind: "user_message",
     id,
     text: id,
     timestamp: new Date("2026-01-01T00:00:00.000Z"),
-    ...(turnId ? { turnId } : {}),
   };
 }
 
-function thought(id: string): Extract<StreamItem, { kind: "thought" }> {
-  return {
-    kind: "thought",
-    id,
-    text: id,
-    timestamp: new Date("2026-01-01T00:00:10.000Z"),
-    status: "ready",
-  };
-}
-
-function todoList(id: string): Extract<StreamItem, { kind: "todo_list" }> {
-  return {
-    kind: "todo_list",
-    id,
-    timestamp: new Date("2026-01-01T00:00:20.000Z"),
-    provider: "claude",
-    items: [{ text: "task", status: "pending", completed: false }],
-    activity: { type: "created", count: 1 },
-  };
-}
-
-const EMPTY_EXPANDED = new Set<string>();
-
-describe("collapseCompletedTurns", () => {
-  it("hides thinking, mid-turn narration, tools, and todos behind the prompt and final assistant", () => {
-    const user = userMessage("u1");
-    const mid = assistant("a-mid");
-    const final = assistant("a-final");
-    const thinking = thought("th1");
+describe("buildTurnResultSummaries", () => {
+  it("returns the same tail reference", () => {
     const tail = [
-      user,
-      thinking,
-      toolCall("1", { type: "read", filePath: "/repo/a.ts" }),
-      mid,
-      todoList("todo1"),
-      final,
-    ];
-
-    const result = collapseCompletedTurns({
-      tail,
-      enabled: true,
-      expandedAnchorItemIds: EMPTY_EXPANDED,
-      isTurnActive: false,
-    });
-
-    expect(result.tail).toEqual([user, final]);
-    expect(result.summariesByAnchorItemId.get("a-final")?.hiddenItemCount).toBe(4);
-    expect(result.summariesByAnchorItemId.get("a-final")?.headerItemId).toBe("u1");
-    expect(result.summariesByHeaderItemId.get("u1")?.anchorItemId).toBe("a-final");
-  });
-
-  it("does not collapse a conversation that has thinking but no tools or todos", () => {
-    const user = userMessage("u1");
-    const thinking = thought("th1");
-    const reply = assistant("a1");
-    const tail = [user, thinking, reply];
-    const result = collapseCompletedTurns({
-      tail,
-      enabled: true,
-      expandedAnchorItemIds: EMPTY_EXPANDED,
-      isTurnActive: false,
-    });
-    expect(result.tail).toBe(tail);
-    expect(result.summariesByAnchorItemId.size).toBe(0);
-  });
-
-  it("returns the same tail reference when disabled or nothing is collapsible", () => {
-    const collapsible = [
       userMessage("u1"),
       toolCall("1", { type: "shell", command: "ls" }),
       assistant("a1"),
     ];
-    const disabled = collapseCompletedTurns({
-      tail: collapsible,
-      enabled: false,
-      expandedAnchorItemIds: EMPTY_EXPANDED,
-      isTurnActive: false,
-    });
-    expect(disabled.tail).toBe(collapsible);
-    expect(disabled.summariesByAnchorItemId.size).toBe(0);
-    expect(disabled.summariesByHeaderItemId.size).toBe(0);
-
-    const plain = [userMessage("u2"), assistant("a2")];
-    const untouched = collapseCompletedTurns({
-      tail: plain,
-      enabled: true,
-      expandedAnchorItemIds: EMPTY_EXPANDED,
-      isTurnActive: false,
-    });
-    expect(untouched.tail).toBe(plain);
-    expect(untouched.summariesByAnchorItemId.size).toBe(0);
-    expect(untouched.summariesByHeaderItemId.size).toBe(0);
+    const result = buildTurnResultSummaries(tail);
+    expect(result.tail).toBe(tail);
   });
 
-  it("does not collapse the trailing response while the turn is active", () => {
+  it("returns an empty summary map when nothing produces cards or commands", () => {
+    const tail = [userMessage("u1"), assistant("a1")];
+    const result = buildTurnResultSummaries(tail);
+    expect(result.tail).toBe(tail);
+    expect(result.summariesByAnchorItemId.size).toBe(0);
+  });
+
+  it("keys the summary by the last assistant in the response", () => {
     const user = userMessage("u1");
-    const read = toolCall("1", { type: "read", filePath: "/repo/a.ts" });
-    const reply = assistant("a1");
-    const tail = [user, read, reply];
-
-    const active = collapseCompletedTurns({
-      tail,
-      enabled: true,
-      expandedAnchorItemIds: EMPTY_EXPANDED,
-      isTurnActive: true,
-    });
-    expect(active.tail).toBe(tail);
-    expect(active.summariesByAnchorItemId.size).toBe(0);
-
-    const idle = collapseCompletedTurns({
-      tail,
-      enabled: true,
-      expandedAnchorItemIds: EMPTY_EXPANDED,
-      isTurnActive: false,
-    });
-    expect(idle.tail).toEqual([user, reply]);
-    expect(idle.summariesByAnchorItemId.has("a1")).toBe(true);
-  });
-
-  it("passes an expanded response through while still collapsing others", () => {
-    const firstUser = userMessage("u1");
-    const firstReply = assistant("a1");
-    const secondUser = userMessage("u2");
-    const secondReply = assistant("a2");
-    const tail = [
-      firstUser,
-      toolCall("1", { type: "shell", command: "one" }),
-      firstReply,
-      secondUser,
-      toolCall("2", { type: "shell", command: "two" }),
-      secondReply,
-    ];
-
-    const result = collapseCompletedTurns({
-      tail,
-      enabled: true,
-      expandedAnchorItemIds: new Set(["a1"]),
-      isTurnActive: false,
-    });
-
-    expect(result.tail).toEqual([
-      firstUser,
-      toolCall("1", { type: "shell", command: "one" }),
-      firstReply,
-      secondUser,
-      secondReply,
+    const mid = assistant("a-mid");
+    const final = assistant("a-final");
+    const result = buildTurnResultSummaries([
+      user,
+      toolCall("1", { type: "shell", command: "ls" }),
+      mid,
+      final,
     ]);
-    expect(result.summariesByAnchorItemId.has("a1")).toBe(true);
-    expect(result.summariesByAnchorItemId.has("a2")).toBe(true);
+    expect([...result.summariesByAnchorItemId.keys()]).toEqual(["a-final"]);
+    expect(result.summariesByAnchorItemId.get("a-final")?.commandCount).toBe(1);
   });
 
-  it("leaves a response without an assistant message untouched", () => {
-    const user = userMessage("u1");
-    const read = toolCall("1", { type: "read", filePath: "/repo/a.ts" });
-    const tail = [user, read];
-
-    const result = collapseCompletedTurns({
-      tail,
-      enabled: true,
-      expandedAnchorItemIds: EMPTY_EXPANDED,
-      isTurnActive: false,
-    });
-
+  it("does not summarize a tool-bearing response with no assistant", () => {
+    const tail = [userMessage("u1"), toolCall("1", { type: "read", filePath: "/repo/a.ts" })];
+    const result = buildTurnResultSummaries(tail);
     expect(result.tail).toBe(tail);
     expect(result.summariesByAnchorItemId.size).toBe(0);
   });
 
   it("merges edits to the same path and sums diff stats in first-seen order", () => {
-    const user = userMessage("u1");
-    const first = toolCall("1", {
-      type: "edit",
-      filePath: "/repo/a.ts",
-      oldString: "a\n",
-      newString: "a\nb\n",
-    });
-    const other = toolCall("2", {
-      type: "write",
-      filePath: "/repo/b.ts",
-      content: "one\ntwo",
-    });
-    const second = toolCall("3", {
-      type: "edit",
-      filePath: "/repo/a.ts",
-      oldString: "a\nb\n",
-      newString: "a\nb\nc\n",
-    });
-    const reply = assistant("a1");
-
-    const result = collapseCompletedTurns({
-      tail: [user, first, other, second, reply],
-      enabled: true,
-      expandedAnchorItemIds: EMPTY_EXPANDED,
-      isTurnActive: false,
-    });
+    const result = buildTurnResultSummaries([
+      userMessage("u1"),
+      toolCall("1", {
+        type: "edit",
+        filePath: "/repo/a.ts",
+        oldString: "a\n",
+        newString: "a\nb\n",
+      }),
+      toolCall("2", {
+        type: "write",
+        filePath: "/repo/b.ts",
+        content: "one\ntwo",
+      }),
+      toolCall("3", {
+        type: "edit",
+        filePath: "/repo/a.ts",
+        oldString: "a\nb\n",
+        newString: "a\nb\nc\n",
+      }),
+      assistant("a1"),
+    ]);
 
     const files = result.summariesByAnchorItemId.get("a1")?.files;
     expect(files?.map((file) => file.path)).toEqual(["/repo/a.ts", "/repo/b.ts"]);
@@ -254,22 +117,15 @@ describe("collapseCompletedTurns", () => {
   });
 
   it("counts unique edited paths and every shell call", () => {
-    const user = userMessage("u1");
-    const reply = assistant("a1");
-    const result = collapseCompletedTurns({
-      tail: [
-        user,
-        toolCall("1", { type: "edit", filePath: "/repo/a.ts" }),
-        toolCall("2", { type: "write", filePath: "/repo/a.ts", content: "x" }),
-        toolCall("3", { type: "edit", filePath: "/repo/b.ts" }),
-        toolCall("4", { type: "shell", command: "one" }),
-        toolCall("5", { type: "shell", command: "two" }),
-        reply,
-      ],
-      enabled: true,
-      expandedAnchorItemIds: EMPTY_EXPANDED,
-      isTurnActive: false,
-    });
+    const result = buildTurnResultSummaries([
+      userMessage("u1"),
+      toolCall("1", { type: "edit", filePath: "/repo/a.ts" }),
+      toolCall("2", { type: "write", filePath: "/repo/a.ts", content: "x" }),
+      toolCall("3", { type: "edit", filePath: "/repo/b.ts" }),
+      toolCall("4", { type: "shell", command: "one" }),
+      toolCall("5", { type: "shell", command: "two" }),
+      assistant("a1"),
+    ]);
 
     expect(result.summariesByAnchorItemId.get("a1")).toMatchObject({
       editedFileCount: 2,
@@ -278,26 +134,19 @@ describe("collapseCompletedTurns", () => {
   });
 
   it("dedupes fetch and search web cards by url and parses hostnames", () => {
-    const user = userMessage("u1");
-    const reply = assistant("a1");
-    const result = collapseCompletedTurns({
-      tail: [
-        user,
-        toolCall("1", { type: "fetch", url: "https://paseo.sh/docs" }),
-        toolCall("2", {
-          type: "search",
-          query: "paseo",
-          webResults: [
-            { title: "Docs", url: "https://paseo.sh/docs" },
-            { title: "Blog", url: "https://example.com/post" },
-          ],
-        }),
-        reply,
-      ],
-      enabled: true,
-      expandedAnchorItemIds: EMPTY_EXPANDED,
-      isTurnActive: false,
-    });
+    const result = buildTurnResultSummaries([
+      userMessage("u1"),
+      toolCall("1", { type: "fetch", url: "https://paseo.sh/docs" }),
+      toolCall("2", {
+        type: "search",
+        query: "paseo",
+        webResults: [
+          { title: "Docs", url: "https://paseo.sh/docs" },
+          { title: "Blog", url: "https://example.com/post" },
+        ],
+      }),
+      assistant("a1"),
+    ]);
 
     expect(result.summariesByAnchorItemId.get("a1")?.webPages).toEqual([
       {
@@ -311,148 +160,5 @@ describe("collapseCompletedTurns", () => {
         hostname: "example.com",
       },
     ]);
-  });
-
-  it("keys summaries by the last trailing assistant fragment", () => {
-    const user = userMessage("u1");
-    const mid = assistant("a-mid");
-    const final = assistant("a-final");
-    const result = collapseCompletedTurns({
-      tail: [user, toolCall("1", { type: "shell", command: "ls" }), mid, final],
-      enabled: true,
-      expandedAnchorItemIds: EMPTY_EXPANDED,
-      isTurnActive: false,
-    });
-
-    expect([...result.summariesByAnchorItemId.keys()]).toEqual(["a-final"]);
-    expect(result.summariesByAnchorItemId.has("a-mid")).toBe(false);
-    expect(result.tail).toEqual([user, mid, final]);
-  });
-
-  it("keeps consecutive user messages that belong to the same response", () => {
-    const first = userMessage("u1", "turn-1");
-    const second = userMessage("u2", "turn-1");
-    const reply = assistant("a1");
-    const thinking = thought("th1");
-    const result = collapseCompletedTurns({
-      tail: [first, second, thinking, toolCall("1", { type: "shell", command: "ls" }), reply],
-      enabled: true,
-      expandedAnchorItemIds: EMPTY_EXPANDED,
-      isTurnActive: false,
-    });
-
-    expect(result.tail).toEqual([first, second, reply]);
-    expect(result.summariesByHeaderItemId.get("u1")?.headerItemId).toBe("u1");
-    expect(result.summariesByHeaderItemId.get("u1")?.hiddenItemCount).toBe(2);
-    expect(result.summariesByHeaderItemId.has("u2")).toBe(false);
-  });
-
-  it("collapses a window slice with no user message and hosts the header on the first cell", () => {
-    const thinking = thought("th1");
-    const read = toolCall("1", { type: "read", filePath: "/repo/a.ts" });
-    const first = assistant("F1");
-    const second = assistant("F2");
-    const tail = [thinking, read, first, second];
-    const result = collapseCompletedTurns({
-      tail,
-      enabled: true,
-      expandedAnchorItemIds: EMPTY_EXPANDED,
-      isTurnActive: false,
-    });
-
-    expect(result.tail).toEqual([first, second]);
-    expect(result.summariesByAnchorItemId.get("F2")?.headerItemId).toBe("th1");
-    expect(result.summariesByHeaderItemId.get("th1")?.anchorItemId).toBe("F2");
-    expect(result.summariesByHeaderItemId.get("F1")?.headerItemId).toBe("th1");
-  });
-
-  it("passes through a tool-bearing response that does not end in an assistant segment", () => {
-    const user = userMessage("u1");
-    const reply = assistant("a1");
-    const read = toolCall("1", { type: "read", filePath: "/repo/a.ts" });
-    const tail = [user, reply, read];
-    const result = collapseCompletedTurns({
-      tail,
-      enabled: true,
-      expandedAnchorItemIds: EMPTY_EXPANDED,
-      isTurnActive: false,
-    });
-
-    expect(result.tail).toBe(tail);
-    expect(result.summariesByAnchorItemId.size).toBe(0);
-  });
-
-  it("hides unknown item kinds when collapsing a tool-bearing response", () => {
-    const user = userMessage("u1");
-    const log: Extract<StreamItem, { kind: "activity_log" }> = {
-      kind: "activity_log",
-      id: "log1",
-      timestamp: new Date("2026-01-01T00:00:05.000Z"),
-      activityType: "info",
-      message: "working",
-    };
-    const reply = assistant("a1");
-    const result = collapseCompletedTurns({
-      tail: [user, log, toolCall("1", { type: "shell", command: "ls" }), reply],
-      enabled: true,
-      expandedAnchorItemIds: EMPTY_EXPANDED,
-      isTurnActive: false,
-    });
-
-    expect(result.tail).toEqual([user, reply]);
-    expect(result.summariesByAnchorItemId.get("a1")?.hiddenItemCount).toBe(2);
-  });
-
-  it("keeps the trailing assistant fragment stream and hides earlier assistant segments", () => {
-    const user = userMessage("u1");
-    const thinking = thought("th1");
-    const firstTool = toolCall("1", { type: "read", filePath: "/repo/a.ts" });
-    const midA = assistant("A");
-    const midB = assistant("B");
-    const secondTool = toolCall("2", { type: "shell", command: "ls" });
-    const c1 = assistant("C1");
-    const c2 = assistant("C2");
-    const c3 = assistant("C3");
-    const result = collapseCompletedTurns({
-      tail: [user, thinking, firstTool, midA, midB, secondTool, c1, c2, c3],
-      enabled: true,
-      expandedAnchorItemIds: EMPTY_EXPANDED,
-      isTurnActive: false,
-    });
-
-    expect(result.tail).toEqual([user, c1, c2, c3]);
-    expect(result.summariesByAnchorItemId.get("C3")?.hiddenItemCount).toBe(5);
-    expect(result.summariesByHeaderItemId.get("u1")?.anchorItemId).toBe("C3");
-  });
-
-  it("keeps every trailing assistant fragment when nothing splits the closing segment", () => {
-    const user = userMessage("u1");
-    const x = assistant("X");
-    const y = assistant("Y");
-    const result = collapseCompletedTurns({
-      tail: [user, toolCall("1", { type: "shell", command: "ls" }), x, y],
-      enabled: true,
-      expandedAnchorItemIds: EMPTY_EXPANDED,
-      isTurnActive: false,
-    });
-
-    expect(result.tail).toEqual([user, x, y]);
-    expect(result.summariesByAnchorItemId.get("Y")?.headerItemId).toBe("u1");
-  });
-
-  it("treats a thought as a break in the trailing assistant segment", () => {
-    const user = userMessage("u1");
-    const a = assistant("A");
-    const thinking = thought("th1");
-    const b = assistant("B");
-    const result = collapseCompletedTurns({
-      tail: [user, toolCall("1", { type: "shell", command: "ls" }), a, thinking, b],
-      enabled: true,
-      expandedAnchorItemIds: EMPTY_EXPANDED,
-      isTurnActive: false,
-    });
-
-    expect(result.tail).toEqual([user, b]);
-    expect(result.summariesByAnchorItemId.get("B")?.hiddenItemCount).toBe(3);
   });
 });

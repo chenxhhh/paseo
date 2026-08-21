@@ -84,11 +84,9 @@ import {
 } from "./turn-footer";
 import { resolveBottomOverlayTailInset } from "./bottom-overlay-inset";
 import { layoutStream, type StreamLayoutItem, type TurnFooterHost } from "./layout";
-import { collapseCompletedTurns, type TurnCollapseSummary } from "./turn-collapse";
+import { buildTurnResultSummaries } from "./turn-collapse";
 import { collapseProcessRuns, type ProcessRunDigest } from "./process-run-collapse";
 import { ProcessRunRow } from "./process-run-row";
-import { TurnCollapseHeader } from "./turn-collapse-header";
-import { orderUserMessageCollapseHeader } from "./turn-collapse-header-order";
 import {
   type BottomAnchorLocalRequest,
   type BottomAnchorRouteRequest,
@@ -143,33 +141,6 @@ function BottomOverlayInset({ height }: { height: number }) {
   return <View style={style} />;
 }
 
-const UserMessageCollapseHeader = memo(function UserMessageCollapseHeader({
-  summary,
-  expanded,
-  durationMs,
-  onToggleAnchor,
-}: {
-  summary: TurnCollapseSummary;
-  expanded: boolean;
-  durationMs?: number;
-  onToggleAnchor: (anchorItemId: string, expanded: boolean) => void;
-}) {
-  const handleToggle = useCallback(
-    (next: boolean) => {
-      onToggleAnchor(summary.anchorItemId, next);
-    },
-    [onToggleAnchor, summary.anchorItemId],
-  );
-  return (
-    <TurnCollapseHeader
-      summary={summary}
-      expanded={expanded}
-      durationMs={durationMs}
-      onToggle={handleToggle}
-    />
-  );
-});
-
 const ProcessRunRowBinder = memo(function ProcessRunRowBinder({
   digest,
   expanded,
@@ -211,37 +182,9 @@ function renderStreamItemWithTurnFooter(input: {
   supportsTimelineCursor: boolean;
   onForkAssistantTurn?: AssistantTurnForkHandler;
   turnCollapse?: TurnCollapsePresenter;
-  summariesByHeaderItemId: ReadonlyMap<string, TurnCollapseSummary>;
-  expandedTurnAnchorIds: ReadonlySet<string>;
-  timingByAnchorItemId: ReadonlyMap<string, number>;
-  onToggleCollapseAnchor: (anchorItemId: string, expanded: boolean) => void;
 }): ReactNode {
   if (!input.content) {
     return null;
-  }
-
-  const summary = input.summariesByHeaderItemId.get(input.layoutItem.item.id);
-  let inner = input.content;
-  if (summary) {
-    const header = (
-      <UserMessageCollapseHeader
-        summary={summary}
-        expanded={input.expandedTurnAnchorIds.has(summary.anchorItemId)}
-        durationMs={input.timingByAnchorItemId.get(summary.anchorItemId)}
-        onToggleAnchor={input.onToggleCollapseAnchor}
-      />
-    );
-    const [first, second] = orderUserMessageCollapseHeader(
-      input.layoutItem.frameOrder,
-      input.content,
-      header,
-    );
-    inner = (
-      <>
-        {first}
-        {second}
-      </>
-    );
   }
 
   const footerHost = input.layoutItem.completedFooter;
@@ -258,7 +201,7 @@ function renderStreamItemWithTurnFooter(input: {
   ) : null;
   const content = (
     <StreamItemWrapper itemId={input.layoutItem.item.id} gapBelow={input.layoutItem.gapBelow}>
-      {inner}
+      {input.content}
     </StreamItemWrapper>
   );
 
@@ -424,7 +367,6 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const [expandedToolCallGroupIds, setExpandedToolCallGroupIds] = useState<Set<string>>(
       new Set(),
     );
-    const [expandedTurnAnchorIds, setExpandedTurnAnchorIds] = useState<Set<string>>(new Set());
     const [expandedProcessRunIds, setExpandedProcessRunIds] = useState<Set<string>>(new Set());
 
     // Get serverId (fallback to agent's serverId if not provided)
@@ -485,7 +427,6 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       setIsNearBottom(true);
       setExpandedInlineToolCallIds(new Set());
       setExpandedToolCallGroupIds(new Set());
-      setExpandedTurnAnchorIds(new Set());
       setExpandedProcessRunIds(new Set());
     }, [agentId]);
 
@@ -619,24 +560,20 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const effectiveStreamHead = useRetainedValue(streamHead, isActive);
     const effectiveTurnPresentation = useRetainedValue(turnPresentation, isActive);
     const isTurnActive = effectiveTurnPresentation.isActive;
-    const collapsedTurns = useMemo(
-      () =>
-        collapseCompletedTurns({
-          tail: effectiveStreamItems,
-          enabled: toolCallDetailLevel === "auto",
-          expandedAnchorItemIds: expandedTurnAnchorIds,
-          isTurnActive,
-        }),
-      [effectiveStreamItems, expandedTurnAnchorIds, isTurnActive, toolCallDetailLevel],
-    );
+    const turnResultSummaries = useMemo(() => {
+      if (toolCallDetailLevel !== "auto") {
+        return buildTurnResultSummaries([]);
+      }
+      return buildTurnResultSummaries(effectiveStreamItems);
+    }, [effectiveStreamItems, toolCallDetailLevel]);
     const processRuns = useMemo(
       () =>
         collapseProcessRuns({
-          tail: collapsedTurns.tail,
+          tail: effectiveStreamItems,
           enabled: toolCallDetailLevel === "auto",
           expandedRunIds: expandedProcessRunIds,
         }),
-      [collapsedTurns.tail, expandedProcessRunIds, toolCallDetailLevel],
+      [effectiveStreamItems, expandedProcessRunIds, toolCallDetailLevel],
     );
     // Keep retained history outside the 48ms live-head flush path.
     const preparedToolCallHistory = useMemo(
@@ -694,23 +631,6 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         streamRenderStrategy,
       ],
     );
-    const timingByAnchorItemId = useMemo(() => {
-      const next = new Map<string, number>();
-      function addHost(host: TurnFooterHost | null): void {
-        if (host?.timing === undefined) {
-          return;
-        }
-        next.set(host.itemId, host.timing.durationMs);
-      }
-      for (const item of streamLayout.history) {
-        addHost(item.completedFooter);
-      }
-      for (const item of streamLayout.liveHead) {
-        addHost(item.completedFooter);
-      }
-      addHost(streamLayout.auxiliaryTurnFooter);
-      return next;
-    }, [streamLayout.auxiliaryTurnFooter, streamLayout.history, streamLayout.liveHead]);
     const handleTimelineHistoryLoadError = useCallback(() => {
       toast?.error(t("agentStream.historyLoadFailed"));
     }, [t, toast]);
@@ -783,18 +703,6 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       });
     }, []);
 
-    const setTurnAnchorExpanded = useCallback((anchorItemId: string, expanded: boolean) => {
-      setExpandedTurnAnchorIds((previous) => {
-        const next = new Set(previous);
-        if (expanded) {
-          next.add(anchorItemId);
-        } else {
-          next.delete(anchorItemId);
-        }
-        return next;
-      });
-    }, []);
-
     const setProcessRunExpanded = useCallback((firstItemId: string, expanded: boolean) => {
       setExpandedProcessRunIds((previous) => {
         const next = new Set(previous);
@@ -809,8 +717,8 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
 
     const buildTurnCollapsePresenter = useCallback(
       (host: TurnFooterHost): TurnCollapsePresenter | undefined => {
-        const summary = collapsedTurns.summariesByAnchorItemId.get(host.itemId);
-        if (!summary || summary.hiddenItemCount === 0) {
+        const summary = turnResultSummaries.summariesByAnchorItemId.get(host.itemId);
+        if (!summary) {
           return undefined;
         }
         return {
@@ -821,7 +729,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         };
       },
       [
-        collapsedTurns.summariesByAnchorItemId,
+        turnResultSummaries.summariesByAnchorItemId,
         handleTurnResultChangesPress,
         handleTurnResultFilePress,
         handleTurnResultWebPress,
@@ -1089,23 +997,15 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           supportsTimelineCursor: supportsAgentForkContextCursor,
           onForkAssistantTurn: readOnly ? undefined : handleForkAssistantTurn,
           turnCollapse: footerHost ? buildTurnCollapsePresenter(footerHost) : undefined,
-          summariesByHeaderItemId: collapsedTurns.summariesByHeaderItemId,
-          expandedTurnAnchorIds,
-          timingByAnchorItemId,
-          onToggleCollapseAnchor: setTurnAnchorExpanded,
         });
       },
       [
         buildTurnCollapsePresenter,
-        collapsedTurns.summariesByHeaderItemId,
-        expandedTurnAnchorIds,
         handleForkAssistantTurn,
         readOnly,
         renderStreamItemContent,
-        setTurnAnchorExpanded,
         streamRenderStrategy,
         supportsAgentForkContextCursor,
-        timingByAnchorItemId,
       ],
     );
 
