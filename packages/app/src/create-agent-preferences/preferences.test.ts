@@ -248,6 +248,11 @@ describe("create agent preferences", () => {
     expect(parseFormPreferences({ provider: "codex", isolation: "sandbox" })).toEqual({});
   });
 
+  it("does not persist existing-worktree as an isolation preference", () => {
+    expect(parseFormPreferences({ isolation: "existing-worktree" })).toEqual({});
+    expect(parseFormPreferences({ provider: "codex", isolation: "existing-worktree" })).toEqual({});
+  });
+
   it("persists and reloads a terminal launch target", async () => {
     const storage = new FakeCreateAgentPreferenceStorage();
     const preferences = new CreateAgentPreferencesService(storage);
