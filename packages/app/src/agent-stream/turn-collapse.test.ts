@@ -68,7 +68,7 @@ function todoList(id: string): Extract<StreamItem, { kind: "todo_list" }> {
 const EMPTY_EXPANDED = new Set<string>();
 
 describe("collapseCompletedTurns", () => {
-  it("hides tool calls and todos while keeping assistant messages and thoughts", () => {
+  it("hides thinking, mid-turn narration, tools, and todos behind the prompt and final assistant", () => {
     const user = userMessage("u1");
     const mid = assistant("a-mid");
     const final = assistant("a-final");
@@ -89,10 +89,25 @@ describe("collapseCompletedTurns", () => {
       isTurnActive: false,
     });
 
-    expect(result.tail).toEqual([user, thinking, mid, final]);
-    expect(result.summariesByAnchorItemId.get("a-final")?.hiddenItemCount).toBe(2);
+    expect(result.tail).toEqual([user, final]);
+    expect(result.summariesByAnchorItemId.get("a-final")?.hiddenItemCount).toBe(4);
     expect(result.summariesByAnchorItemId.get("a-final")?.headerItemId).toBe("u1");
     expect(result.summariesByHeaderItemId.get("u1")?.anchorItemId).toBe("a-final");
+  });
+
+  it("does not collapse a conversation that has thinking but no tools or todos", () => {
+    const user = userMessage("u1");
+    const thinking = thought("th1");
+    const reply = assistant("a1");
+    const tail = [user, thinking, reply];
+    const result = collapseCompletedTurns({
+      tail,
+      enabled: true,
+      expandedAnchorItemIds: EMPTY_EXPANDED,
+      isTurnActive: false,
+    });
+    expect(result.tail).toBe(tail);
+    expect(result.summariesByAnchorItemId.size).toBe(0);
   });
 
   it("returns the same tail reference when disabled or nothing is collapsible", () => {
@@ -311,7 +326,7 @@ describe("collapseCompletedTurns", () => {
 
     expect([...result.summariesByAnchorItemId.keys()]).toEqual(["a-final"]);
     expect(result.summariesByAnchorItemId.has("a-mid")).toBe(false);
-    expect(result.tail).toEqual([user, mid, final]);
+    expect(result.tail).toEqual([user, final]);
   });
 
   it("keeps consecutive user messages that belong to the same response", () => {
@@ -326,8 +341,9 @@ describe("collapseCompletedTurns", () => {
       isTurnActive: false,
     });
 
-    expect(result.tail).toEqual([first, second, thinking, reply]);
+    expect(result.tail).toEqual([first, second, reply]);
     expect(result.summariesByHeaderItemId.get("u1")?.headerItemId).toBe("u1");
+    expect(result.summariesByHeaderItemId.get("u1")?.hiddenItemCount).toBe(2);
     expect(result.summariesByHeaderItemId.has("u2")).toBe(false);
   });
 
@@ -347,7 +363,7 @@ describe("collapseCompletedTurns", () => {
     expect(result.summariesByHeaderItemId.size).toBe(0);
   });
 
-  it("keeps unknown item kinds when collapsing mechanical noise", () => {
+  it("hides unknown item kinds when collapsing a tool-bearing response", () => {
     const user = userMessage("u1");
     const log: Extract<StreamItem, { kind: "activity_log" }> = {
       kind: "activity_log",
@@ -364,7 +380,7 @@ describe("collapseCompletedTurns", () => {
       isTurnActive: false,
     });
 
-    expect(result.tail).toEqual([user, log, reply]);
-    expect(result.summariesByAnchorItemId.get("a1")?.hiddenItemCount).toBe(1);
+    expect(result.tail).toEqual([user, reply]);
+    expect(result.summariesByAnchorItemId.get("a1")?.hiddenItemCount).toBe(2);
   });
 });

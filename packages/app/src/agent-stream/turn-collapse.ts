@@ -139,14 +139,25 @@ function isMechanicalNoise(item: StreamItem): boolean {
   return item.kind === "tool_call" || item.kind === "todo_list";
 }
 
+function isKeptWhenCollapsed(item: StreamItem, anchorItemId: string): boolean {
+  return item.kind === "user_message" || item.id === anchorItemId;
+}
+
+function responseHasMechanicalNoise(response: StreamItem[]): boolean {
+  return response.some((item) => isMechanicalNoise(item));
+}
+
 function buildSummary(
   response: StreamItem[],
   anchorItemId: string,
   headerItemId: string,
 ): TurnCollapseSummary | null {
+  if (!responseHasMechanicalNoise(response)) {
+    return null;
+  }
   let hiddenItemCount = 0;
   for (const item of response) {
-    if (isMechanicalNoise(item)) {
+    if (!isKeptWhenCollapsed(item, anchorItemId)) {
       hiddenItemCount += 1;
     }
   }
@@ -234,7 +245,7 @@ export function collapseCompletedTurns(input: {
 
     collapsedAny = true;
     for (const item of response) {
-      if (!isMechanicalNoise(item)) {
+      if (isKeptWhenCollapsed(item, anchor.id)) {
         nextTail.push(item);
       }
     }
