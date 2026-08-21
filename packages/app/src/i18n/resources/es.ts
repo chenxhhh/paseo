@@ -355,6 +355,11 @@ export const es: TranslationResources = {
       withTokens: "Contexto compactado (tokens{{tokens}}K)",
       completed: "Contexto compactado",
     },
+    turnResult: {
+      workedFor: "Trabajó durante {{duration}}",
+      expand: "Mostrar el trabajo de este turno",
+      collapse: "Ocultar el trabajo de este turno",
+    },
   },
   importSession: {
     title: "Importar sesión",

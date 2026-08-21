@@ -353,6 +353,11 @@ export const ko: TranslationResources = {
       withTokens: "컨텍스트가 압축되었습니다 ({{tokens}}K 토큰)",
       completed: "컨텍스트가 압축되었습니다",
     },
+    turnResult: {
+      workedFor: "{{duration}} 동안 작업함",
+      expand: "이 턴의 작업 보기",
+      collapse: "이 턴의 작업 숨기기",
+    },
   },
   importSession: {
     title: "세션 가져오기",

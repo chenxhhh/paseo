@@ -350,6 +350,11 @@ export const en = {
       withTokens: "Context compacted ({{tokens}}K tokens)",
       completed: "Context compacted",
     },
+    turnResult: {
+      workedFor: "Worked for {{duration}}",
+      expand: "Show work from this turn",
+      collapse: "Hide work from this turn",
+    },
   },
   importSession: {
     title: "Import session",

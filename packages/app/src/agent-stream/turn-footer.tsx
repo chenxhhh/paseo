@@ -1,5 +1,6 @@
 import React, { memo, useCallback, useMemo, type ReactNode } from "react";
 import { View } from "react-native";
+import { useTranslation } from "react-i18next";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { MAX_CONTENT_WIDTH } from "@/constants/layout";
 import { SPACING, type Theme } from "@/styles/theme";
@@ -20,6 +21,7 @@ import type { TurnFooterHost } from "./layout";
 import { AssistantForkMenu } from "@/components/assistant-fork-menu";
 import { SyncedLoader } from "@/components/synced-loader";
 import { useRetainedPanelActive } from "@/components/retained-panel";
+import type { TurnCollapseSummary } from "./turn-collapse";
 
 const ThemedSyncedLoader = withUnistyles(SyncedLoader);
 const workingIndicatorColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
@@ -42,6 +44,40 @@ export type AssistantTurnForkHandler = (input: {
  */
 export type InFlightTurnForkHandler = (target: AssistantForkTarget) => Promise<void> | void;
 
+export interface TurnCollapsePresenter {
+  summary: TurnCollapseSummary;
+  expanded: boolean;
+  onToggle: (expanded: boolean) => void;
+  onOpenFile?: (path: string) => void;
+  onOpenChanges?: () => void;
+  onOpenWebUrl?: (url: string) => void;
+}
+
+function useTurnCollapseResultSummary(summary: TurnCollapseSummary | undefined): string {
+  const { t } = useTranslation();
+  return useMemo(() => {
+    if (!summary) {
+      return "";
+    }
+    const parts: string[] = [];
+    if (summary.editedFileCount > 0) {
+      parts.push(
+        t(`toolCallGroup.editedFiles.${summary.editedFileCount === 1 ? "one" : "other"}`, {
+          count: summary.editedFileCount,
+        }),
+      );
+    }
+    if (summary.commandCount > 0) {
+      parts.push(
+        t(`toolCallGroup.commands.${summary.commandCount === 1 ? "one" : "other"}`, {
+          count: summary.commandCount,
+        }),
+      );
+    }
+    return parts.join(" · ");
+  }, [summary, t]);
+}
+
 export const TurnFooter = memo(function TurnFooter({
   isRunning,
   inFlightTurnStartedAt,
@@ -50,6 +86,7 @@ export const TurnFooter = memo(function TurnFooter({
   supportsTimelineCursor,
   onForkAssistantTurn,
   onForkInFlightTurn,
+  turnCollapse,
 }: {
   isRunning: boolean;
   inFlightTurnStartedAt: Date | null;
@@ -58,6 +95,7 @@ export const TurnFooter = memo(function TurnFooter({
   supportsTimelineCursor: boolean;
   onForkAssistantTurn?: AssistantTurnForkHandler;
   onForkInFlightTurn?: InFlightTurnForkHandler;
+  turnCollapse?: TurnCollapsePresenter;
 }) {
   if (isRunning) {
     return (
@@ -80,6 +118,7 @@ export const TurnFooter = memo(function TurnFooter({
       startIndex={host.startIndex}
       supportsTimelineCursor={supportsTimelineCursor}
       onForkAssistantTurn={onForkAssistantTurn}
+      turnCollapse={turnCollapse}
     />
   );
 });
@@ -91,6 +130,7 @@ export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
   startIndex,
   supportsTimelineCursor,
   onForkAssistantTurn,
+  turnCollapse,
 }: {
   strategy: TurnContentStrategy;
   items: StreamItem[];
@@ -98,6 +138,7 @@ export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
   startIndex: number;
   supportsTimelineCursor: boolean;
   onForkAssistantTurn?: AssistantTurnForkHandler;
+  turnCollapse?: TurnCollapsePresenter;
 }) {
   return (
     <TurnFooterRow>
@@ -108,6 +149,7 @@ export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
         startIndex={startIndex}
         supportsTimelineCursor={supportsTimelineCursor}
         onForkAssistantTurn={onForkAssistantTurn}
+        turnCollapse={turnCollapse}
       />
     </TurnFooterRow>
   );
@@ -164,6 +206,7 @@ function CompletedTurnFooter({
   startIndex,
   supportsTimelineCursor,
   onForkAssistantTurn,
+  turnCollapse,
 }: {
   strategy: TurnContentStrategy;
   items: StreamItem[];
@@ -171,7 +214,9 @@ function CompletedTurnFooter({
   startIndex: number;
   supportsTimelineCursor: boolean;
   onForkAssistantTurn?: AssistantTurnForkHandler;
+  turnCollapse?: TurnCollapsePresenter;
 }) {
+  const resultSummary = useTurnCollapseResultSummary(turnCollapse?.summary);
   const getContent = useCallback(
     () =>
       collectAssistantResponseContentForStreamRenderStrategy({
@@ -195,6 +240,12 @@ function CompletedTurnFooter({
     },
     [boundary, onForkAssistantTurn],
   );
+  const handleToggleExpanded = useCallback(() => {
+    if (!turnCollapse) {
+      return;
+    }
+    turnCollapse.onToggle(!turnCollapse.expanded);
+  }, [turnCollapse]);
   return (
     <View style={stylesheet.turnFooterSlot}>
       <AssistantTurnFooter
@@ -202,6 +253,9 @@ function CompletedTurnFooter({
         completedAt={timing?.completedAt}
         durationMs={timing?.durationMs}
         onFork={boundary && onForkAssistantTurn ? handleFork : undefined}
+        expanded={turnCollapse?.expanded}
+        onToggleExpanded={turnCollapse ? handleToggleExpanded : undefined}
+        resultSummary={turnCollapse ? resultSummary : undefined}
       />
     </View>
   );

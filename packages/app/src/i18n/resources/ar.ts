@@ -352,6 +352,11 @@ export const ar: TranslationResources = {
       withTokens: "تم ضغط السياق (رموز{{tokens}}K)",
       completed: "تم ضغط السياق",
     },
+    turnResult: {
+      workedFor: "عمل لمدة {{duration}}",
+      expand: "إظهار عمل هذا الدور",
+      collapse: "إخفاء عمل هذا الدور",
+    },
   },
   importSession: {
     title: "جلسة الاستيراد",

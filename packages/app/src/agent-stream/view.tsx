@@ -79,10 +79,12 @@ import {
   TURN_FOOTER_BOTTOM_SPACING,
   type AssistantTurnForkHandler,
   type InFlightTurnForkHandler,
+  type TurnCollapsePresenter,
   type TurnContentStrategy,
 } from "./turn-footer";
 import { resolveBottomOverlayTailInset } from "./bottom-overlay-inset";
-import { layoutStream, type StreamLayoutItem } from "./layout";
+import { layoutStream, type StreamLayoutItem, type TurnFooterHost } from "./layout";
+import { collapseCompletedTurns } from "./turn-collapse";
 import {
   type BottomAnchorLocalRequest,
   type BottomAnchorRouteRequest,
@@ -157,6 +159,7 @@ function renderStreamItemWithTurnFooter(input: {
   strategy: TurnContentStrategy;
   supportsTimelineCursor: boolean;
   onForkAssistantTurn?: AssistantTurnForkHandler;
+  turnCollapse?: TurnCollapsePresenter;
 }): ReactNode {
   if (!input.content) {
     return null;
@@ -171,6 +174,7 @@ function renderStreamItemWithTurnFooter(input: {
       startIndex={footerHost.startIndex}
       supportsTimelineCursor={input.supportsTimelineCursor}
       onForkAssistantTurn={input.onForkAssistantTurn}
+      turnCollapse={input.turnCollapse}
     />
   ) : null;
   const content = (
@@ -341,6 +345,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const [expandedToolCallGroupIds, setExpandedToolCallGroupIds] = useState<Set<string>>(
       new Set(),
     );
+    const [expandedTurnAnchorIds, setExpandedTurnAnchorIds] = useState<Set<string>>(new Set());
 
     // Get serverId (fallback to agent's serverId if not provided)
     const resolvedServerId = serverId ?? context.serverId ?? "";
@@ -399,6 +404,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       setIsNearBottom(true);
       setExpandedInlineToolCallIds(new Set());
       setExpandedToolCallGroupIds(new Set());
+      setExpandedTurnAnchorIds(new Set());
     }, [agentId]);
 
     const handleInlinePathPress = useStableEvent(
@@ -499,23 +505,33 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const effectiveStreamHead = useRetainedValue(streamHead, isActive);
     const effectiveTurnPresentation = useRetainedValue(turnPresentation, isActive);
     const isTurnActive = effectiveTurnPresentation.isActive;
+    const collapsedTurns = useMemo(
+      () =>
+        collapseCompletedTurns({
+          tail: effectiveStreamItems,
+          enabled: toolCallDetailLevel === "auto",
+          expandedAnchorItemIds: expandedTurnAnchorIds,
+          isTurnActive,
+        }),
+      [effectiveStreamItems, expandedTurnAnchorIds, isTurnActive, toolCallDetailLevel],
+    );
     // Keep retained history outside the 48ms live-head flush path.
     const preparedToolCallHistory = useMemo(
-      () => prepareToolCallHistory(toolCallDetailLevel, effectiveStreamItems),
-      [effectiveStreamItems, toolCallDetailLevel],
+      () => prepareToolCallHistory(toolCallDetailLevel, collapsedTurns.tail),
+      [collapsedTurns.tail, toolCallDetailLevel],
     );
     const projectedToolCalls = useMemo(
       () =>
         projectToolCallDetailLevel({
           level: toolCallDetailLevel,
-          tail: effectiveStreamItems,
+          tail: collapsedTurns.tail,
           head: effectiveStreamHead ?? EMPTY_STREAM_HEAD,
           preparedHistory: preparedToolCallHistory,
           isTurnActive,
         }),
       [
+        collapsedTurns.tail,
         effectiveStreamHead,
-        effectiveStreamItems,
         isTurnActive,
         preparedToolCallHistory,
         toolCallDetailLevel,
@@ -626,6 +642,33 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         return next;
       });
     }, []);
+
+    const setTurnAnchorExpanded = useCallback((anchorItemId: string, expanded: boolean) => {
+      setExpandedTurnAnchorIds((previous) => {
+        const next = new Set(previous);
+        if (expanded) {
+          next.add(anchorItemId);
+        } else {
+          next.delete(anchorItemId);
+        }
+        return next;
+      });
+    }, []);
+
+    const buildTurnCollapsePresenter = useCallback(
+      (host: TurnFooterHost): TurnCollapsePresenter | undefined => {
+        const summary = collapsedTurns.summariesByAnchorItemId.get(host.itemId);
+        if (!summary || summary.hiddenItemCount === 0) {
+          return undefined;
+        }
+        return {
+          summary,
+          expanded: expandedTurnAnchorIds.has(host.itemId),
+          onToggle: (expanded) => setTurnAnchorExpanded(host.itemId, expanded),
+        };
+      },
+      [collapsedTurns.summariesByAnchorItemId, expandedTurnAnchorIds, setTurnAnchorExpanded],
+    );
 
     const renderUserMessageItem = useCallback(
       (layoutItem: StreamLayoutItem, item: Extract<StreamItem, { kind: "user_message" }>) => {
@@ -849,15 +892,18 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const renderStreamItem = useCallback(
       (layoutItem: StreamLayoutItem) => {
         const content = renderStreamItemContent(layoutItem);
+        const footerHost = layoutItem.completedFooter;
         return renderStreamItemWithTurnFooter({
           content,
           layoutItem,
           strategy: streamRenderStrategy,
           supportsTimelineCursor: supportsAgentForkContextCursor,
           onForkAssistantTurn: readOnly ? undefined : handleForkAssistantTurn,
+          turnCollapse: footerHost ? buildTurnCollapsePresenter(footerHost) : undefined,
         });
       },
       [
+        buildTurnCollapsePresenter,
         handleForkAssistantTurn,
         readOnly,
         renderStreamItemContent,
@@ -890,6 +936,9 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             supportsTimelineCursor={supportsAgentForkContextCursor}
             onForkAssistantTurn={readOnly ? undefined : handleForkAssistantTurn}
             onForkInFlightTurn={readOnly ? undefined : handleForkInFlightTurn}
+            turnCollapse={
+              bottomTurnFooterHost ? buildTurnCollapsePresenter(bottomTurnFooterHost) : undefined
+            }
           />
         ) : null,
       [
@@ -899,6 +948,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         isTurnActive,
         baseRenderModel.turnTiming.runningStartedAt,
         bottomTurnFooterHost,
+        buildTurnCollapsePresenter,
         streamRenderStrategy,
         supportsAgentForkContextCursor,
       ],

@@ -352,6 +352,11 @@ export const zhCN: TranslationResources = {
       withTokens: "上下文已压缩（{{tokens}}K tokens）",
       completed: "上下文已压缩",
     },
+    turnResult: {
+      workedFor: "工作了 {{duration}}",
+      expand: "显示此回合的工作过程",
+      collapse: "隐藏此回合的工作过程",
+    },
   },
   importSession: {
     title: "导入会话",

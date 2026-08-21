@@ -355,6 +355,11 @@ export const ja: TranslationResources = {
       withTokens: "コンテキストを圧縮しました（{{tokens}}Kトークン）",
       completed: "コンテキストを圧縮しました",
     },
+    turnResult: {
+      workedFor: "{{duration}} 作業しました",
+      expand: "このターンの作業を表示",
+      collapse: "このターンの作業を隠す",
+    },
   },
   importSession: {
     title: "セッションをインポート",

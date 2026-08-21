@@ -354,6 +354,11 @@ export const ru: TranslationResources = {
       withTokens: "Сжатый контекст (токены{{tokens}}K)",
       completed: "Контекст сжат",
     },
+    turnResult: {
+      workedFor: "Работал {{duration}}",
+      expand: "Показать работу этого хода",
+      collapse: "Скрыть работу этого хода",
+    },
   },
   importSession: {
     title: "Импортировать сеанс",

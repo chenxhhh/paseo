@@ -356,6 +356,11 @@ export const fr: TranslationResources = {
       withTokens: "Contexte compacté (jetons{{tokens}}K)",
       completed: "Contexte compacté",
     },
+    turnResult: {
+      workedFor: "A travaillé pendant {{duration}}",
+      expand: "Afficher le travail de ce tour",
+      collapse: "Masquer le travail de ce tour",
+    },
   },
   importSession: {
     title: "Session d'importation",
