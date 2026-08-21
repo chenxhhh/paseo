@@ -68,13 +68,14 @@ function todoList(id: string): Extract<StreamItem, { kind: "todo_list" }> {
 const EMPTY_EXPANDED = new Set<string>();
 
 describe("collapseCompletedTurns", () => {
-  it("collapses a completed response to the user prompt and final assistant", () => {
+  it("hides tool calls and todos while keeping assistant messages and thoughts", () => {
     const user = userMessage("u1");
     const mid = assistant("a-mid");
     const final = assistant("a-final");
+    const thinking = thought("th1");
     const tail = [
       user,
-      thought("th1"),
+      thinking,
       toolCall("1", { type: "read", filePath: "/repo/a.ts" }),
       mid,
       todoList("todo1"),
@@ -88,8 +89,8 @@ describe("collapseCompletedTurns", () => {
       isTurnActive: false,
     });
 
-    expect(result.tail).toEqual([user, final]);
-    expect(result.summariesByAnchorItemId.get("a-final")?.hiddenItemCount).toBe(4);
+    expect(result.tail).toEqual([user, thinking, mid, final]);
+    expect(result.summariesByAnchorItemId.get("a-final")?.hiddenItemCount).toBe(2);
   });
 
   it("returns the same tail reference when disabled or nothing is collapsible", () => {
@@ -306,19 +307,42 @@ describe("collapseCompletedTurns", () => {
 
     expect([...result.summariesByAnchorItemId.keys()]).toEqual(["a-final"]);
     expect(result.summariesByAnchorItemId.has("a-mid")).toBe(false);
+    expect(result.tail).toEqual([user, mid, final]);
   });
 
   it("keeps consecutive user messages that belong to the same response", () => {
     const first = userMessage("u1", "turn-1");
     const second = userMessage("u2", "turn-1");
     const reply = assistant("a1");
+    const thinking = thought("th1");
     const result = collapseCompletedTurns({
-      tail: [first, second, thought("th1"), toolCall("1", { type: "shell", command: "ls" }), reply],
+      tail: [first, second, thinking, toolCall("1", { type: "shell", command: "ls" }), reply],
       enabled: true,
       expandedAnchorItemIds: EMPTY_EXPANDED,
       isTurnActive: false,
     });
 
-    expect(result.tail).toEqual([first, second, reply]);
+    expect(result.tail).toEqual([first, second, thinking, reply]);
+  });
+
+  it("keeps unknown item kinds when collapsing mechanical noise", () => {
+    const user = userMessage("u1");
+    const log: Extract<StreamItem, { kind: "activity_log" }> = {
+      kind: "activity_log",
+      id: "log1",
+      timestamp: new Date("2026-01-01T00:00:05.000Z"),
+      activityType: "info",
+      message: "working",
+    };
+    const reply = assistant("a1");
+    const result = collapseCompletedTurns({
+      tail: [user, log, toolCall("1", { type: "shell", command: "ls" }), reply],
+      enabled: true,
+      expandedAnchorItemIds: EMPTY_EXPANDED,
+      isTurnActive: false,
+    });
+
+    expect(result.tail).toEqual([user, log, reply]);
+    expect(result.summariesByAnchorItemId.get("a1")?.hiddenItemCount).toBe(1);
   });
 });

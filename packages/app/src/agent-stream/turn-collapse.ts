@@ -129,14 +129,17 @@ function accumulateToolCall(
   return 0;
 }
 
+function isMechanicalNoise(item: StreamItem): boolean {
+  return item.kind === "tool_call" || item.kind === "todo_list";
+}
+
 function buildSummary(response: StreamItem[], anchorItemId: string): TurnCollapseSummary | null {
-  let keepCount = 0;
+  let hiddenItemCount = 0;
   for (const item of response) {
-    if (item.kind === "user_message" || item.id === anchorItemId) {
-      keepCount += 1;
+    if (isMechanicalNoise(item)) {
+      hiddenItemCount += 1;
     }
   }
-  const hiddenItemCount = response.length - keepCount;
   if (hiddenItemCount <= 0) {
     return null;
   }
@@ -208,7 +211,7 @@ export function collapseCompletedTurns(input: {
 
     collapsedAny = true;
     for (const item of response) {
-      if (item.kind === "user_message" || item.id === anchor.id) {
+      if (!isMechanicalNoise(item)) {
         nextTail.push(item);
       }
     }
