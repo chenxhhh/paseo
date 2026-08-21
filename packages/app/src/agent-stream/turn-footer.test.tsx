@@ -33,22 +33,7 @@ vi.mock("react-native-unistyles", () => ({
 }));
 
 vi.mock("@/components/message", () => ({
-  AssistantTurnFooter: ({
-    expanded,
-    onToggleExpanded,
-    resultSummary,
-  }: {
-    expanded?: boolean;
-    onToggleExpanded?: () => void;
-    resultSummary?: string;
-  }) => (
-    <div
-      data-testid="assistant-turn-footer"
-      data-expanded={expanded ? "true" : "false"}
-      data-has-toggle={onToggleExpanded ? "true" : "false"}
-      data-result-summary={resultSummary ?? ""}
-    />
-  ),
+  AssistantTurnFooter: () => <div data-testid="assistant-turn-footer" />,
   LiveElapsed: () => <span data-testid="running-turn-timestamp" />,
   STREAM_METADATA_FONT_SIZE: 11,
 }));
@@ -95,14 +80,20 @@ const completedFooterItems = [
 const collapsePresenter: TurnCollapsePresenter = {
   summary: {
     anchorItemId: "a1",
+    headerItemId: "u1",
     hiddenItemCount: 3,
     editedFileCount: 2,
     commandCount: 1,
     files: [],
     webPages: [],
   },
-  expanded: false,
-  onToggle: () => undefined,
+};
+
+const collapsePresenterWithCards: TurnCollapsePresenter = {
+  summary: {
+    ...collapsePresenter.summary,
+    files: [{ path: "/repo/a.ts", additions: 2, deletions: 1 }],
+  },
 };
 
 describe("TurnFooter", () => {
@@ -155,7 +146,7 @@ describe("TurnFooter", () => {
     ]);
   });
 
-  it("renders the collapse toggle when a turnCollapse presenter is provided", () => {
+  it("renders result cards without a collapse toggle when the presenter has files", () => {
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -167,17 +158,14 @@ describe("TurnFooter", () => {
           items={completedFooterItems}
           startIndex={0}
           supportsTimelineCursor
-          turnCollapse={collapsePresenter}
+          turnCollapse={collapsePresenterWithCards}
         />,
       );
     });
 
-    const footer = container.querySelector('[data-testid="assistant-turn-footer"]');
-    expect(footer?.getAttribute("data-has-toggle")).toBe("true");
-    expect(footer?.getAttribute("data-expanded")).toBe("false");
-    expect(footer?.getAttribute("data-result-summary")).toBe(
-      "toolCallGroup.editedFiles.other:2 · toolCallGroup.commands.one:1",
-    );
+    expect(container.querySelector('[data-testid="turn-result-cards"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="assistant-turn-footer"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="turn-collapse-header"]')).toBeNull();
   });
 
   it("renders the plain duration footer when turnCollapse is absent", () => {
@@ -196,8 +184,7 @@ describe("TurnFooter", () => {
       );
     });
 
-    const footer = container.querySelector('[data-testid="assistant-turn-footer"]');
-    expect(footer?.getAttribute("data-has-toggle")).toBe("false");
-    expect(footer?.getAttribute("data-result-summary")).toBe("");
+    expect(container.querySelector('[data-testid="assistant-turn-footer"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="turn-result-cards"]')).toBeNull();
   });
 });

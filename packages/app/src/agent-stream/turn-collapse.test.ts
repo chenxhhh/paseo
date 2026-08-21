@@ -91,6 +91,8 @@ describe("collapseCompletedTurns", () => {
 
     expect(result.tail).toEqual([user, thinking, mid, final]);
     expect(result.summariesByAnchorItemId.get("a-final")?.hiddenItemCount).toBe(2);
+    expect(result.summariesByAnchorItemId.get("a-final")?.headerItemId).toBe("u1");
+    expect(result.summariesByHeaderItemId.get("u1")?.anchorItemId).toBe("a-final");
   });
 
   it("returns the same tail reference when disabled or nothing is collapsible", () => {
@@ -107,6 +109,7 @@ describe("collapseCompletedTurns", () => {
     });
     expect(disabled.tail).toBe(collapsible);
     expect(disabled.summariesByAnchorItemId.size).toBe(0);
+    expect(disabled.summariesByHeaderItemId.size).toBe(0);
 
     const plain = [userMessage("u2"), assistant("a2")];
     const untouched = collapseCompletedTurns({
@@ -117,6 +120,7 @@ describe("collapseCompletedTurns", () => {
     });
     expect(untouched.tail).toBe(plain);
     expect(untouched.summariesByAnchorItemId.size).toBe(0);
+    expect(untouched.summariesByHeaderItemId.size).toBe(0);
   });
 
   it("does not collapse the trailing response while the turn is active", () => {
@@ -323,6 +327,24 @@ describe("collapseCompletedTurns", () => {
     });
 
     expect(result.tail).toEqual([first, second, thinking, reply]);
+    expect(result.summariesByHeaderItemId.get("u1")?.headerItemId).toBe("u1");
+    expect(result.summariesByHeaderItemId.has("u2")).toBe(false);
+  });
+
+  it("passes through a tool-bearing response with no user message", () => {
+    const read = toolCall("1", { type: "read", filePath: "/repo/a.ts" });
+    const reply = assistant("a1");
+    const tail = [read, reply];
+    const result = collapseCompletedTurns({
+      tail,
+      enabled: true,
+      expandedAnchorItemIds: EMPTY_EXPANDED,
+      isTurnActive: false,
+    });
+
+    expect(result.tail).toBe(tail);
+    expect(result.summariesByAnchorItemId.size).toBe(0);
+    expect(result.summariesByHeaderItemId.size).toBe(0);
   });
 
   it("keeps unknown item kinds when collapsing mechanical noise", () => {

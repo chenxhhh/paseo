@@ -84,7 +84,8 @@ import {
 } from "./turn-footer";
 import { resolveBottomOverlayTailInset } from "./bottom-overlay-inset";
 import { layoutStream, type StreamLayoutItem, type TurnFooterHost } from "./layout";
-import { collapseCompletedTurns } from "./turn-collapse";
+import { collapseCompletedTurns, type TurnCollapseSummary } from "./turn-collapse";
+import { TurnCollapseHeader } from "./turn-collapse-header";
 import {
   type BottomAnchorLocalRequest,
   type BottomAnchorRouteRequest,
@@ -138,6 +139,24 @@ function BottomOverlayInset({ height }: { height: number }) {
   const style = useMemo(() => ({ height }), [height]);
   return <View style={style} />;
 }
+
+const UserMessageCollapseHeader = memo(function UserMessageCollapseHeader({
+  summary,
+  expanded,
+  onToggleAnchor,
+}: {
+  summary: TurnCollapseSummary;
+  expanded: boolean;
+  onToggleAnchor: (anchorItemId: string, expanded: boolean) => void;
+}) {
+  const handleToggle = useCallback(
+    (next: boolean) => {
+      onToggleAnchor(summary.anchorItemId, next);
+    },
+    [onToggleAnchor, summary.anchorItemId],
+  );
+  return <TurnCollapseHeader summary={summary} expanded={expanded} onToggle={handleToggle} />;
+});
 
 function renderPendingPermissionsNode(input: {
   pendingPermissions: PendingPermission[];
@@ -698,8 +717,6 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         }
         return {
           summary,
-          expanded: expandedTurnAnchorIds.has(host.itemId),
-          onToggle: (expanded) => setTurnAnchorExpanded(host.itemId, expanded),
           onOpenFile: handleTurnResultFilePress,
           onOpenChanges: handleTurnResultChangesPress,
           onOpenWebUrl: handleTurnResultWebPress,
@@ -707,17 +724,15 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       },
       [
         collapsedTurns.summariesByAnchorItemId,
-        expandedTurnAnchorIds,
         handleTurnResultChangesPress,
         handleTurnResultFilePress,
         handleTurnResultWebPress,
-        setTurnAnchorExpanded,
       ],
     );
 
     const renderUserMessageItem = useCallback(
       (layoutItem: StreamLayoutItem, item: Extract<StreamItem, { kind: "user_message" }>) => {
-        return (
+        const message = (
           <UserMessage
             serverId={resolvedServerId}
             agentId={agentId}
@@ -736,8 +751,31 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             }
           />
         );
+        const summary = collapsedTurns.summariesByHeaderItemId.get(item.id);
+        if (!summary) {
+          return message;
+        }
+        return (
+          <>
+            {message}
+            <UserMessageCollapseHeader
+              summary={summary}
+              expanded={expandedTurnAnchorIds.has(summary.anchorItemId)}
+              onToggleAnchor={setTurnAnchorExpanded}
+            />
+          </>
+        );
       },
-      [context.capabilities, agentId, client, pendingClientMessageIds, resolvedServerId],
+      [
+        collapsedTurns.summariesByHeaderItemId,
+        context.capabilities,
+        agentId,
+        client,
+        expandedTurnAnchorIds,
+        pendingClientMessageIds,
+        resolvedServerId,
+        setTurnAnchorExpanded,
+      ],
     );
 
     const renderAssistantMessageItem = useCallback(

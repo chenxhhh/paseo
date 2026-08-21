@@ -172,7 +172,6 @@ const ThemedMicVocal = withUnistyles(MicVocal);
 const ThemedFileSymlinkIcon = withUnistyles(FileSymlink);
 const ThemedTriangleAlertIcon = withUnistyles(TriangleAlertIcon);
 const ThemedChevronRightIcon = withUnistyles(ChevronRight);
-const ThemedChevronDownIcon = withUnistyles(ChevronDown);
 const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
 
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
@@ -574,9 +573,6 @@ interface AssistantTurnFooterProps {
   completedAt?: Date;
   durationMs?: number;
   onFork?: (target: AssistantForkTarget) => Promise<void> | void;
-  expanded?: boolean;
-  onToggleExpanded?: () => void;
-  resultSummary?: string;
 }
 
 const assistantTurnFooterStylesheet = StyleSheet.create((theme) => ({
@@ -607,18 +603,6 @@ const assistantTurnFooterStylesheet = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: STREAM_METADATA_FONT_SIZE,
   },
-  collapseLabel: {
-    color: theme.colors.foregroundMuted,
-    fontSize: STREAM_METADATA_FONT_SIZE,
-  },
-  collapseLabelRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[1],
-  },
-  collapseChevronExpanded: {
-    transform: [{ rotate: "180deg" }],
-  },
 }));
 
 const TIMESTAMP_REVEAL_MS = 3000;
@@ -634,9 +618,6 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
   completedAt,
   durationMs,
   onFork,
-  expanded = false,
-  onToggleExpanded,
-  resultSummary = "",
 }: AssistantTurnFooterProps) {
   const { t } = useTranslation();
   const [hovered, setHovered] = useState(false);
@@ -663,12 +644,6 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
     () => (completedAt ? formatMessageTimestamp(completedAt) : ""),
     [completedAt],
   );
-  const collapseLabel = useMemo(() => {
-    if (durationLabel && resultSummary) {
-      return `${durationLabel} · ${resultSummary}`;
-    }
-    return durationLabel || resultSummary;
-  }, [durationLabel, resultSummary]);
 
   const canSwap = Boolean(timestampLabel);
   const showTimestamp = canSwap && (isWeb ? hovered : pressedReveal);
@@ -695,28 +670,7 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
   const canFork = Boolean(onFork);
 
   let durationControl: ReactNode = null;
-  if (onToggleExpanded) {
-    const toggleHint = t(expanded ? "message.turnResult.collapse" : "message.turnResult.expand");
-    durationControl = (
-      <Pressable
-        onPress={onToggleExpanded}
-        testID="turn-summary-row"
-        accessibilityRole="button"
-        accessibilityLabel={collapseLabel ? `${collapseLabel}, ${toggleHint}` : toggleHint}
-      >
-        <View style={assistantTurnFooterStylesheet.collapseLabelRow}>
-          {collapseLabel ? (
-            <Text style={assistantTurnFooterStylesheet.collapseLabel}>{collapseLabel}</Text>
-          ) : null}
-          <ThemedChevronDownIcon
-            size={14}
-            uniProps={foregroundMutedColorMapping}
-            style={expanded ? assistantTurnFooterStylesheet.collapseChevronExpanded : undefined}
-          />
-        </View>
-      </Pressable>
-    );
-  } else if (durationLabel) {
+  if (durationLabel) {
     durationControl = (
       <Pressable
         onPress={handlePress}

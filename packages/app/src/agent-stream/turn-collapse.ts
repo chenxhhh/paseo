@@ -19,6 +19,7 @@ export interface TurnResultWebCard {
 
 export interface TurnCollapseSummary {
   anchorItemId: string;
+  headerItemId: string;
   hiddenItemCount: number;
   editedFileCount: number;
   commandCount: number;
@@ -29,6 +30,7 @@ export interface TurnCollapseSummary {
 export interface TurnCollapseProjection {
   tail: StreamItem[];
   summariesByAnchorItemId: Map<string, TurnCollapseSummary>;
+  summariesByHeaderItemId: Map<string, TurnCollapseSummary>;
 }
 
 const EMPTY_SUMMARIES = new Map<string, TurnCollapseSummary>();
@@ -66,6 +68,10 @@ function findLastAssistant(response: StreamItem[]): StreamItem | undefined {
     }
   }
   return undefined;
+}
+
+function findFirstUserMessage(response: StreamItem[]): StreamItem | undefined {
+  return response.find((item) => item.kind === "user_message");
 }
 
 function getEditedFilePath(detail: ToolCallDetail): string | null {
@@ -133,7 +139,11 @@ function isMechanicalNoise(item: StreamItem): boolean {
   return item.kind === "tool_call" || item.kind === "todo_list";
 }
 
-function buildSummary(response: StreamItem[], anchorItemId: string): TurnCollapseSummary | null {
+function buildSummary(
+  response: StreamItem[],
+  anchorItemId: string,
+  headerItemId: string,
+): TurnCollapseSummary | null {
   let hiddenItemCount = 0;
   for (const item of response) {
     if (isMechanicalNoise(item)) {
@@ -158,6 +168,7 @@ function buildSummary(response: StreamItem[], anchorItemId: string): TurnCollaps
   const files = [...filesByPath.values()];
   return {
     anchorItemId,
+    headerItemId,
     hiddenItemCount,
     editedFileCount: files.length,
     commandCount,
@@ -173,11 +184,16 @@ export function collapseCompletedTurns(input: {
   isTurnActive: boolean;
 }): TurnCollapseProjection {
   if (!input.enabled || input.tail.length === 0) {
-    return { tail: input.tail, summariesByAnchorItemId: EMPTY_SUMMARIES };
+    return {
+      tail: input.tail,
+      summariesByAnchorItemId: EMPTY_SUMMARIES,
+      summariesByHeaderItemId: EMPTY_SUMMARIES,
+    };
   }
 
   const responses = splitIntoResponses(input.tail);
-  const summaries = new Map<string, TurnCollapseSummary>();
+  const summariesByAnchorItemId = new Map<string, TurnCollapseSummary>();
+  const summariesByHeaderItemId = new Map<string, TurnCollapseSummary>();
   const nextTail: StreamItem[] = [];
   let collapsedAny = false;
 
@@ -198,9 +214,16 @@ export function collapseCompletedTurns(input: {
       continue;
     }
 
-    const summary = buildSummary(response, anchor.id);
+    const header = findFirstUserMessage(response);
+    if (!header) {
+      nextTail.push(...response);
+      continue;
+    }
+
+    const summary = buildSummary(response, anchor.id, header.id);
     if (summary) {
-      summaries.set(anchor.id, summary);
+      summariesByAnchorItemId.set(anchor.id, summary);
+      summariesByHeaderItemId.set(header.id, summary);
     }
 
     const passThrough = !summary || input.expandedAnchorItemIds.has(anchor.id);
@@ -220,9 +243,16 @@ export function collapseCompletedTurns(input: {
   if (!collapsedAny) {
     return {
       tail: input.tail,
-      summariesByAnchorItemId: summaries.size === 0 ? EMPTY_SUMMARIES : summaries,
+      summariesByAnchorItemId:
+        summariesByAnchorItemId.size === 0 ? EMPTY_SUMMARIES : summariesByAnchorItemId,
+      summariesByHeaderItemId:
+        summariesByHeaderItemId.size === 0 ? EMPTY_SUMMARIES : summariesByHeaderItemId,
     };
   }
 
-  return { tail: nextTail, summariesByAnchorItemId: summaries };
+  return {
+    tail: nextTail,
+    summariesByAnchorItemId,
+    summariesByHeaderItemId,
+  };
 }
