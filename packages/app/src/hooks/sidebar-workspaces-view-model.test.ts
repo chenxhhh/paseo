@@ -12,7 +12,10 @@ import {
   createSidebarWorkspaceEntry,
   deriveProjectStatusBucket,
   deriveSidebarLoadingState,
+  groupProjectWorkspaces,
   shouldShowSidebarHostLabels,
+  branchGroupCollapseKey,
+  worktreeGroupCollapseKey,
   type ProjectStatusSession,
   type SidebarProjectEntry,
   type SidebarWorkspacePlacement,
@@ -937,5 +940,466 @@ describe("deriveProjectStatusBucket", () => {
         },
       }),
     ).toBe("done");
+  });
+});
+
+function groupingPlacement(input: {
+  id: string;
+  kind: WorkspaceDescriptor["workspaceKind"];
+  directory: string;
+  projectRootPath?: string;
+  slug?: string;
+  branch?: string | null;
+}): {
+  placement: SidebarWorkspacePlacement;
+  entry: ReturnType<typeof createSidebarWorkspaceEntry>;
+} {
+  const descriptor: WorkspaceDescriptor = {
+    id: input.id,
+    projectId: "proj",
+    projectDisplayName: "repo",
+    projectRootPath: input.projectRootPath ?? "/repo",
+    workspaceDirectory: input.directory,
+    projectKind: "git",
+    workspaceKind: input.kind,
+    name: input.id,
+    title: null,
+    status: "done",
+    statusEnteredAt: null,
+    archivingAt: null,
+    diffStat: null,
+    scripts: [],
+    worktreeSlug: input.slug,
+    gitRuntime:
+      input.branch === undefined
+        ? undefined
+        : {
+            currentBranch: input.branch,
+            isDirty: false,
+            aheadOfOrigin: 0,
+          },
+  };
+  const entry = createSidebarWorkspaceEntry({ serverId: "srv", workspace: descriptor });
+  return {
+    placement: {
+      workspaceKey: entry.workspaceKey,
+      serverId: entry.serverId,
+      workspaceId: entry.workspaceId,
+      projectViewKey: "proj",
+      projectName: entry.projectName,
+      projectRootPath: entry.projectRootPath,
+      workspaceDirectory: entry.workspaceDirectory,
+      projectKind: entry.projectKind,
+      workspaceKind: entry.workspaceKind,
+      name: entry.name,
+    },
+    entry,
+  };
+}
+
+describe("groupProjectWorkspaces", () => {
+  it("keeps the main checkout first and groups worktrees by directory", () => {
+    const main = groupingPlacement({
+      id: "main",
+      kind: "local_checkout",
+      directory: "/repo",
+    });
+    const featureA = groupingPlacement({
+      id: "feature-a",
+      kind: "worktree",
+      directory: "/worktrees/feature",
+      slug: "feature",
+      branch: "feature",
+    });
+    const featureB = groupingPlacement({
+      id: "feature-b",
+      kind: "worktree",
+      directory: "/worktrees/feature",
+      slug: "feature",
+      branch: "feature",
+    });
+    const other = groupingPlacement({
+      id: "other",
+      kind: "worktree",
+      directory: "/worktrees/other",
+      slug: "other",
+      branch: "other-branch",
+    });
+
+    const result = groupProjectWorkspaces({
+      projectViewKey: "proj",
+      workspaces: [main.placement, featureA.placement, other.placement, featureB.placement],
+      workspaceEntriesByKey: new Map([
+        [main.entry.workspaceKey, main.entry],
+        [featureA.entry.workspaceKey, featureA.entry],
+        [featureB.entry.workspaceKey, featureB.entry],
+        [other.entry.workspaceKey, other.entry],
+      ]),
+    });
+
+    expect(result.ungrouped.map((placement) => placement.workspaceId)).toEqual(["main"]);
+    expect(result.branchGroups).toEqual([]);
+    expect(result.worktreeGroups.map((group) => group.label)).toEqual(["feature", "other"]);
+    expect(result.worktreeGroups[0]?.workspaces.map((placement) => placement.workspaceId)).toEqual([
+      "feature-a",
+      "feature-b",
+    ]);
+    expect(result.worktreeGroups[0]?.key).toBe(
+      worktreeGroupCollapseKey("proj", "/worktrees/feature"),
+    );
+    expect(result.worktreeGroups[1]?.branch).toBe("other-branch");
+  });
+
+  it("puts missing entries and worktrees at the project root into the ungrouped segment", () => {
+    const missing = groupingPlacement({
+      id: "missing",
+      kind: "worktree",
+      directory: "/worktrees/missing",
+    });
+    const atRoot = groupingPlacement({
+      id: "root-worktree",
+      kind: "worktree",
+      directory: "/repo",
+      projectRootPath: "/repo",
+    });
+    const owned = groupingPlacement({
+      id: "owned",
+      kind: "worktree",
+      directory: "/worktrees/owned",
+      slug: "owned",
+    });
+
+    const result = groupProjectWorkspaces({
+      projectViewKey: "proj",
+      workspaces: [missing.placement, atRoot.placement, owned.placement],
+      workspaceEntriesByKey: new Map([
+        [atRoot.entry.workspaceKey, atRoot.entry],
+        [owned.entry.workspaceKey, owned.entry],
+      ]),
+    });
+
+    expect(result.ungrouped.map((placement) => placement.workspaceId)).toEqual([
+      "missing",
+      "root-worktree",
+    ]);
+    expect(result.branchGroups).toEqual([]);
+    expect(result.worktreeGroups.map((group) => group.workspaces[0]?.workspaceId)).toEqual([
+      "owned",
+    ]);
+  });
+
+  it("groups a non-Paseo worktree by directory and uses the shortened path as the label", () => {
+    const external = groupingPlacement({
+      id: "external",
+      kind: "worktree",
+      directory: "/home/alice/external/feature",
+    });
+
+    const result = groupProjectWorkspaces({
+      projectViewKey: "proj",
+      workspaces: [external.placement],
+      workspaceEntriesByKey: new Map([[external.entry.workspaceKey, external.entry]]),
+    });
+
+    expect(result.ungrouped).toEqual([]);
+    expect(result.branchGroups).toEqual([]);
+    expect(result.worktreeGroups).toEqual([
+      expect.objectContaining({
+        kind: "worktree",
+        key: worktreeGroupCollapseKey("proj", "/home/alice/external/feature"),
+        label: "~/external/feature",
+        directory: "/home/alice/external/feature",
+      }),
+    ]);
+  });
+
+  it("puts worktrees with an empty directory into the ungrouped segment", () => {
+    const emptyDirectory = groupingPlacement({
+      id: "empty-dir",
+      kind: "worktree",
+      directory: "",
+    });
+
+    const result = groupProjectWorkspaces({
+      projectViewKey: "proj",
+      workspaces: [emptyDirectory.placement],
+      workspaceEntriesByKey: new Map([[emptyDirectory.entry.workspaceKey, emptyDirectory.entry]]),
+    });
+
+    expect(result.ungrouped.map((placement) => placement.workspaceId)).toEqual(["empty-dir"]);
+    expect(result.branchGroups).toEqual([]);
+    expect(result.worktreeGroups).toEqual([]);
+  });
+
+  it("groups non-worktree workspaces that share a branch", () => {
+    const first = groupingPlacement({
+      id: "checkout-a",
+      kind: "local_checkout",
+      directory: "/repo",
+      branch: "main",
+    });
+    const second = groupingPlacement({
+      id: "checkout-b",
+      kind: "local_checkout",
+      directory: "/repo",
+      branch: "main",
+    });
+
+    const result = groupProjectWorkspaces({
+      projectViewKey: "proj",
+      workspaces: [first.placement, second.placement],
+      workspaceEntriesByKey: new Map([
+        [first.entry.workspaceKey, first.entry],
+        [second.entry.workspaceKey, second.entry],
+      ]),
+    });
+
+    expect(result.ungrouped).toEqual([]);
+    expect(result.worktreeGroups).toEqual([]);
+    expect(result.branchGroups).toEqual([
+      expect.objectContaining({
+        kind: "branch",
+        key: branchGroupCollapseKey("proj", "main"),
+        label: "main",
+        branch: "main",
+      }),
+    ]);
+    expect(result.branchGroups[0]?.workspaces.map((placement) => placement.workspaceId)).toEqual([
+      "checkout-a",
+      "checkout-b",
+    ]);
+  });
+
+  it("keeps a null branch in the ungrouped segment", () => {
+    const detached = groupingPlacement({
+      id: "detached",
+      kind: "local_checkout",
+      directory: "/repo",
+      branch: null,
+    });
+    const onMain = groupingPlacement({
+      id: "on-main",
+      kind: "local_checkout",
+      directory: "/repo",
+      branch: "main",
+    });
+
+    const result = groupProjectWorkspaces({
+      projectViewKey: "proj",
+      workspaces: [detached.placement, onMain.placement],
+      workspaceEntriesByKey: new Map([
+        [detached.entry.workspaceKey, detached.entry],
+        [onMain.entry.workspaceKey, onMain.entry],
+      ]),
+    });
+
+    expect(result.ungrouped.map((placement) => placement.workspaceId)).toEqual(["detached"]);
+    expect(result.branchGroups.map((group) => group.label)).toEqual(["main"]);
+    expect(result.worktreeGroups).toEqual([]);
+  });
+
+  it("keeps a missing entry in the ungrouped segment", () => {
+    const missing = groupingPlacement({
+      id: "missing",
+      kind: "local_checkout",
+      directory: "/repo",
+      branch: "main",
+    });
+    const hydrated = groupingPlacement({
+      id: "hydrated",
+      kind: "local_checkout",
+      directory: "/repo",
+      branch: "main",
+    });
+
+    const result = groupProjectWorkspaces({
+      projectViewKey: "proj",
+      workspaces: [missing.placement, hydrated.placement],
+      workspaceEntriesByKey: new Map([[hydrated.entry.workspaceKey, hydrated.entry]]),
+    });
+
+    expect(result.ungrouped.map((placement) => placement.workspaceId)).toEqual(["missing"]);
+    expect(result.branchGroups[0]?.workspaces.map((placement) => placement.workspaceId)).toEqual([
+      "hydrated",
+    ]);
+  });
+
+  it("does not put worktree rows into a branch group even when the branch matches", () => {
+    const checkout = groupingPlacement({
+      id: "checkout",
+      kind: "local_checkout",
+      directory: "/repo",
+      branch: "feature",
+    });
+    const worktree = groupingPlacement({
+      id: "worktree",
+      kind: "worktree",
+      directory: "/worktrees/feature",
+      slug: "feature",
+      branch: "feature",
+    });
+
+    const result = groupProjectWorkspaces({
+      projectViewKey: "proj",
+      workspaces: [checkout.placement, worktree.placement],
+      workspaceEntriesByKey: new Map([
+        [checkout.entry.workspaceKey, checkout.entry],
+        [worktree.entry.workspaceKey, worktree.entry],
+      ]),
+    });
+
+    expect(result.ungrouped).toEqual([]);
+    expect(result.branchGroups[0]?.workspaces.map((placement) => placement.workspaceId)).toEqual([
+      "checkout",
+    ]);
+    expect(result.worktreeGroups[0]?.workspaces.map((placement) => placement.workspaceId)).toEqual([
+      "worktree",
+    ]);
+  });
+
+  it("orders ungrouped, then branch groups, then worktree groups by first member in flat order", () => {
+    const worktreeFirst = groupingPlacement({
+      id: "wt-first",
+      kind: "worktree",
+      directory: "/worktrees/first",
+      slug: "first",
+      branch: "first",
+    });
+    const onMain = groupingPlacement({
+      id: "on-main",
+      kind: "local_checkout",
+      directory: "/repo",
+      branch: "main",
+    });
+    const missing = groupingPlacement({
+      id: "missing",
+      kind: "local_checkout",
+      directory: "/repo",
+      branch: "main",
+    });
+    const onDevelop = groupingPlacement({
+      id: "on-develop",
+      kind: "local_checkout",
+      directory: "/repo",
+      branch: "develop",
+    });
+    const onMainLater = groupingPlacement({
+      id: "on-main-later",
+      kind: "local_checkout",
+      directory: "/repo",
+      branch: "main",
+    });
+    const worktreeSecond = groupingPlacement({
+      id: "wt-second",
+      kind: "worktree",
+      directory: "/worktrees/second",
+      slug: "second",
+      branch: "second",
+    });
+
+    const result = groupProjectWorkspaces({
+      projectViewKey: "proj",
+      workspaces: [
+        worktreeFirst.placement,
+        onMain.placement,
+        missing.placement,
+        onDevelop.placement,
+        onMainLater.placement,
+        worktreeSecond.placement,
+      ],
+      workspaceEntriesByKey: new Map([
+        [worktreeFirst.entry.workspaceKey, worktreeFirst.entry],
+        [onMain.entry.workspaceKey, onMain.entry],
+        [onDevelop.entry.workspaceKey, onDevelop.entry],
+        [onMainLater.entry.workspaceKey, onMainLater.entry],
+        [worktreeSecond.entry.workspaceKey, worktreeSecond.entry],
+      ]),
+    });
+
+    expect(result.ungrouped.map((placement) => placement.workspaceId)).toEqual(["missing"]);
+    expect(result.branchGroups.map((group) => group.label)).toEqual(["main", "develop"]);
+    expect(result.branchGroups[0]?.workspaces.map((placement) => placement.workspaceId)).toEqual([
+      "on-main",
+      "on-main-later",
+    ]);
+    expect(result.worktreeGroups.map((group) => group.label)).toEqual(["first", "second"]);
+  });
+
+  it("keeps a fully ungrouped project as a single ungrouped list", () => {
+    const first = groupingPlacement({
+      id: "dir-a",
+      kind: "directory",
+      directory: "/docs/a",
+    });
+    const second = groupingPlacement({
+      id: "dir-b",
+      kind: "directory",
+      directory: "/docs/b",
+    });
+    const workspaces = [first.placement, second.placement];
+
+    const result = groupProjectWorkspaces({
+      projectViewKey: "proj",
+      workspaces,
+      workspaceEntriesByKey: new Map([
+        [first.entry.workspaceKey, first.entry],
+        [second.entry.workspaceKey, second.entry],
+      ]),
+    });
+
+    expect(result.ungrouped).toEqual(workspaces);
+    expect(result.branchGroups).toEqual([]);
+    expect(result.worktreeGroups).toEqual([]);
+  });
+
+  it("treats branch names as case-sensitive keys", () => {
+    const lower = groupingPlacement({
+      id: "lower",
+      kind: "local_checkout",
+      directory: "/repo",
+      branch: "main",
+    });
+    const upper = groupingPlacement({
+      id: "upper",
+      kind: "local_checkout",
+      directory: "/repo",
+      branch: "Main",
+    });
+
+    const result = groupProjectWorkspaces({
+      projectViewKey: "proj",
+      workspaces: [lower.placement, upper.placement],
+      workspaceEntriesByKey: new Map([
+        [lower.entry.workspaceKey, lower.entry],
+        [upper.entry.workspaceKey, upper.entry],
+      ]),
+    });
+
+    expect(result.branchGroups.map((group) => group.label)).toEqual(["main", "Main"]);
+    expect(result.branchGroups[0]?.key).toBe(branchGroupCollapseKey("proj", "main"));
+    expect(result.branchGroups[1]?.key).toBe(branchGroupCollapseKey("proj", "Main"));
+  });
+
+  it("puts a worktree at the project root with a known branch into a branch group", () => {
+    const atRoot = groupingPlacement({
+      id: "root-worktree",
+      kind: "worktree",
+      directory: "/repo",
+      projectRootPath: "/repo",
+      branch: "main",
+    });
+
+    const result = groupProjectWorkspaces({
+      projectViewKey: "proj",
+      workspaces: [atRoot.placement],
+      workspaceEntriesByKey: new Map([[atRoot.entry.workspaceKey, atRoot.entry]]),
+    });
+
+    expect(result.ungrouped).toEqual([]);
+    expect(result.worktreeGroups).toEqual([]);
+    expect(result.branchGroups[0]?.workspaces.map((placement) => placement.workspaceId)).toEqual([
+      "root-worktree",
+    ]);
+    expect(result.branchGroups[0]?.key).toBe(branchGroupCollapseKey("proj", "main"));
   });
 });

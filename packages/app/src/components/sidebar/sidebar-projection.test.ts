@@ -11,6 +11,13 @@ function makeWorkspace(
   statusBucket: SidebarWorkspaceEntry["statusBucket"] = "done",
   labels: string[] = [],
   projectViewKey = "project",
+  extras?: {
+    workspaceKind?: SidebarWorkspaceEntry["workspaceKind"];
+    workspaceDirectory?: string;
+    workspaceDirectoryLabel?: string;
+    projectRootPath?: string;
+    currentBranch?: string | null;
+  },
 ) {
   const placement: SidebarWorkspacePlacement = {
     workspaceKey: `srv:${id}`,
@@ -19,15 +26,17 @@ function makeWorkspace(
     projectViewKey,
     projectName: "Project",
     projectKind: "git",
-    workspaceKind: "worktree",
+    workspaceKind: extras?.workspaceKind ?? "worktree",
     name: id,
+    projectRootPath: extras?.projectRootPath,
+    workspaceDirectory: extras?.workspaceDirectory,
   };
   const entry: SidebarWorkspaceEntry = {
     ...placement,
-    workspaceDirectory: "",
-    workspaceDirectoryLabel: "",
+    workspaceDirectory: extras?.workspaceDirectory ?? "",
+    workspaceDirectoryLabel: extras?.workspaceDirectoryLabel ?? "",
     title: null,
-    currentBranch: null,
+    currentBranch: extras?.currentBranch ?? null,
     statusBucket,
     statusEnteredAt: null,
     archivingAt: null,
@@ -171,6 +180,115 @@ describe("buildSidebarProjection", () => {
 
     expect(projection.shortcutModel.shortcutTargets).toEqual([
       { serverId: "srv", workspaceId: "unpinned" },
+    ]);
+  });
+
+  it("splits project shortcut sections around worktree groups and omits collapsed groups", () => {
+    const main = makeWorkspace("main", "done", [], "project", {
+      workspaceKind: "local_checkout",
+      workspaceDirectory: "/repo",
+      projectRootPath: "/repo",
+    });
+    const feature = makeWorkspace("feature", "running", [], "project", {
+      workspaceKind: "worktree",
+      workspaceDirectory: "/worktrees/feature",
+      workspaceDirectoryLabel: "feature",
+      projectRootPath: "/repo",
+      currentBranch: "feature",
+    });
+    const other = makeWorkspace("other", "done", [], "project", {
+      workspaceKind: "worktree",
+      workspaceDirectory: "/worktrees/other",
+      workspaceDirectoryLabel: "other",
+      projectRootPath: "/repo",
+    });
+    const input = {
+      ...projectionInput(),
+      projects: [makeProject([main.placement, feature.placement, other.placement])],
+      pinnedKeys: { pinnedWorkspaceKeys: [], pinnedAtByKey: {} },
+      workspaceEntriesByKey: new Map([
+        [main.entry.workspaceKey, main.entry],
+        [feature.entry.workspaceKey, feature.entry],
+        [other.entry.workspaceKey, other.entry],
+      ]),
+      collapsedWorkspaceGroupKeys: new Set(["project::worktree::/worktrees/other"]),
+    };
+
+    const projection = buildSidebarProjection(input);
+
+    expect(projection.shortcutModel.shortcutTargets).toEqual([
+      { serverId: "srv", workspaceId: "main" },
+      { serverId: "srv", workspaceId: "feature" },
+    ]);
+  });
+
+  it("keeps a single project shortcut section when there are no groups", () => {
+    const withoutGroups = buildSidebarProjection(projectionInput());
+    const mainOnly = makeWorkspace("unpinned", "needs_input", [], "project", {
+      workspaceKind: "local_checkout",
+      workspaceDirectory: "/repo",
+      projectRootPath: "/repo",
+    });
+    const withHydratedMain = buildSidebarProjection({
+      ...projectionInput(),
+      workspaceEntriesByKey: new Map([
+        ...projectionInput().workspaceEntriesByKey,
+        [mainOnly.entry.workspaceKey, mainOnly.entry],
+      ]),
+    });
+
+    expect(withoutGroups.shortcutModel.shortcutTargets).toEqual(
+      withHydratedMain.shortcutModel.shortcutTargets,
+    );
+    expect(withoutGroups.shortcutModel.shortcutTargets).toEqual([
+      { serverId: "srv", workspaceId: "pinned" },
+      { serverId: "srv", workspaceId: "unpinned" },
+    ]);
+  });
+
+  it("splits project shortcut sections around branch groups and omits collapsed groups", () => {
+    const ungrouped = makeWorkspace("detached", "done", [], "project", {
+      workspaceKind: "local_checkout",
+      workspaceDirectory: "/repo",
+      projectRootPath: "/repo",
+    });
+    const first = makeWorkspace("checkout-a", "running", [], "project", {
+      workspaceKind: "local_checkout",
+      workspaceDirectory: "/repo",
+      projectRootPath: "/repo",
+      currentBranch: "main",
+    });
+    const second = makeWorkspace("checkout-b", "done", [], "project", {
+      workspaceKind: "local_checkout",
+      workspaceDirectory: "/repo",
+      projectRootPath: "/repo",
+      currentBranch: "main",
+    });
+    const input = {
+      ...projectionInput(),
+      projects: [makeProject([ungrouped.placement, first.placement, second.placement])],
+      pinnedKeys: { pinnedWorkspaceKeys: [], pinnedAtByKey: {} },
+      workspaceEntriesByKey: new Map([
+        [ungrouped.entry.workspaceKey, ungrouped.entry],
+        [first.entry.workspaceKey, first.entry],
+        [second.entry.workspaceKey, second.entry],
+      ]),
+      collapsedWorkspaceGroupKeys: new Set(["project::branch::main"]),
+    };
+
+    const collapsed = buildSidebarProjection(input);
+    const expanded = buildSidebarProjection({
+      ...input,
+      collapsedWorkspaceGroupKeys: new Set<string>(),
+    });
+
+    expect(collapsed.shortcutModel.shortcutTargets).toEqual([
+      { serverId: "srv", workspaceId: "detached" },
+    ]);
+    expect(expanded.shortcutModel.shortcutTargets).toEqual([
+      { serverId: "srv", workspaceId: "detached" },
+      { serverId: "srv", workspaceId: "checkout-a" },
+      { serverId: "srv", workspaceId: "checkout-b" },
     ]);
   });
 });
