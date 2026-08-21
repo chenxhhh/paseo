@@ -1799,6 +1799,14 @@ export const ja: TranslationResources = {
       one: "Paseoを{{count}}回呼び出し",
       other: "Paseoを{{count}}回呼び出し",
     },
+    thoughts: {
+      one: "思考{{count}}",
+      other: "思考{{count}}",
+    },
+    todos: {
+      one: "ToDo {{count}}件",
+      other: "ToDo {{count}}件",
+    },
     and: "および",
   },
   renameModal: {

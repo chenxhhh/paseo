@@ -1791,6 +1791,14 @@ export const ko: TranslationResources = {
       one: "Paseo를 {{count}}회 호출함",
       other: "Paseo를 {{count}}회 호출함",
     },
+    thoughts: {
+      one: "생각 {{count}}",
+      other: "생각 {{count}}",
+    },
+    todos: {
+      one: "할 일 {{count}}개",
+      other: "할 일 {{count}}개",
+    },
     and: "그리고",
   },
   renameModal: {

@@ -1761,6 +1761,14 @@ export const zhCN: TranslationResources = {
       one: "调用了 Paseo {{count}} 次",
       other: "调用了 Paseo {{count}} 次",
     },
+    thoughts: {
+      one: "思考 {{count}}",
+      other: "思考 {{count}}",
+    },
+    todos: {
+      one: "{{count}} 项待办",
+      other: "{{count}} 项待办",
+    },
     and: "并",
   },
   renameModal: {

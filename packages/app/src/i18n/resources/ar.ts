@@ -1781,6 +1781,14 @@ export const ar: TranslationResources = {
       one: "استدعى Paseo {{count}} مرة",
       other: "استدعى Paseo {{count}} مرات",
     },
+    thoughts: {
+      one: "{{count}} فكرة",
+      other: "{{count}} أفكار",
+    },
+    todos: {
+      one: "{{count}} مهمة",
+      other: "{{count}} مهام",
+    },
     and: "و",
   },
   renameModal: {

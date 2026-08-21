@@ -1791,6 +1791,14 @@ export const en = {
       one: "called Paseo {{count}} time",
       other: "called Paseo {{count}} times",
     },
+    thoughts: {
+      one: "{{count}} thought",
+      other: "{{count}} thoughts",
+    },
+    todos: {
+      one: "{{count}} todo",
+      other: "{{count}} todos",
+    },
     and: "and",
   },
   renameModal: {
