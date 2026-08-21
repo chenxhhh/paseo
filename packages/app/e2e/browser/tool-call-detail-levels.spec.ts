@@ -61,7 +61,14 @@ test("auto level collapses a finished turn behind a summary row and file cards",
     await expect(page.getByText("Cycle 1", { exact: true })).toBeVisible();
     await expectLocatorAbove(header, closingReply);
     await expect(page.getByTestId("balanced-tool-call-group")).toHaveCount(0);
-    await expect(page.getByTestId("tool-call-badge")).toHaveCount(0);
+    // Tool verb badges are hidden by the collapse; the thought row keeps its
+    // own "Thinking" disclosure badge, which shares the tool-call-badge testID.
+    for (const verb of ["Read", "Grep", "Edited", "Ran"]) {
+      await expect(page.getByTestId("tool-call-badge").filter({ hasText: verb })).toHaveCount(0);
+    }
+    await expect(
+      page.getByTestId("tool-call-badge").filter({ hasText: "Thinking" }),
+    ).toHaveCount(1);
 
     const fileCard = page.getByTestId("turn-result-file-card");
     await expect(fileCard).toBeVisible();
@@ -81,7 +88,9 @@ test("auto level collapses a finished turn behind a summary row and file cards",
 
     await header.click();
     await expect(page.getByTestId("balanced-tool-call-group")).toHaveCount(0);
-    await expect(page.getByTestId("tool-call-badge")).toHaveCount(0);
+    await expect(
+      page.getByTestId("tool-call-badge").filter({ hasText: "Edited" }),
+    ).toHaveCount(0);
   } finally {
     await agent.cleanup();
   }
