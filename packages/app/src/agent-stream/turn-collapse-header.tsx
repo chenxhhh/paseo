@@ -8,11 +8,6 @@ import type { Theme } from "@/styles/theme";
 import type { TurnCollapseSummary } from "./turn-collapse";
 import { formatTurnCollapseHeaderLabel } from "./turn-collapse-header-label";
 
-export {
-  formatAggregatedDiffStat,
-  formatTurnCollapseHeaderLabel,
-} from "./turn-collapse-header-label";
-
 const ThemedChevronDown = withUnistyles(ChevronDown);
 const foregroundMutedColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
