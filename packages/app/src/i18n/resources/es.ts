@@ -1990,7 +1990,7 @@ export const es: TranslationResources = {
         accessibilityLabel: "Seleccionar visualización de llamadas a herramientas ({{value}})",
         options: {
           overview: "Resumen",
-          auto: "Automático",
+          auto: "Cajón",
           detailed: "Detalle completo",
         },
       },

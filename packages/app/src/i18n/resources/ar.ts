@@ -1940,7 +1940,7 @@ export const ar: TranslationResources = {
         accessibilityLabel: "حدد عرض استدعاءات الأدوات ({{value}})",
         options: {
           overview: "ملخص",
-          auto: "تلقائي",
+          auto: "درج",
           detailed: "التفاصيل الكاملة",
         },
       },

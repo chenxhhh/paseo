@@ -1,14 +1,15 @@
 import { test, expect } from "../support/fixtures";
 import type { Locator, Page } from "@playwright/test";
+import { openSettings } from "../support/helpers/app";
 import { expectComposerVisible } from "../support/helpers/composer";
 import { openAgentRoute, seedMockAgentWorkspace } from "../support/helpers/mock-agent";
+import { clickSettingsBackToWorkspace, openSettingsSection } from "../support/helpers/settings";
 
-// The mock provider streams one cycle of: read → grep → (assistant boundary) →
-// edit (oldString/newString + unifiedDiff) → shell → (assistant boundary).
-// Auto mode keeps narration and thinking visible, hides tool/todo rows behind
-// a collapse header under the user bubble, and keeps result cards on the
-// completed-turn footer. Expanding the header reveals the balanced process
-// rows (noise badges beside Edited/Ran) directly below it.
+// The mock provider streams one cycle of: intro assistant → reasoning → read →
+// grep → mid assistant ("Cycle 1") → edit (oldString/newString + unifiedDiff) →
+// shell → closing assistant. Drawer mode keeps the user bubble, collapse
+// header, closing reply, and result cards; everything else (thinking, mid
+// narration, tools) goes in the drawer until the header is expanded.
 
 async function seedFinishedAndOpen(page: Page, storageValue?: string) {
   if (storageValue) {
@@ -51,6 +52,7 @@ test("auto level collapses a finished turn behind a summary row and file cards",
   try {
     const header = page.getByTestId("turn-collapse-header");
     await expect(header).toBeVisible({ timeout: 60_000 });
+    await expect(header).toContainText("Worked for");
     await expect(header).toContainText("edited 1 file");
     await expect(header).toContainText("+5");
     await expect(header).toContainText("-2");
@@ -58,17 +60,12 @@ test("auto level collapses a finished turn behind a summary row and file cards",
 
     const closingReply = page.getByText("The change should keep scroll-to-bottom");
     await expect(closingReply).toBeVisible();
-    await expect(page.getByText("Cycle 1", { exact: true })).toBeVisible();
+    await expect(page.getByText("Cycle 1", { exact: true })).toHaveCount(0);
     await expectLocatorAbove(header, closingReply);
     await expect(page.getByTestId("balanced-tool-call-group")).toHaveCount(0);
-    // Tool verb badges are hidden by the collapse; the thought row keeps its
-    // own "Thinking" disclosure badge, which shares the tool-call-badge testID.
-    for (const verb of ["Read", "Grep", "Edited", "Ran"]) {
+    for (const verb of ["Read", "Grep", "Edited", "Ran", "Thinking"]) {
       await expect(page.getByTestId("tool-call-badge").filter({ hasText: verb })).toHaveCount(0);
     }
-    await expect(
-      page.getByTestId("tool-call-badge").filter({ hasText: "Thinking" }),
-    ).toHaveCount(1);
 
     const fileCard = page.getByTestId("turn-result-file-card");
     await expect(fileCard).toBeVisible();
@@ -88,60 +85,29 @@ test("auto level collapses a finished turn behind a summary row and file cards",
 
     await header.click();
     await expect(page.getByTestId("balanced-tool-call-group")).toHaveCount(0);
-    await expect(
-      page.getByTestId("tool-call-badge").filter({ hasText: "Edited" }),
-    ).toHaveCount(0);
+    await expect(page.getByTestId("tool-call-badge").filter({ hasText: "Edited" })).toHaveCount(0);
   } finally {
     await agent.cleanup();
   }
 });
 
-test("header menu switches between the three detail levels", async ({ page }) => {
+test("appearance settings switch the timeline onto the drawer level", async ({ page }) => {
   test.setTimeout(120_000);
   const agent = await seedFinishedAndOpen(page);
   try {
     await expect(
       page.getByTestId("tool-call-badge").filter({ hasText: "Read" }).first(),
     ).toBeVisible({ timeout: 60_000 });
-    await expect(page.getByTestId("tool-call-group")).toHaveCount(0);
     await expect(page.getByTestId("turn-collapse-header")).toHaveCount(0);
 
-    await page.getByTestId("tool-call-detail-menu-trigger").click();
-    await expect(page.getByTestId("tool-call-detail-menu-detailed")).toBeVisible();
-    await expect(page.getByTestId("tool-call-detail-menu-auto")).toBeVisible();
-    await expect(page.getByTestId("tool-call-detail-menu-overview")).toBeVisible();
+    await openSettings(page);
+    await openSettingsSection(page, "appearance");
+    await page.getByLabel("Select tool call display (Full detail)").click();
+    await page.getByRole("menuitem", { name: "Drawer", exact: true }).click();
+    await clickSettingsBackToWorkspace(page);
+    await expectComposerVisible(page);
 
-    await page.getByTestId("tool-call-detail-menu-auto").click();
     await expect(page.getByTestId("turn-collapse-header")).toBeVisible({ timeout: 30_000 });
-
-    await page.getByTestId("tool-call-detail-menu-trigger").click();
-    await page.getByTestId("tool-call-detail-menu-overview").click();
-    await expect(page.getByTestId("tool-call-group").first()).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByTestId("turn-collapse-header")).toHaveCount(0);
-  } finally {
-    await agent.cleanup();
-  }
-});
-
-test("Ctrl+Alt+D cycles the detail level", async ({ page }) => {
-  test.setTimeout(120_000);
-  const agent = await seedFinishedAndOpen(page);
-  try {
-    await expect(
-      page.getByTestId("tool-call-badge").filter({ hasText: "Read" }).first(),
-    ).toBeVisible({ timeout: 60_000 });
-
-    await page.keyboard.press("Control+Alt+d");
-    await expect(page.getByTestId("turn-collapse-header")).toBeVisible({ timeout: 30_000 });
-
-    await page.keyboard.press("Control+Alt+d");
-    await expect(page.getByTestId("tool-call-group").first()).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByTestId("turn-collapse-header")).toHaveCount(0);
-
-    await page.keyboard.press("Control+Alt+d");
-    await expect(
-      page.getByTestId("tool-call-badge").filter({ hasText: "Read" }).first(),
-    ).toBeVisible({ timeout: 30_000 });
   } finally {
     await agent.cleanup();
   }

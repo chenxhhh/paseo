@@ -2004,7 +2004,7 @@ export const en = {
         accessibilityLabel: "Select tool call display ({{value}})",
         options: {
           overview: "Summary",
-          auto: "Auto",
+          auto: "Drawer",
           detailed: "Full detail",
         },
       },

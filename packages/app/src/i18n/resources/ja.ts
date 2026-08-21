@@ -1957,7 +1957,7 @@ export const ja: TranslationResources = {
         accessibilityLabel: "ツール呼び出しの表示を選択（{{value}}）",
         options: {
           overview: "要約",
-          auto: "自動",
+          auto: "ドロワー",
           detailed: "すべての詳細",
         },
       },

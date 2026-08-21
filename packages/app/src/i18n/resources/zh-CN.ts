@@ -1917,7 +1917,7 @@ export const zhCN: TranslationResources = {
         accessibilityLabel: "选择工具调用显示方式（{{value}}）",
         options: {
           overview: "摘要",
-          auto: "自动",
+          auto: "抽屉",
           detailed: "完整详情",
         },
       },

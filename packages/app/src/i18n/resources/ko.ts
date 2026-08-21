@@ -1951,7 +1951,7 @@ export const ko: TranslationResources = {
         accessibilityLabel: "도구 호출 표시 선택({{value}})",
         options: {
           overview: "요약",
-          auto: "자동",
+          auto: "서랍",
           detailed: "전체 세부정보",
         },
       },

@@ -1974,7 +1974,7 @@ export const ptBR: TranslationResources = {
         accessibilityLabel: "Selecionar exibição de chamadas de ferramentas ({{value}})",
         options: {
           overview: "Resumo",
-          auto: "Automático",
+          auto: "Gaveta",
           detailed: "Detalhes completos",
         },
       },
