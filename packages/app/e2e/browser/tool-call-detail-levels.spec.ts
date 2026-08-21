@@ -8,8 +8,9 @@ import { clickSettingsBackToWorkspace, openSettingsSection } from "../support/he
 // The mock provider streams one cycle of: intro assistant → reasoning → read →
 // grep → mid assistant ("Cycle 1") → edit (oldString/newString + unifiedDiff) →
 // shell → closing assistant. Drawer mode keeps the user bubble, collapse
-// header, closing reply, and result cards; everything else (thinking, mid
-// narration, tools) goes in the drawer until the header is expanded.
+// header, closing reply, and result cards. Expanding the turn reveals process
+// run rows for consecutive tools/thoughts; those rows expand to today's
+// per-call badges.
 
 async function seedFinishedAndOpen(page: Page, storageValue?: string) {
   if (storageValue) {
@@ -74,16 +75,21 @@ test("auto level collapses a finished turn behind a summary row and file cards",
     await expect(page.getByTestId("turn-result-web-card")).toHaveCount(0);
 
     await header.click();
-    const processGroup = page.getByTestId("balanced-tool-call-group").first();
-    await expect(processGroup).toBeVisible({
-      timeout: 30_000,
-    });
-    await expectLocatorAbove(header, processGroup);
+    const runRow = page.getByTestId("process-run-row").first();
+    await expect(runRow).toBeVisible({ timeout: 30_000 });
+    await expectLocatorAbove(header, runRow);
+    await expect(page.getByTestId("tool-call-badge")).toHaveCount(0);
+
+    await runRow.click();
     await expect(
-      page.getByTestId("tool-call-badge").filter({ hasText: "Edited" }).first(),
+      page.getByTestId("tool-call-badge").filter({ hasText: "Read" }).first(),
     ).toBeVisible({ timeout: 30_000 });
 
+    await runRow.click();
+    await expect(page.getByTestId("tool-call-badge")).toHaveCount(0);
+
     await header.click();
+    await expect(page.getByTestId("process-run-row")).toHaveCount(0);
     await expect(page.getByTestId("balanced-tool-call-group")).toHaveCount(0);
     await expect(page.getByTestId("tool-call-badge").filter({ hasText: "Edited" })).toHaveCount(0);
   } finally {
