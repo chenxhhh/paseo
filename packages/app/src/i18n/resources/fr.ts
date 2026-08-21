@@ -2175,7 +2175,6 @@ export const fr: TranslationResources = {
         toggleFocusMode: "Basculer le mode de mise au point",
         toggleExplorerPaneMaximization: "Basculer l’agrandissement du volet Explorateur",
         cycleTheme: "Thème du cycle",
-        cycleToolCallDetail: "Parcourir l’affichage des appels d’outils",
         focusMessageInput: "Saisie du message de focus",
         cycleAgentMode: "Parcourir les modes de l'agent",
         toggleVoiceMode: "Changer le mode vocal",

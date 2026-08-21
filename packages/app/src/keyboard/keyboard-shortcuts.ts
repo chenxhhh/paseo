@@ -159,7 +159,6 @@ export const SHORTCUT_HELP_ROW_ORDER: Record<ShortcutSectionId, readonly string[
     "show-shortcuts",
     "toggle-settings",
     "cycle-theme",
-    "cycle-tool-call-detail",
   ],
   workspaces: [
     "new-agent",
@@ -244,7 +243,6 @@ const SHORTCUT_HELP_LABEL_KEYS: Record<string, string> = {
   "toggle-settings": "settings.shortcuts.help.toggleSettings",
   "toggle-focus": "settings.shortcuts.help.toggleFocusMode",
   "cycle-theme": "settings.shortcuts.help.cycleTheme",
-  "cycle-tool-call-detail": "settings.shortcuts.help.cycleToolCallDetail",
   "focus-message-input": "settings.shortcuts.help.focusMessageInput",
   "cycle-agent-mode": "settings.shortcuts.help.cycleAgentMode",
   "voice-toggle": "settings.shortcuts.help.toggleVoiceMode",
@@ -1069,30 +1067,6 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
       id: "cycle-theme",
       section: "general",
       label: "Cycle theme",
-    },
-  },
-
-  // --- Tool call detail level cycling ---
-  {
-    id: "tool-call-detail-cycle-cmd-alt-d-mac",
-    action: "toolCalls.cycleDetailLevel",
-    combo: "Cmd+Alt+D",
-    when: { mac: true, commandCenter: false },
-    help: {
-      id: "cycle-tool-call-detail",
-      section: "general",
-      label: "Cycle tool call display",
-    },
-  },
-  {
-    id: "tool-call-detail-cycle-ctrl-alt-d-non-mac",
-    action: "toolCalls.cycleDetailLevel",
-    combo: "Ctrl+Alt+D",
-    when: { mac: false, commandCenter: false, terminal: false },
-    help: {
-      id: "cycle-tool-call-detail",
-      section: "general",
-      label: "Cycle tool call display",
     },
   },
 

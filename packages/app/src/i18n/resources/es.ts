@@ -2171,7 +2171,6 @@ export const es: TranslationResources = {
         toggleFocusMode: "Alternar modo de enfoque",
         toggleExplorerPaneMaximization: "Alternar maximización del panel Explorador",
         cycleTheme: "Tema del ciclo",
-        cycleToolCallDetail: "Alternar visualización de llamadas a herramientas",
         focusMessageInput: "Entrada de mensaje de enfoque",
         cycleAgentMode: "Alternar modo del agente",
         toggleVoiceMode: "Alternar modo de voz",

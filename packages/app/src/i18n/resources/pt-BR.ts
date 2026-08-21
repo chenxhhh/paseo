@@ -2154,7 +2154,6 @@ export const ptBR: TranslationResources = {
         toggleFocusMode: "Alternar modo de foco",
         toggleExplorerPaneMaximization: "Alternar maximização do painel Explorador",
         cycleTheme: "Alternar tema",
-        cycleToolCallDetail: "Alternar exibição de chamadas de ferramentas",
         focusMessageInput: "Focar entrada de mensagem",
         cycleAgentMode: "Alternar modo do agente",
         toggleVoiceMode: "Alternar modo de voz",

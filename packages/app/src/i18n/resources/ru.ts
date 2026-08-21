@@ -2160,7 +2160,6 @@ export const ru: TranslationResources = {
         toggleFocusMode: "Переключить режим фокусировки",
         toggleExplorerPaneMaximization: "Переключить разворачивание панели Проводника",
         cycleTheme: "Циклическая тема",
-        cycleToolCallDetail: "Циклически менять отображение вызовов инструментов",
         focusMessageInput: "Фокус ввода сообщения",
         cycleAgentMode: "Переключить режим агента",
         toggleVoiceMode: "Переключить голосовой режим",

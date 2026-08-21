@@ -2131,7 +2131,6 @@ export const ko: TranslationResources = {
         toggleFocusMode: "집중 모드 토글",
         toggleExplorerPaneMaximization: "탐색기 창 최대화 전환",
         cycleTheme: "테마 순환",
-        cycleToolCallDetail: "도구 호출 표시 순환",
         focusMessageInput: "메시지 입력란에 포커스",
         cycleAgentMode: "에이전트 모드 전환",
         toggleVoiceMode: "음성 모드 토글",

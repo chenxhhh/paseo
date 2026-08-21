@@ -47,7 +47,6 @@ export function useKeyboardShortcuts({
   toggleBothSidebars,
   exitFocusMode,
   cycleTheme,
-  cycleToolCallDetail,
 }: {
   enabled: boolean;
   isMobile: boolean;
@@ -56,7 +55,6 @@ export function useKeyboardShortcuts({
   toggleBothSidebars?: () => void;
   exitFocusMode: () => void;
   cycleTheme?: () => void;
-  cycleToolCallDetail?: () => void;
 }) {
   const keyboardActionDispatcher = useKeyboardActionDispatcher();
   const pathname = usePathname();
@@ -161,7 +159,6 @@ export function useKeyboardShortcuts({
       "toggle-agent-list": toggleAgentList,
       "toggle-both-sidebars": toggleBothSidebars,
       "cycle-theme": cycleTheme,
-      "cycle-tool-call-detail": cycleToolCallDetail,
     };
 
     const performShortcutAction = (
@@ -406,7 +403,6 @@ export function useKeyboardShortcuts({
   }, [
     bindings,
     cycleTheme,
-    cycleToolCallDetail,
     enabled,
     exitFocusMode,
     activeWorkspaceSelection,
