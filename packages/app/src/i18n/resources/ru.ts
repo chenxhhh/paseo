@@ -1968,7 +1968,7 @@ export const ru: TranslationResources = {
         accessibilityLabel: "Выбрать отображение вызовов инструментов ({{value}})",
         options: {
           overview: "Сводка",
-          balanced: "Сбалансированно",
+          auto: "Авто",
           detailed: "Полная детализация",
         },
       },

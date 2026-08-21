@@ -33,12 +33,9 @@ async function seedFinishedAndOpen(page: Page, storageValue?: string) {
   return agent;
 }
 
-test("balanced level folds noise into badges beside signal rows", async ({ page }) => {
+test("auto level folds noise into badges beside signal rows", async ({ page }) => {
   test.setTimeout(120_000);
-  const agent = await seedFinishedAndOpen(
-    page,
-    JSON.stringify({ toolCallDetailLevel: "balanced" }),
-  );
+  const agent = await seedFinishedAndOpen(page, JSON.stringify({ toolCallDetailLevel: "auto" }));
   try {
     const noiseBadge = page.getByTestId("balanced-tool-call-group").first();
     await expect(noiseBadge).toBeVisible({ timeout: 60_000 });
@@ -71,7 +68,7 @@ test("header menu switches between the three detail levels", async ({ page }) =>
     await expect(page.getByTestId("balanced-tool-call-group")).toHaveCount(0);
 
     await page.getByTestId("tool-call-detail-menu-trigger").click();
-    await page.getByTestId("tool-call-detail-menu-balanced").click();
+    await page.getByTestId("tool-call-detail-menu-auto").click();
     await expect(page.getByTestId("balanced-tool-call-group").first()).toBeVisible({
       timeout: 30_000,
     });

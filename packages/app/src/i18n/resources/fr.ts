@@ -1984,7 +1984,7 @@ export const fr: TranslationResources = {
         accessibilityLabel: "Sélectionner l’affichage des appels d’outils ({{value}})",
         options: {
           overview: "Résumé",
-          balanced: "Équilibré",
+          auto: "Auto",
           detailed: "Détails complets",
         },
       },

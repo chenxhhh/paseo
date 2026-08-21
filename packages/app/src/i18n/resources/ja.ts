@@ -1948,7 +1948,7 @@ export const ja: TranslationResources = {
         accessibilityLabel: "ツール呼び出しの表示を選択（{{value}}）",
         options: {
           overview: "要約",
-          balanced: "バランス",
+          auto: "自動",
           detailed: "すべての詳細",
         },
       },

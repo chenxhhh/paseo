@@ -1908,7 +1908,7 @@ export const zhCN: TranslationResources = {
         accessibilityLabel: "选择工具调用显示方式（{{value}}）",
         options: {
           overview: "摘要",
-          balanced: "均衡",
+          auto: "自动",
           detailed: "完整详情",
         },
       },

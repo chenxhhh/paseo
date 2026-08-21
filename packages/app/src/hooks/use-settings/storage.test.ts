@@ -461,14 +461,14 @@ describe("appearance settings", () => {
     expect((await loadAppSettingsFromStorage(deps)).toolCallDetailLevel).toBe("detailed");
   });
 
-  it("round-trips the balanced tool call detail level", async () => {
+  it("migrates the stored balanced tool call detail level to auto", async () => {
     const deps = makeDeps({
       storage: createInMemoryKeyValueStorage({
         [APP_SETTINGS_KEY]: JSON.stringify({ toolCallDetailLevel: "balanced" }),
       }),
     });
 
-    expect((await loadAppSettingsFromStorage(deps)).toolCallDetailLevel).toBe("balanced");
+    expect((await loadAppSettingsFromStorage(deps)).toolCallDetailLevel).toBe("auto");
   });
 
   it("migrates a switched-off checks row item to the hidden checks display", async () => {

@@ -2,7 +2,7 @@ import type { ToolCallDetailLevel } from "@/hooks/use-settings/storage";
 
 export const TOOL_CALL_DETAIL_LEVEL_ORDER: readonly ToolCallDetailLevel[] = [
   "detailed",
-  "balanced",
+  "auto",
   "overview",
 ];
 

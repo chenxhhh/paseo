@@ -1931,7 +1931,7 @@ export const ar: TranslationResources = {
         accessibilityLabel: "حدد عرض استدعاءات الأدوات ({{value}})",
         options: {
           overview: "ملخص",
-          balanced: "متوازن",
+          auto: "تلقائي",
           detailed: "التفاصيل الكاملة",
         },
       },

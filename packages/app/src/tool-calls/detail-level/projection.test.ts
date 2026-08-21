@@ -468,7 +468,7 @@ describe("balanced tool call detail level", () => {
     const search = toolCall("5", { type: "search", query: "paseo" });
     const tail = [readA, readB, edit, shell, search, assistant("boundary")];
 
-    const prepared = prepareToolCallHistory("balanced", tail);
+    const prepared = prepareToolCallHistory("auto", tail);
     if (!prepared) {
       throw new Error("Balanced history must be prepared");
     }
@@ -501,7 +501,7 @@ describe("balanced tool call detail level", () => {
       assistant("boundary"),
     ];
 
-    const prepared = prepareToolCallHistory("balanced", tail);
+    const prepared = prepareToolCallHistory("auto", tail);
     if (!prepared) {
       throw new Error("Balanced history must be prepared");
     }
@@ -520,7 +520,7 @@ describe("balanced tool call detail level", () => {
     );
     const tail = [read, thinking, assistant("boundary")];
 
-    const prepared = prepareToolCallHistory("balanced", tail);
+    const prepared = prepareToolCallHistory("auto", tail);
     if (!prepared) {
       throw new Error("Balanced history must be prepared");
     }
@@ -537,14 +537,14 @@ describe("balanced tool call detail level", () => {
   it("grows a live noise segment and updates the retained history host", () => {
     const read1 = toolCall("1", { type: "read", filePath: "/repo/a.ts" });
     const tail = [read1];
-    const prepared = prepareToolCallHistory("balanced", tail);
+    const prepared = prepareToolCallHistory("auto", tail);
     if (!prepared) {
       throw new Error("Balanced history must be prepared");
     }
 
     const read2 = toolCall("2", { type: "read", filePath: "/repo/b.ts" });
     const grown = project({
-      level: "balanced",
+      level: "auto",
       tail,
       head: [read2],
       isTurnActive: true,
@@ -559,7 +559,7 @@ describe("balanced tool call detail level", () => {
 
     const edit3 = toolCall("3", { type: "edit", filePath: "/repo/a.ts" });
     const extended = project({
-      level: "balanced",
+      level: "auto",
       tail,
       head: [read2, edit3],
       isTurnActive: true,
@@ -575,17 +575,17 @@ describe("balanced tool call detail level", () => {
   it("keeps segmentation host ids stable as the head run grows", () => {
     const read1 = toolCall("1", { type: "read", filePath: "/repo/a.ts" });
     const edit2 = toolCall("2", { type: "edit", filePath: "/repo/a.ts" });
-    const prepared = prepareToolCallHistory("balanced", []);
+    const prepared = prepareToolCallHistory("auto", []);
 
     const first = project({
-      level: "balanced",
+      level: "auto",
       head: [read1, edit2],
       isTurnActive: true,
       preparedHistory: prepared,
     });
     const read3 = toolCall("3", { type: "read", filePath: "/repo/b.ts" });
     const second = project({
-      level: "balanced",
+      level: "auto",
       head: [read1, edit2, read3],
       isTurnActive: true,
       preparedHistory: prepared,
@@ -604,10 +604,10 @@ describe("balanced tool call detail level", () => {
 
   it("keeps a trailing noise segment unsealed while a call runs", () => {
     const read1 = toolCall("1", { type: "read", filePath: "/repo/a.ts" }, { status: "running" });
-    const prepared = prepareToolCallHistory("balanced", []);
+    const prepared = prepareToolCallHistory("auto", []);
 
     const active = project({
-      level: "balanced",
+      level: "auto",
       head: [read1],
       isTurnActive: true,
       preparedHistory: prepared,
@@ -619,7 +619,7 @@ describe("balanced tool call detail level", () => {
     });
 
     const runningIdle = project({
-      level: "balanced",
+      level: "auto",
       head: [read1],
       isTurnActive: false,
       preparedHistory: prepared,
@@ -631,10 +631,10 @@ describe("balanced tool call detail level", () => {
 
   it("seals an idle trailing noise segment with only completed calls", () => {
     const read1 = toolCall("1", { type: "read", filePath: "/repo/a.ts" });
-    const prepared = prepareToolCallHistory("balanced", []);
+    const prepared = prepareToolCallHistory("auto", []);
 
     const idle = project({
-      level: "balanced",
+      level: "auto",
       head: [read1],
       isTurnActive: false,
       preparedHistory: prepared,
@@ -647,7 +647,7 @@ describe("balanced tool call detail level", () => {
   it("counts fetch calls into fetchCount, not otherToolCount", () => {
     const fetch = toolCall("1", { type: "fetch", url: "https://paseo.sh" });
     const shell = toolCall("2", { type: "shell", command: "npm test" });
-    const result = project({ level: "balanced", head: [fetch, shell] });
+    const result = project({ level: "auto", head: [fetch, shell] });
 
     expect(result.groupsByHostId.get("1")).toMatchObject({
       summary: { fetchCount: 1, otherToolCount: 0 },

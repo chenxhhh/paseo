@@ -23,6 +23,10 @@ export interface ToolCallDetailProjection extends GroupedToolCalls<ToolCallDetai
 
 const EMPTY_TOOL_CALL_GROUPS = new Map<string, ToolCallDetailGroup>();
 
+function resolveProjectionLevel(level: ToolCallDetailLevel): "overview" | "balanced" | "detailed" {
+  return level === "auto" ? "balanced" : level;
+}
+
 function getBuildHostsForLevel(
   level: "overview" | "balanced",
 ): BuildToolCallHosts<ToolCallDetailGroup> {
@@ -36,12 +40,13 @@ export function prepareToolCallHistory(
   level: ToolCallDetailLevel,
   tail: StreamItem[],
 ): PreparedToolCallHistory | null {
-  if (level === "detailed") {
+  const resolved = resolveProjectionLevel(level);
+  if (resolved === "detailed") {
     return null;
   }
   return {
-    mode: level,
-    grouped: prepareGroupedHistory({ tail, buildHosts: getBuildHostsForLevel(level) }),
+    mode: resolved,
+    grouped: prepareGroupedHistory({ tail, buildHosts: getBuildHostsForLevel(resolved) }),
   };
 }
 
@@ -52,7 +57,8 @@ export function projectToolCallDetailLevel(input: {
   preparedHistory: PreparedToolCallHistory | null;
   isTurnActive: boolean;
 }): ToolCallDetailProjection {
-  if (input.level === "detailed") {
+  const resolved = resolveProjectionLevel(input.level);
+  if (resolved === "detailed") {
     return {
       tail: input.tail,
       head: input.head,
@@ -60,13 +66,13 @@ export function projectToolCallDetailLevel(input: {
       historyGroupUpdatesByHostId: EMPTY_TOOL_CALL_GROUPS,
     };
   }
-  if (!input.preparedHistory || input.preparedHistory.mode !== input.level) {
-    throw new Error(`Missing prepared ${input.level} tool call history`);
+  if (!input.preparedHistory || input.preparedHistory.mode !== resolved) {
+    throw new Error(`Missing prepared ${resolved} tool call history`);
   }
   return groupLiveToolCalls({
     history: input.preparedHistory.grouped,
     head: input.head,
     isTurnActive: input.isTurnActive,
-    buildHosts: getBuildHostsForLevel(input.level),
+    buildHosts: getBuildHostsForLevel(resolved),
   });
 }
