@@ -3,6 +3,8 @@ import type { Logger } from "pino";
 import type { TerminalManager } from "../../../terminal/terminal-manager.js";
 import type { CreatePaseoWorktreeInput } from "../../paseo-worktree-service.js";
 import { expandUserPath, resolvePathFromBase } from "../../path-utils.js";
+import type { WorkspaceRegistry } from "../../workspace-registry.js";
+import { resolveInheritedProjectIdForWorktreeCreate } from "../../workspace-source.js";
 import { toWorktreeRequestError } from "../../worktree-errors.js";
 import type {
   AgentWorktreeSetupContinuation,
@@ -44,6 +46,7 @@ export interface CreateAgentCommandDependencies {
   terminalManager?: TerminalManager | null;
   providerSnapshotManager: Pick<ProviderSnapshotManager, "resolveCreateConfig">;
   createPaseoWorktree?: CreatePaseoWorktreeWorkflowFn;
+  workspaceRegistry?: Pick<WorkspaceRegistry, "get">;
   // Mints a fresh directory workspace for a cwd and returns its id.
   ensureWorkspaceForCreate?: EnsureWorkspaceForCreate;
 }
@@ -315,6 +318,7 @@ async function resolveMcpCreateAgent(
       cwd,
       worktree: input.worktree,
       initialPrompt: input.initialPrompt ?? "",
+      callerWorkspaceId: parentAgent?.workspaceId,
     });
   if (createdWorktree) input.onWorktreeCreated?.(createdWorktree);
 
@@ -507,6 +511,7 @@ async function resolveMcpCwd(params: {
   cwd: string;
   initialPrompt: string;
   worktree: CreateAgentFromMcpInput["worktree"];
+  callerWorkspaceId?: string;
 }): Promise<{
   resolvedCwd: string;
   setupContinuation?: AgentWorktreeSetupContinuation;
@@ -533,6 +538,11 @@ async function resolveMcpCwd(params: {
     throw new Error("baseBranch is required when creating a worktree");
   }
   const baseBranch = worktree.baseBranch;
+  const projectId = await resolveInheritedProjectIdForWorktreeCreate({
+    callerWorkspaceId: params.callerWorkspaceId,
+    resolvedSourceCwd: params.cwd,
+    workspaceRegistry: params.dependencies.workspaceRegistry,
+  });
   const createdWorktree = await createMcpWorktree({
     input: {
       cwd: params.cwd,
@@ -545,6 +555,7 @@ async function resolveMcpCwd(params: {
       runSetup: false,
       paseoHome: dependencies.paseoHome,
       worktreesRoot: dependencies.worktreesRoot,
+      ...(projectId ? { projectId } : {}),
     },
     createPaseoWorktree: dependencies.createPaseoWorktree,
     resolveDefaultBranch: baseBranch ? async () => baseBranch : undefined,

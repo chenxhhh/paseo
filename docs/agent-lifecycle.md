@@ -67,6 +67,8 @@ normal root agent immediately, and closing its still-open tab archives it.
 
 Runtime ownership is resolved from explicit workspace ID and caller context, never from `cwd`. Workspace creation is a separate operation with `local | worktree` isolation; agent creation only selects an existing workspace.
 
+Agent-scoped `create_workspace` and `create_agent` that cut a worktree inherit the caller's workspace `projectId` when the request omits `projectId`. An explicit `projectId` always wins. Inheritance does not apply when the source path sits outside the caller's workspace, or when the caller has no workspace / that workspace is archived; those fall through to path matching.
+
 Users can also detach an existing subagent from the subagents track. Detach is deliberately a manual lifecycle gesture, not an agent-facing MCP tool. It removes the parent and open-tab lifecycle labels: it does not stop, archive, move, or restart the agent. The agent keeps its current `cwd` and `workspaceId`, leaves the former parent's track, and behaves like a root agent for tab close, workspace activity, and future parent archive.
 
 `notifyOnFinish` defaults to `true` for agent-scoped creation and background prompt follow-ups because most delegated work needs to report back to the creating agent. Set it to `false` only for truly fire-and-forget agents or prompts.
