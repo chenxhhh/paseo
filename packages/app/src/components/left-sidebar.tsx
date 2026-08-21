@@ -98,8 +98,10 @@ interface SidebarSharedProps {
   isManualRefresh: boolean;
   groupMode: SidebarGroupMode;
   collapsedProjectKeys: ReadonlySet<string>;
+  collapsedWorkspaceGroupKeys: ReadonlySet<string>;
   shortcutIndexByWorkspaceKey: Map<string, number>;
   toggleProjectCollapsed: (projectViewKey: string) => void;
+  toggleWorkspaceGroupCollapsed: (workspaceGroupKey: string) => void;
   handleRefresh: () => void;
   handleOpenProject: () => void;
   handleHome: () => void;
@@ -159,7 +161,9 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
     projectIconTargets,
     pinnedGroups,
     collapsedProjectKeys,
+    collapsedWorkspaceGroupKeys,
     toggleProjectCollapsed,
+    toggleWorkspaceGroupCollapsed,
     groupMode,
     shortcutModel,
   } = useSidebarModel();
@@ -271,8 +275,10 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
     isManualRefresh,
     groupMode,
     collapsedProjectKeys,
+    collapsedWorkspaceGroupKeys,
     shortcutIndexByWorkspaceKey,
     toggleProjectCollapsed,
+    toggleWorkspaceGroupCollapsed,
     handleRefresh,
     labels,
     newWorkspaceKeys,
@@ -629,8 +635,10 @@ function MobileSidebar({
   isManualRefresh,
   groupMode,
   collapsedProjectKeys,
+  collapsedWorkspaceGroupKeys,
   shortcutIndexByWorkspaceKey,
   toggleProjectCollapsed,
+  toggleWorkspaceGroupCollapsed,
   handleRefresh,
   newWorkspaceKeys,
   handleOpenProject,
@@ -749,7 +757,9 @@ function MobileSidebar({
         ) : (
           <SidebarWorkspaceList
             collapsedProjectKeys={collapsedProjectKeys}
+            collapsedWorkspaceGroupKeys={collapsedWorkspaceGroupKeys}
             onToggleProjectCollapsed={toggleProjectCollapsed}
+            onToggleWorktreeGroupCollapsed={toggleWorkspaceGroupCollapsed}
             shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
             groupMode={groupMode}
             workspaceGroups={workspaceGroups}
@@ -797,8 +807,10 @@ function DesktopSidebar({
   isManualRefresh,
   groupMode,
   collapsedProjectKeys,
+  collapsedWorkspaceGroupKeys,
   shortcutIndexByWorkspaceKey,
   toggleProjectCollapsed,
+  toggleWorkspaceGroupCollapsed,
   handleRefresh,
   newWorkspaceKeys,
   handleOpenProject,
@@ -966,7 +978,9 @@ function DesktopSidebar({
         ) : (
           <SidebarWorkspaceList
             collapsedProjectKeys={collapsedProjectKeys}
+            collapsedWorkspaceGroupKeys={collapsedWorkspaceGroupKeys}
             onToggleProjectCollapsed={toggleProjectCollapsed}
+            onToggleWorktreeGroupCollapsed={toggleWorkspaceGroupCollapsed}
             shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
             groupMode={groupMode}
             workspaceGroups={workspaceGroups}

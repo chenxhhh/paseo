@@ -631,3 +631,141 @@ export function deriveSidebarLoadingState(input: {
   const isInitialLoad = isLoading && !input.hasProjects;
   return { isLoading, isInitialLoad, isRevalidating: false };
 }
+
+function normalizeWorkspaceDirectoryKey(value: string): string {
+  return value.replace(/\\/g, "/").replace(/\/+$/, "");
+}
+
+function areEquivalentWorkspaceDirectories(
+  left: string | undefined,
+  right: string | undefined,
+): boolean {
+  if (!left || !right) {
+    return false;
+  }
+  const compareAsWindows = /^[a-zA-Z]:[\\/]/.test(left) || /^[a-zA-Z]:[\\/]/.test(right);
+  const normalize = (value: string) => {
+    const normalized = normalizeWorkspaceDirectoryKey(value);
+    return compareAsWindows ? normalized.toLowerCase() : normalized;
+  };
+  return normalize(left) === normalize(right);
+}
+
+interface SidebarWorkspaceSubgroupBase {
+  key: string;
+  label: string;
+  branch: string | null;
+  workspaces: SidebarWorkspacePlacement[];
+}
+
+export interface SidebarBranchGroup extends SidebarWorkspaceSubgroupBase {
+  kind: "branch";
+}
+
+export interface SidebarWorktreeGroup extends SidebarWorkspaceSubgroupBase {
+  kind: "worktree";
+  directory: string;
+}
+
+export type SidebarWorkspaceSubgroup = SidebarBranchGroup | SidebarWorktreeGroup;
+
+export interface ProjectWorkspaceGrouping {
+  ungrouped: SidebarWorkspacePlacement[];
+  branchGroups: SidebarBranchGroup[];
+  worktreeGroups: SidebarWorktreeGroup[];
+}
+
+export function worktreeGroupCollapseKey(projectViewKey: string, directory: string): string {
+  return `${projectViewKey}::worktree::${normalizeWorkspaceDirectoryKey(directory)}`;
+}
+
+export function branchGroupCollapseKey(projectViewKey: string, branch: string): string {
+  return `${projectViewKey}::branch::${branch}`;
+}
+
+function isWorktreeSubgroupMember(entry: SidebarWorkspaceEntry): boolean {
+  if (entry.workspaceKind !== "worktree" || !entry.workspaceDirectory) {
+    return false;
+  }
+  return !areEquivalentWorkspaceDirectories(entry.workspaceDirectory, entry.projectRootPath);
+}
+
+function isBranchSubgroupMember(
+  entry: SidebarWorkspaceEntry,
+): entry is SidebarWorkspaceEntry & { currentBranch: string } {
+  if (!entry.currentBranch) {
+    return false;
+  }
+  if (entry.workspaceKind !== "worktree") {
+    return true;
+  }
+  return areEquivalentWorkspaceDirectories(entry.workspaceDirectory, entry.projectRootPath);
+}
+
+export function groupProjectWorkspaces(input: {
+  projectViewKey: string;
+  workspaces: readonly SidebarWorkspacePlacement[];
+  workspaceEntriesByKey: ReadonlyMap<string, SidebarWorkspaceEntry>;
+}): ProjectWorkspaceGrouping {
+  const ungrouped: SidebarWorkspacePlacement[] = [];
+  const branchGroupsByName = new Map<string, SidebarBranchGroup>();
+  const branchGroupOrder: string[] = [];
+  const worktreeGroupsByDirectory = new Map<string, SidebarWorktreeGroup>();
+  const worktreeGroupOrder: string[] = [];
+
+  for (const workspace of input.workspaces) {
+    const entry = input.workspaceEntriesByKey.get(workspace.workspaceKey);
+    if (!entry) {
+      ungrouped.push(workspace);
+      continue;
+    }
+    if (isWorktreeSubgroupMember(entry)) {
+      const directoryKey = normalizeWorkspaceDirectoryKey(entry.workspaceDirectory);
+      const existing = worktreeGroupsByDirectory.get(directoryKey);
+      if (existing) {
+        existing.workspaces.push(workspace);
+        continue;
+      }
+      worktreeGroupsByDirectory.set(directoryKey, {
+        kind: "worktree",
+        key: worktreeGroupCollapseKey(input.projectViewKey, entry.workspaceDirectory),
+        directory: entry.workspaceDirectory,
+        label: entry.workspaceDirectoryLabel,
+        branch: entry.currentBranch,
+        workspaces: [workspace],
+      });
+      worktreeGroupOrder.push(directoryKey);
+      continue;
+    }
+    if (isBranchSubgroupMember(entry)) {
+      const branchName = entry.currentBranch;
+      const existing = branchGroupsByName.get(branchName);
+      if (existing) {
+        existing.workspaces.push(workspace);
+        continue;
+      }
+      branchGroupsByName.set(branchName, {
+        kind: "branch",
+        key: branchGroupCollapseKey(input.projectViewKey, branchName),
+        label: branchName,
+        branch: branchName,
+        workspaces: [workspace],
+      });
+      branchGroupOrder.push(branchName);
+      continue;
+    }
+    ungrouped.push(workspace);
+  }
+
+  return {
+    ungrouped,
+    branchGroups: branchGroupOrder.flatMap((branchName) => {
+      const group = branchGroupsByName.get(branchName);
+      return group ? [group] : [];
+    }),
+    worktreeGroups: worktreeGroupOrder.flatMap((directoryKey) => {
+      const group = worktreeGroupsByDirectory.get(directoryKey);
+      return group ? [group] : [];
+    }),
+  };
+}

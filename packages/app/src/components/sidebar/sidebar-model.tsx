@@ -42,7 +42,9 @@ interface SidebarModel extends SidebarWorkspacesListResult {
   projectIconTargets: SidebarProjectIconTarget[];
   pinnedGroups: PinnedSidebarGroups;
   collapsedProjectKeys: ReadonlySet<string>;
+  collapsedWorkspaceGroupKeys: ReadonlySet<string>;
   toggleProjectCollapsed: (projectViewKey: string) => void;
+  toggleWorkspaceGroupCollapsed: (workspaceGroupKey: string) => void;
   shortcutModel: SidebarShortcutModel;
 }
 
@@ -72,6 +74,9 @@ export function SidebarModelProvider({
   const workspaceStatuses = useWorkspaceStatusStore((state) => state.statuses);
   const toggleProjectCollapsed = useSidebarCollapsedSectionsStore(
     (state) => state.toggleProjectCollapsed,
+  );
+  const toggleWorkspaceGroupCollapsed = useSidebarCollapsedSectionsStore(
+    (state) => state.toggleWorkspaceGroupCollapsed,
   );
   const availableLabelNames = useMemo(
     () => labelHosts.flatMap((host) => host.labels.map((label) => label.name)),
@@ -181,17 +186,21 @@ export function SidebarModelProvider({
       projectIconTargets: projection.projectIconTargets,
       pinnedGroups: projection.pinnedGroups,
       collapsedProjectKeys,
+      collapsedWorkspaceGroupKeys,
       toggleProjectCollapsed,
+      toggleWorkspaceGroupCollapsed,
       shortcutModel: projection.shortcutModel,
     }),
     [
       resolvedProjectFilters,
       collapsedProjectKeys,
+      collapsedWorkspaceGroupKeys,
       groupMode,
       list,
       filteredProjects,
       projection,
       toggleProjectCollapsed,
+      toggleWorkspaceGroupCollapsed,
       filteredWorkspaceEntriesByKey,
     ],
   );
