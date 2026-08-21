@@ -86,6 +86,7 @@ import { resolveBottomOverlayTailInset } from "./bottom-overlay-inset";
 import { layoutStream, type StreamLayoutItem, type TurnFooterHost } from "./layout";
 import { collapseCompletedTurns, type TurnCollapseSummary } from "./turn-collapse";
 import { TurnCollapseHeader } from "./turn-collapse-header";
+import { orderUserMessageCollapseHeader } from "./turn-collapse-header-order";
 import {
   type BottomAnchorLocalRequest,
   type BottomAnchorRouteRequest,
@@ -755,14 +756,22 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         if (!summary) {
           return message;
         }
+        const header = (
+          <UserMessageCollapseHeader
+            summary={summary}
+            expanded={expandedTurnAnchorIds.has(summary.anchorItemId)}
+            onToggleAnchor={setTurnAnchorExpanded}
+          />
+        );
+        const [first, second] = orderUserMessageCollapseHeader(
+          layoutItem.frameOrder,
+          message,
+          header,
+        );
         return (
           <>
-            {message}
-            <UserMessageCollapseHeader
-              summary={summary}
-              expanded={expandedTurnAnchorIds.has(summary.anchorItemId)}
-              onToggleAnchor={setTurnAnchorExpanded}
-            />
+            {first}
+            {second}
           </>
         );
       },
