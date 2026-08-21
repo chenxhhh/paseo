@@ -1180,6 +1180,7 @@ export const ru: TranslationResources = {
     isolation: {
       local: "Локально",
       worktree: "Новый worktree",
+      existingWorktree: "Существующий worktree",
       label: "Изоляция",
     },
     fields: {
@@ -1193,11 +1194,13 @@ export const ru: TranslationResources = {
       createWorktreeFailed: "Не удалось создать рабочее дерево.",
       composerStateRequired: "Требуется состояние композитора.",
       selectModel: "Выберите модель",
+      chooseWorktree: "Выберите worktree",
     },
     tooltips: {
       project: "Choose the project",
       host: "Choose the host",
       isolation: "Choose the isolation level",
+      existingWorktree: "Выберите существующий worktree",
       startingRef: "Выберите, с чего начать",
       launch: "Choose what to launch",
     },
@@ -1208,6 +1211,13 @@ export const ru: TranslationResources = {
       noMatchingRefs: "Нет подходящих ссылок.",
       searchPlaceholder: "Поиск филиалов и PR",
       title: "Начать с",
+    },
+    worktreePicker: {
+      title: "Worktree",
+      searchPlaceholder: "Поиск worktree",
+      noWorktrees: "Нет доступных worktree.",
+      inUse: "используется",
+      chooseWorktree: "Выбрать worktree",
     },
     launch: {
       title: "What to launch",

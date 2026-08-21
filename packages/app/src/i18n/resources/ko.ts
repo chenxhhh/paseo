@@ -1164,6 +1164,7 @@ export const ko: TranslationResources = {
     isolation: {
       local: "로컬",
       worktree: "새 워크트리",
+      existingWorktree: "기존 워크트리",
       label: "격리",
     },
     fields: {
@@ -1177,11 +1178,13 @@ export const ko: TranslationResources = {
       createWorktreeFailed: "워크트리를 생성하지 못했습니다",
       composerStateRequired: "작성기 상태가 필요합니다",
       selectModel: "모델을 선택하세요",
+      chooseWorktree: "워크트리를 선택하세요",
     },
     tooltips: {
       project: "Choose the project",
       host: "Choose the host",
       isolation: "Choose the isolation level",
+      existingWorktree: "기존 워크트리를 선택하세요",
       startingRef: "시작 위치를 선택하세요",
       launch: "Choose what to launch",
     },
@@ -1192,6 +1195,13 @@ export const ko: TranslationResources = {
       noMatchingRefs: "일치하는 ref가 없습니다.",
       searchPlaceholder: "브랜치와 PR 검색",
       title: "시작 위치",
+    },
+    worktreePicker: {
+      title: "워크트리",
+      searchPlaceholder: "워크트리 검색",
+      noWorktrees: "사용 가능한 워크트리가 없습니다.",
+      inUse: "사용 중",
+      chooseWorktree: "워크트리 선택",
     },
     launch: {
       title: "What to launch",

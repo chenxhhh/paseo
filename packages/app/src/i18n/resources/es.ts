@@ -1191,6 +1191,7 @@ export const es: TranslationResources = {
     isolation: {
       local: "Local",
       worktree: "Nuevo worktree",
+      existingWorktree: "Worktree existente",
       label: "Aislamiento",
     },
     fields: {
@@ -1204,11 +1205,13 @@ export const es: TranslationResources = {
       createWorktreeFailed: "No se pudo crear el árbol de trabajo",
       composerStateRequired: "Se requiere el estado del compositor",
       selectModel: "Selecciona un modelo",
+      chooseWorktree: "Elige un worktree",
     },
     tooltips: {
       project: "Choose the project",
       host: "Choose the host",
       isolation: "Choose the isolation level",
+      existingWorktree: "Elige un worktree existente",
       startingRef: "Elige por dónde empezar",
       launch: "Choose what to launch",
     },
@@ -1219,6 +1222,13 @@ export const es: TranslationResources = {
       noMatchingRefs: "No hay árbitros coincidentes.",
       searchPlaceholder: "Buscar sucursales y relaciones públicas",
       title: "Empezar desde",
+    },
+    worktreePicker: {
+      title: "Worktree",
+      searchPlaceholder: "Buscar worktrees",
+      noWorktrees: "No hay worktrees disponibles.",
+      inUse: "en uso",
+      chooseWorktree: "Elegir worktree",
     },
     launch: {
       title: "What to launch",

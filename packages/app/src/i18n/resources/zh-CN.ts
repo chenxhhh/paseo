@@ -1146,6 +1146,7 @@ export const zhCN: TranslationResources = {
     isolation: {
       local: "本地",
       worktree: "新建 worktree",
+      existingWorktree: "已有 worktree",
       label: "隔离",
     },
     fields: {
@@ -1159,11 +1160,13 @@ export const zhCN: TranslationResources = {
       createWorktreeFailed: "创建 worktree 失败",
       composerStateRequired: "Composer 状态必填",
       selectModel: "请选择模型",
+      chooseWorktree: "请选择 worktree",
     },
     tooltips: {
       project: "Choose the project",
       host: "Choose the host",
       isolation: "Choose the isolation level",
+      existingWorktree: "选择已有 worktree",
       startingRef: "选择起始位置",
       launch: "Choose what to launch",
     },
@@ -1174,6 +1177,13 @@ export const zhCN: TranslationResources = {
       noMatchingRefs: "没有匹配的 refs。",
       searchPlaceholder: "搜索分支和 PR",
       title: "起始位置",
+    },
+    worktreePicker: {
+      title: "Worktree",
+      searchPlaceholder: "搜索 worktree",
+      noWorktrees: "没有可用的 worktree。",
+      inUse: "使用中",
+      chooseWorktree: "选择 worktree",
     },
     launch: {
       title: "What to launch",
