@@ -5,18 +5,21 @@ import {
   formatTurnCollapseHeaderLabel,
 } from "./turn-collapse-header-label";
 
-function t(key: string, options: { count: number }): string {
+function t(key: string, options?: { count?: number; duration?: string }): string {
+  if (key === "message.turnResult.workedFor") {
+    return `Worked for ${options?.duration}`;
+  }
   if (key === "toolCallGroup.editedFiles.one") {
-    return `edited ${options.count} file`;
+    return `edited ${options?.count} file`;
   }
   if (key === "toolCallGroup.editedFiles.other") {
-    return `edited ${options.count} files`;
+    return `edited ${options?.count} files`;
   }
   if (key === "toolCallGroup.commands.one") {
-    return `ran ${options.count} command`;
+    return `ran ${options?.count} command`;
   }
   if (key === "toolCallGroup.commands.other") {
-    return `ran ${options.count} commands`;
+    return `ran ${options?.count} commands`;
   }
   return key;
 }
@@ -63,6 +66,24 @@ describe("formatAggregatedDiffStat", () => {
 });
 
 describe("formatTurnCollapseHeaderLabel", () => {
+  it("prepends the worked-for duration when durationMs is provided", () => {
+    expect(
+      formatTurnCollapseHeaderLabel(
+        summary({
+          editedFileCount: 3,
+          commandCount: 2,
+          files: [
+            { path: "/repo/a.ts", additions: 734, deletions: 2 },
+            { path: "/repo/b.ts", additions: 0, deletions: 5 },
+            { path: "/repo/c.ts", additions: 0, deletions: 0 },
+          ],
+        }),
+        t,
+        8_000,
+      ),
+    ).toBe("Worked for 8s · edited 3 files +734 -7 · ran 2 commands");
+  });
+
   it("appends aggregated +N -M after the edited-files phrase", () => {
     expect(
       formatTurnCollapseHeaderLabel(

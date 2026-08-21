@@ -144,10 +144,12 @@ function BottomOverlayInset({ height }: { height: number }) {
 const UserMessageCollapseHeader = memo(function UserMessageCollapseHeader({
   summary,
   expanded,
+  durationMs,
   onToggleAnchor,
 }: {
   summary: TurnCollapseSummary;
   expanded: boolean;
+  durationMs?: number;
   onToggleAnchor: (anchorItemId: string, expanded: boolean) => void;
 }) {
   const handleToggle = useCallback(
@@ -156,7 +158,14 @@ const UserMessageCollapseHeader = memo(function UserMessageCollapseHeader({
     },
     [onToggleAnchor, summary.anchorItemId],
   );
-  return <TurnCollapseHeader summary={summary} expanded={expanded} onToggle={handleToggle} />;
+  return (
+    <TurnCollapseHeader
+      summary={summary}
+      expanded={expanded}
+      durationMs={durationMs}
+      onToggle={handleToggle}
+    />
+  );
 });
 
 function renderPendingPermissionsNode(input: {
@@ -626,6 +635,23 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         streamRenderStrategy,
       ],
     );
+    const timingByAnchorItemId = useMemo(() => {
+      const next = new Map<string, number>();
+      function addHost(host: TurnFooterHost | null): void {
+        if (host?.timing === undefined) {
+          return;
+        }
+        next.set(host.itemId, host.timing.durationMs);
+      }
+      for (const item of streamLayout.history) {
+        addHost(item.completedFooter);
+      }
+      for (const item of streamLayout.liveHead) {
+        addHost(item.completedFooter);
+      }
+      addHost(streamLayout.auxiliaryTurnFooter);
+      return next;
+    }, [streamLayout.auxiliaryTurnFooter, streamLayout.history, streamLayout.liveHead]);
     const handleTimelineHistoryLoadError = useCallback(() => {
       toast?.error(t("agentStream.historyLoadFailed"));
     }, [t, toast]);
@@ -760,6 +786,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           <UserMessageCollapseHeader
             summary={summary}
             expanded={expandedTurnAnchorIds.has(summary.anchorItemId)}
+            durationMs={timingByAnchorItemId.get(summary.anchorItemId)}
             onToggleAnchor={setTurnAnchorExpanded}
           />
         );
@@ -784,6 +811,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         pendingClientMessageIds,
         resolvedServerId,
         setTurnAnchorExpanded,
+        timingByAnchorItemId,
       ],
     );
 

@@ -79,7 +79,7 @@ import type { MarkdownPhase } from "@/components/markdown/fence/types";
 import { splitMarkdownBlocks } from "@/utils/split-markdown-blocks";
 import { colorMarkdownLinkChildren } from "@/components/markdown/link-children";
 import { createAssistantMarkdownParser } from "@/utils/assistant-markdown-parser";
-import { formatDuration, formatMessageTimestamp } from "@/utils/time";
+import { formatDuration, formatMessageTimestamp, formatTurnWorkedForLabel } from "@/utils/time";
 import { writeMarkdownToRichClipboard } from "@/utils/rich-clipboard";
 import { getDefaultMarkdownClipboardEnvironment } from "@/utils/rich-clipboard-default-environment";
 import { setAssistantMarkdownBlockHeight } from "@/utils/assistant-message-height-estimate";
@@ -634,10 +634,7 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
   }, []);
 
   const durationLabel = useMemo(
-    () =>
-      durationMs !== undefined
-        ? t("message.turnResult.workedFor", { duration: formatDuration(durationMs) })
-        : "",
+    () => (durationMs !== undefined ? formatTurnWorkedForLabel(durationMs, t) : ""),
     [durationMs, t],
   );
   const timestampLabel = useMemo(

@@ -1,4 +1,5 @@
 import type { TurnCollapseSummary, TurnResultFileCard } from "./turn-collapse";
+import { formatTurnWorkedForLabel } from "@/utils/time";
 
 const compactFormatter = new Intl.NumberFormat("en-US", {
   notation: "compact",
@@ -28,9 +29,13 @@ export function formatAggregatedDiffStat(files: readonly TurnResultFileCard[]): 
 
 export function formatTurnCollapseHeaderLabel(
   summary: TurnCollapseSummary,
-  t: (key: string, options: { count: number }) => string,
+  t: (key: string, options: { count?: number; duration?: string }) => string,
+  durationMs?: number,
 ): string {
   const parts: string[] = [];
+  if (durationMs !== undefined) {
+    parts.push(formatTurnWorkedForLabel(durationMs, t));
+  }
   if (summary.editedFileCount > 0) {
     const filesPhrase = t(
       `toolCallGroup.editedFiles.${summary.editedFileCount === 1 ? "one" : "other"}`,

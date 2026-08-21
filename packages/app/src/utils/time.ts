@@ -168,3 +168,10 @@ export function formatDuration(durationMs: number): string {
   const remMinutes = totalMinutes % 60;
   return remMinutes === 0 ? `${hours}h` : `${hours}h ${remMinutes}m`;
 }
+
+export function formatTurnWorkedForLabel(
+  durationMs: number,
+  t: (key: string, options: { duration: string }) => string,
+): string {
+  return t("message.turnResult.workedFor", { duration: formatDuration(durationMs) });
+}

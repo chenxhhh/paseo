@@ -22,15 +22,20 @@ export interface TurnCollapseHeaderProps {
   summary: TurnCollapseSummary;
   expanded: boolean;
   onToggle: (expanded: boolean) => void;
+  durationMs?: number;
 }
 
 export const TurnCollapseHeader = memo(function TurnCollapseHeader({
   summary,
   expanded,
   onToggle,
+  durationMs,
 }: TurnCollapseHeaderProps) {
   const { t } = useTranslation();
-  const label = useMemo(() => formatTurnCollapseHeaderLabel(summary, t), [summary, t]);
+  const label = useMemo(
+    () => formatTurnCollapseHeaderLabel(summary, t, durationMs),
+    [durationMs, summary, t],
+  );
   const toggleHint = t(expanded ? "message.turnResult.collapse" : "message.turnResult.expand");
   const accessibilityState = useMemo(() => ({ expanded }), [expanded]);
   const handlePress = useCallback(() => {
