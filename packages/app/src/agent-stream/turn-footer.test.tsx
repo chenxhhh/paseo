@@ -68,6 +68,10 @@ vi.mock("@/components/synced-loader", () => ({
   SyncedLoader: () => <span data-testid="running-turn-loader" />,
 }));
 
+vi.mock("./turn-result-cards", () => ({
+  TurnResultCardsRow: () => <div data-testid="turn-result-cards" />,
+}));
+
 vi.mock("@/components/retained-panel", () => ({
   useRetainedPanelActive: () => true,
 }));

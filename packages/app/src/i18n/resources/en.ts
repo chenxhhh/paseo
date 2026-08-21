@@ -354,6 +354,10 @@ export const en = {
       workedFor: "Worked for {{duration}}",
       expand: "Show work from this turn",
       collapse: "Hide work from this turn",
+      moreFiles: "+{{count}} more",
+      changesSubtitle: "Open changes",
+      fileCardAccessibility: "Open changes to {{name}}",
+      webCardAccessibility: "Open {{title}}",
     },
   },
   importSession: {

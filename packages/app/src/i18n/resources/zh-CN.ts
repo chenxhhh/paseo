@@ -356,6 +356,10 @@ export const zhCN: TranslationResources = {
       workedFor: "工作了 {{duration}}",
       expand: "显示此回合的工作过程",
       collapse: "隐藏此回合的工作过程",
+      moreFiles: "+{{count}} 个文件",
+      changesSubtitle: "打开更改",
+      fileCardAccessibility: "打开 {{name}} 的更改",
+      webCardAccessibility: "打开 {{title}}",
     },
   },
   importSession: {

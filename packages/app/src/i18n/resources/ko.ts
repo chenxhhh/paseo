@@ -357,6 +357,10 @@ export const ko: TranslationResources = {
       workedFor: "{{duration}} 동안 작업함",
       expand: "이 턴의 작업 보기",
       collapse: "이 턴의 작업 숨기기",
+      moreFiles: "+{{count}}개 더",
+      changesSubtitle: "변경사항 열기",
+      fileCardAccessibility: "{{name}}의 변경사항 열기",
+      webCardAccessibility: "{{title}} 열기",
     },
   },
   importSession: {

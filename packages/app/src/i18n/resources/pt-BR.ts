@@ -359,6 +359,10 @@ export const ptBR: TranslationResources = {
       workedFor: "Trabalhou por {{duration}}",
       expand: "Mostrar o trabalho deste turno",
       collapse: "Ocultar o trabalho deste turno",
+      moreFiles: "+{{count}} mais",
+      changesSubtitle: "Abrir alterações",
+      fileCardAccessibility: "Abrir alterações de {{name}}",
+      webCardAccessibility: "Abrir {{title}}",
     },
   },
   importSession: {

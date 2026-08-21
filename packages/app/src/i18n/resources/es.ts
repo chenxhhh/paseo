@@ -359,6 +359,10 @@ export const es: TranslationResources = {
       workedFor: "Trabajó durante {{duration}}",
       expand: "Mostrar el trabajo de este turno",
       collapse: "Ocultar el trabajo de este turno",
+      moreFiles: "+{{count}} más",
+      changesSubtitle: "Abrir cambios",
+      fileCardAccessibility: "Abrir cambios de {{name}}",
+      webCardAccessibility: "Abrir {{title}}",
     },
   },
   importSession: {

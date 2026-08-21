@@ -360,6 +360,10 @@ export const fr: TranslationResources = {
       workedFor: "A travaillé pendant {{duration}}",
       expand: "Afficher le travail de ce tour",
       collapse: "Masquer le travail de ce tour",
+      moreFiles: "+{{count}} de plus",
+      changesSubtitle: "Ouvrir les modifications",
+      fileCardAccessibility: "Ouvrir les modifications de {{name}}",
+      webCardAccessibility: "Ouvrir {{title}}",
     },
   },
   importSession: {

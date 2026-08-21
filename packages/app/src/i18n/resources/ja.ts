@@ -359,6 +359,10 @@ export const ja: TranslationResources = {
       workedFor: "{{duration}} 作業しました",
       expand: "このターンの作業を表示",
       collapse: "このターンの作業を隠す",
+      moreFiles: "+{{count}} 件",
+      changesSubtitle: "変更を開く",
+      fileCardAccessibility: "{{name}} の変更を開く",
+      webCardAccessibility: "{{title}} を開く",
     },
   },
   importSession: {

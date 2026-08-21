@@ -358,6 +358,10 @@ export const ru: TranslationResources = {
       workedFor: "Работал {{duration}}",
       expand: "Показать работу этого хода",
       collapse: "Скрыть работу этого хода",
+      moreFiles: "+{{count}} ещё",
+      changesSubtitle: "Открыть изменения",
+      fileCardAccessibility: "Открыть изменения в {{name}}",
+      webCardAccessibility: "Открыть {{title}}",
     },
   },
   importSession: {

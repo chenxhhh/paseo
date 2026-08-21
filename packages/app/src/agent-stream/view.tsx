@@ -108,6 +108,8 @@ import { isWeb } from "@/constants/platform";
 import type { Theme } from "@/styles/theme";
 import { recordRenderProfileReasons } from "@/utils/render-profiler";
 import { useRetainedPanelActive } from "@/components/retained-panel";
+import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
+import { openExternalUrl } from "@/utils/open-external-url";
 
 function renderLiveAuxiliaryNode(input: {
   pendingPermissions: ReactNode;
@@ -356,6 +358,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     );
     const streamHead = providedStreamHead ?? sessionStreamHead;
     const forkAgent = useForkAgent({ serverId: resolvedServerId, toast, readOnly });
+    const openTabInFocusedPane = useWorkspaceLayoutStore((state) => state.openTabInFocusedPane);
     const supportsAgentForkContextCursor = useSessionStore(
       (state) =>
         state.sessions[resolvedServerId]?.serverInfo?.features?.agentForkContextCursor === true,
@@ -469,6 +472,38 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
 
     const handleToolCallOpenFile = useStableEvent((filePath: string) => {
       handleInlinePathPress({ raw: filePath, path: filePath }, "side");
+    });
+
+    const openTurnResultChanges = useStableEvent((focusPath?: string): boolean => {
+      if (isMobile || !context.workspaceId) {
+        return false;
+      }
+      const workspaceKey = buildWorkspaceTabPersistenceKey({
+        serverId: resolvedServerId,
+        workspaceId: context.workspaceId,
+      });
+      if (!workspaceKey) {
+        return false;
+      }
+      openTabInFocusedPane(workspaceKey, {
+        kind: "working_diff",
+        ...(focusPath ? { focusPath, focusRequestId: Date.now() } : {}),
+      });
+      return true;
+    });
+
+    const handleTurnResultFilePress = useStableEvent((path: string) => {
+      if (!openTurnResultChanges(path)) {
+        handleToolCallOpenFile(path);
+      }
+    });
+
+    const handleTurnResultChangesPress = useStableEvent(() => {
+      openTurnResultChanges();
+    });
+
+    const handleTurnResultWebPress = useStableEvent((url: string) => {
+      void openExternalUrl(url);
     });
 
     const handleForkAssistantTurn: AssistantTurnForkHandler = useStableEvent(
@@ -665,9 +700,19 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           summary,
           expanded: expandedTurnAnchorIds.has(host.itemId),
           onToggle: (expanded) => setTurnAnchorExpanded(host.itemId, expanded),
+          onOpenFile: handleTurnResultFilePress,
+          onOpenChanges: handleTurnResultChangesPress,
+          onOpenWebUrl: handleTurnResultWebPress,
         };
       },
-      [collapsedTurns.summariesByAnchorItemId, expandedTurnAnchorIds, setTurnAnchorExpanded],
+      [
+        collapsedTurns.summariesByAnchorItemId,
+        expandedTurnAnchorIds,
+        handleTurnResultChangesPress,
+        handleTurnResultFilePress,
+        handleTurnResultWebPress,
+        setTurnAnchorExpanded,
+      ],
     );
 
     const renderUserMessageItem = useCallback(

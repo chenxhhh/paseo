@@ -356,6 +356,10 @@ export const ar: TranslationResources = {
       workedFor: "عمل لمدة {{duration}}",
       expand: "إظهار عمل هذا الدور",
       collapse: "إخفاء عمل هذا الدور",
+      moreFiles: "+{{count}} المزيد",
+      changesSubtitle: "فتح التغييرات",
+      fileCardAccessibility: "فتح تغييرات {{name}}",
+      webCardAccessibility: "فتح {{title}}",
     },
   },
   importSession: {
