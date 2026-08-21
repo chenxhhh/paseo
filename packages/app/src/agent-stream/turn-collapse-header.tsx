@@ -6,6 +6,12 @@ import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { STREAM_METADATA_FONT_SIZE } from "@/components/message";
 import type { Theme } from "@/styles/theme";
 import type { TurnCollapseSummary } from "./turn-collapse";
+import { formatTurnCollapseHeaderLabel } from "./turn-collapse-header-label";
+
+export {
+  formatAggregatedDiffStat,
+  formatTurnCollapseHeaderLabel,
+} from "./turn-collapse-header-label";
 
 const ThemedChevronDown = withUnistyles(ChevronDown);
 const foregroundMutedColorMapping = (theme: Theme) => ({
@@ -24,24 +30,7 @@ export const TurnCollapseHeader = memo(function TurnCollapseHeader({
   onToggle,
 }: TurnCollapseHeaderProps) {
   const { t } = useTranslation();
-  const label = useMemo(() => {
-    const parts: string[] = [];
-    if (summary.editedFileCount > 0) {
-      parts.push(
-        t(`toolCallGroup.editedFiles.${summary.editedFileCount === 1 ? "one" : "other"}`, {
-          count: summary.editedFileCount,
-        }),
-      );
-    }
-    if (summary.commandCount > 0) {
-      parts.push(
-        t(`toolCallGroup.commands.${summary.commandCount === 1 ? "one" : "other"}`, {
-          count: summary.commandCount,
-        }),
-      );
-    }
-    return parts.join(" · ");
-  }, [summary, t]);
+  const label = useMemo(() => formatTurnCollapseHeaderLabel(summary, t), [summary, t]);
   const toggleHint = t(expanded ? "message.turnResult.collapse" : "message.turnResult.expand");
   const accessibilityState = useMemo(() => ({ expanded }), [expanded]);
   const handlePress = useCallback(() => {
@@ -85,6 +74,7 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 1,
     color: theme.colors.foregroundMuted,
     fontSize: STREAM_METADATA_FONT_SIZE,
+    fontVariant: ["tabular-nums"],
   },
   chevronExpanded: {
     transform: [{ rotate: "180deg" }],
