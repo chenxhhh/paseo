@@ -654,3 +654,15 @@ describe("balanced tool call detail level", () => {
     });
   });
 });
+
+describe("auto tool call detail level routing", () => {
+  it("prepares history with balanced mode and projects without throwing", () => {
+    const tail = [toolCall("1", { type: "read", filePath: "/repo/a.ts" }), assistant("boundary")];
+    const prepared = prepareToolCallHistory("auto", tail);
+    expect(prepared?.mode).toBe("balanced");
+
+    expect(() => project({ level: "auto", tail, preparedHistory: prepared })).not.toThrow();
+    const result = project({ level: "auto", tail, preparedHistory: prepared });
+    expect(result.groupsByHostId.get("1")).toMatchObject({ mode: "balanced" });
+  });
+});
