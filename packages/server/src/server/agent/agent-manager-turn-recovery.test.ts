@@ -333,6 +333,35 @@ describe("turn auto-recovery", () => {
     }
   });
 
+  test("an autonomous turn during backoff cancels the pending auto-continue", async () => {
+    vi.useFakeTimers();
+    const { manager, client, agent, workdir } = await setupManager([
+      { kind: "abnormal" },
+      { kind: "normal" },
+    ]);
+    try {
+      const run = manager.runAgent(agent.id, "hello");
+      await vi.advanceTimersByTimeAsync(0);
+      await run;
+      expect(recoveryNotices(manager, agent.id).length).toBeGreaterThan(0);
+
+      client.session?.pushEvent({
+        type: "turn_started",
+        provider: "codex",
+        turnId: "autonomous-1",
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(manager.getAgent(agent.id)?.activeTurnId).toBe("autonomous-1");
+      expect(manager.getAgent(agent.id)?.activeForegroundTurnId).toBeNull();
+
+      await vi.advanceTimersByTimeAsync(3_600_000);
+      expect(client.session?.prompts).toHaveLength(1);
+    } finally {
+      await manager.closeAgent(agent.id);
+      rmSync(workdir, { recursive: true, force: true });
+    }
+  });
+
   test("a real user message cancels the pending auto-continue", async () => {
     vi.useFakeTimers();
     const { manager, client, agent, workdir } = await setupManager([

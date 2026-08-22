@@ -4460,9 +4460,9 @@ export class AgentManager {
   /**
    * After a foreground turn settles, decide whether it ended abnormally
    * (rate limit / 5xx / network / silent stream death) and, if so, schedule an
-   * automatic "继续" continuation prompt with exponential backoff. This lets
-   * unattended agents survive transient provider failures instead of stopping
-   * silently until the user manually nudges them.
+   * automatic continuation prompt with linear backoff. This lets unattended
+   * agents survive transient provider failures instead of stopping silently
+   * until the user manually nudges them.
    */
   private maybeScheduleTurnRecovery(agent: ActiveManagedAgent, terminal: AgentStreamEvent): void {
     if (agent.pendingReplacement || agent.internal) {
