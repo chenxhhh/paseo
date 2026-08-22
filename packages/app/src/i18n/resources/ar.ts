@@ -352,6 +352,15 @@ export const ar: TranslationResources = {
       withTokens: "تم ضغط السياق (رموز{{tokens}}K)",
       completed: "تم ضغط السياق",
     },
+    turnResult: {
+      workedFor: "عمل لمدة {{duration}}",
+      expand: "إظهار عمل هذا الدور",
+      collapse: "إخفاء عمل هذا الدور",
+      moreFiles: "+{{count}} المزيد",
+      changesSubtitle: "فتح التغييرات",
+      fileCardAccessibility: "فتح تغييرات {{name}}",
+      webCardAccessibility: "فتح {{title}}",
+    },
   },
   importSession: {
     title: "جلسة الاستيراد",
@@ -1770,6 +1779,10 @@ export const ar: TranslationResources = {
       one: "بحث {{count}} مرة",
       other: "بحث {{count}} مرات",
     },
+    fetches: {
+      one: "جلب {{count}} صفحة",
+      other: "جلب {{count}} صفحات",
+    },
     otherTools: {
       one: "استخدم {{count}} أداة أخرى",
       other: "استخدم {{count}} أدوات أخرى",
@@ -1777,6 +1790,14 @@ export const ar: TranslationResources = {
     paseoCalls: {
       one: "استدعى Paseo {{count}} مرة",
       other: "استدعى Paseo {{count}} مرات",
+    },
+    thoughts: {
+      one: "{{count}} فكرة",
+      other: "{{count}} أفكار",
+    },
+    todos: {
+      one: "{{count}} مهمة",
+      other: "{{count}} مهام",
     },
     and: "و",
   },
@@ -1937,6 +1958,7 @@ export const ar: TranslationResources = {
         accessibilityLabel: "حدد عرض استدعاءات الأدوات ({{value}})",
         options: {
           overview: "ملخص",
+          auto: "درج",
           detailed: "التفاصيل الكاملة",
         },
       },

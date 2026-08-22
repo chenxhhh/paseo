@@ -65,6 +65,7 @@ import {
   projectToolCallDetailLevel,
 } from "@/tool-calls/detail-level/projection";
 import { OverviewToolCallGroupView } from "@/tool-calls/detail-level/overview/view";
+import { BalancedToolCallGroupView } from "@/tool-calls/detail-level/balanced/view";
 import { type AgentStreamRenderModel, buildAgentStreamRenderModel } from "./model";
 import { resolveStreamRenderStrategy } from "./strategy-resolver";
 import { type StreamSegmentRenderers, type StreamViewportHandle } from "./strategy";
@@ -78,10 +79,14 @@ import {
   TURN_FOOTER_BOTTOM_SPACING,
   type AssistantTurnForkHandler,
   type InFlightTurnForkHandler,
+  type TurnCollapsePresenter,
   type TurnContentStrategy,
 } from "./turn-footer";
 import { resolveBottomOverlayTailInset } from "./bottom-overlay-inset";
-import { layoutStream, type StreamLayoutItem } from "./layout";
+import { layoutStream, type StreamLayoutItem, type TurnFooterHost } from "./layout";
+import { buildTurnResultSummaries } from "./turn-collapse";
+import { collapseProcessRuns, type ProcessRunDigest } from "./process-run-collapse";
+import { ProcessRunRow } from "./process-run-row";
 import {
   type BottomAnchorLocalRequest,
   type BottomAnchorRouteRequest,
@@ -105,6 +110,8 @@ import { isWeb } from "@/constants/platform";
 import type { Theme } from "@/styles/theme";
 import { recordRenderProfileReasons } from "@/utils/render-profiler";
 import { useRetainedPanelActive } from "@/components/retained-panel";
+import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
+import { openExternalUrl } from "@/utils/open-external-url";
 
 function renderLiveAuxiliaryNode(input: {
   pendingPermissions: ReactNode;
@@ -134,6 +141,24 @@ function BottomOverlayInset({ height }: { height: number }) {
   return <View style={style} />;
 }
 
+const ProcessRunRowBinder = memo(function ProcessRunRowBinder({
+  digest,
+  expanded,
+  onToggleRun,
+}: {
+  digest: ProcessRunDigest;
+  expanded: boolean;
+  onToggleRun: (firstItemId: string, expanded: boolean) => void;
+}) {
+  const handleToggle = useCallback(
+    (next: boolean) => {
+      onToggleRun(digest.firstItemId, next);
+    },
+    [digest.firstItemId, onToggleRun],
+  );
+  return <ProcessRunRow digest={digest} expanded={expanded} onToggle={handleToggle} />;
+});
+
 function renderPendingPermissionsNode(input: {
   pendingPermissions: PendingPermission[];
   client: DaemonClient | null;
@@ -156,6 +181,7 @@ function renderStreamItemWithTurnFooter(input: {
   strategy: TurnContentStrategy;
   supportsTimelineCursor: boolean;
   onForkAssistantTurn?: AssistantTurnForkHandler;
+  turnCollapse?: TurnCollapsePresenter;
 }): ReactNode {
   if (!input.content) {
     return null;
@@ -170,6 +196,7 @@ function renderStreamItemWithTurnFooter(input: {
       startIndex={footerHost.startIndex}
       supportsTimelineCursor={input.supportsTimelineCursor}
       onForkAssistantTurn={input.onForkAssistantTurn}
+      turnCollapse={input.turnCollapse}
     />
   ) : null;
   const content = (
@@ -340,6 +367,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const [expandedToolCallGroupIds, setExpandedToolCallGroupIds] = useState<Set<string>>(
       new Set(),
     );
+    const [expandedProcessRunIds, setExpandedProcessRunIds] = useState<Set<string>>(new Set());
 
     // Get serverId (fallback to agent's serverId if not provided)
     const resolvedServerId = serverId ?? context.serverId ?? "";
@@ -350,6 +378,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     );
     const streamHead = providedStreamHead ?? sessionStreamHead;
     const forkAgent = useForkAgent({ serverId: resolvedServerId, toast, readOnly });
+    const openTabInFocusedPane = useWorkspaceLayoutStore((state) => state.openTabInFocusedPane);
     const supportsAgentForkContextCursor = useSessionStore(
       (state) =>
         state.sessions[resolvedServerId]?.serverInfo?.features?.agentForkContextCursor === true,
@@ -398,6 +427,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       setIsNearBottom(true);
       setExpandedInlineToolCallIds(new Set());
       setExpandedToolCallGroupIds(new Set());
+      setExpandedProcessRunIds(new Set());
     }, [agentId]);
 
     const handleInlinePathPress = useStableEvent(
@@ -464,6 +494,38 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       handleInlinePathPress({ raw: filePath, path: filePath }, "side");
     });
 
+    const openTurnResultChanges = useStableEvent((focusPath?: string): boolean => {
+      if (isMobile || !context.workspaceId) {
+        return false;
+      }
+      const workspaceKey = buildWorkspaceTabPersistenceKey({
+        serverId: resolvedServerId,
+        workspaceId: context.workspaceId,
+      });
+      if (!workspaceKey) {
+        return false;
+      }
+      openTabInFocusedPane(workspaceKey, {
+        kind: "working_diff",
+        ...(focusPath ? { focusPath, focusRequestId: Date.now() } : {}),
+      });
+      return true;
+    });
+
+    const handleTurnResultFilePress = useStableEvent((path: string) => {
+      if (!openTurnResultChanges(path)) {
+        handleToolCallOpenFile(path);
+      }
+    });
+
+    const handleTurnResultChangesPress = useStableEvent(() => {
+      openTurnResultChanges();
+    });
+
+    const handleTurnResultWebPress = useStableEvent((url: string) => {
+      void openExternalUrl(url);
+    });
+
     const handleForkAssistantTurn: AssistantTurnForkHandler = useStableEvent(
       async ({ target, boundary }) => {
         await forkAgent({
@@ -498,25 +560,41 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const effectiveStreamHead = useRetainedValue(streamHead, isActive);
     const effectiveTurnPresentation = useRetainedValue(turnPresentation, isActive);
     const isTurnActive = effectiveTurnPresentation.isActive;
+    const turnResultSummaries = useMemo(() => {
+      if (toolCallDetailLevel !== "auto") {
+        return buildTurnResultSummaries([]);
+      }
+      return buildTurnResultSummaries(effectiveStreamItems);
+    }, [effectiveStreamItems, toolCallDetailLevel]);
+    const processRuns = useMemo(
+      () =>
+        collapseProcessRuns({
+          tail: effectiveStreamItems,
+          enabled: toolCallDetailLevel === "auto",
+          expandedRunIds: expandedProcessRunIds,
+          isTurnActive,
+        }),
+      [effectiveStreamItems, expandedProcessRunIds, isTurnActive, toolCallDetailLevel],
+    );
     // Keep retained history outside the 48ms live-head flush path.
     const preparedToolCallHistory = useMemo(
-      () => prepareToolCallHistory(toolCallDetailLevel, effectiveStreamItems),
-      [effectiveStreamItems, toolCallDetailLevel],
+      () => prepareToolCallHistory(toolCallDetailLevel, processRuns.tail),
+      [processRuns.tail, toolCallDetailLevel],
     );
     const projectedToolCalls = useMemo(
       () =>
         projectToolCallDetailLevel({
           level: toolCallDetailLevel,
-          tail: effectiveStreamItems,
+          tail: processRuns.tail,
           head: effectiveStreamHead ?? EMPTY_STREAM_HEAD,
           preparedHistory: preparedToolCallHistory,
           isTurnActive,
         }),
       [
         effectiveStreamHead,
-        effectiveStreamItems,
         isTurnActive,
         preparedToolCallHistory,
+        processRuns.tail,
         toolCallDetailLevel,
       ],
     );
@@ -625,6 +703,39 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         return next;
       });
     }, []);
+
+    const setProcessRunExpanded = useCallback((firstItemId: string, expanded: boolean) => {
+      setExpandedProcessRunIds((previous) => {
+        const next = new Set(previous);
+        if (expanded) {
+          next.add(firstItemId);
+        } else {
+          next.delete(firstItemId);
+        }
+        return next;
+      });
+    }, []);
+
+    const buildTurnCollapsePresenter = useCallback(
+      (host: TurnFooterHost): TurnCollapsePresenter | undefined => {
+        const summary = turnResultSummaries.summariesByAnchorItemId.get(host.itemId);
+        if (!summary) {
+          return undefined;
+        }
+        return {
+          summary,
+          onOpenFile: handleTurnResultFilePress,
+          onOpenChanges: handleTurnResultChangesPress,
+          onOpenWebUrl: handleTurnResultWebPress,
+        };
+      },
+      [
+        turnResultSummaries.summariesByAnchorItemId,
+        handleTurnResultChangesPress,
+        handleTurnResultFilePress,
+        handleTurnResultWebPress,
+      ],
+    );
 
     const renderUserMessageItem = useCallback(
       (layoutItem: StreamLayoutItem, item: Extract<StreamItem, { kind: "user_message" }>) => {
@@ -759,25 +870,35 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           return renderSingleToolCallItem(item, layoutItem.isLastInToolSequence);
         }
         const expanded = expandedToolCallGroupIds.has(group.run.id);
-        return (
+        const groupChildren = expanded
+          ? group.run.calls.map((call, index) => (
+              <React.Fragment key={call.id}>
+                {renderSingleToolCallItem(
+                  call,
+                  index === group.run.calls.length - 1,
+                  GROUPED_TOOL_CALL_DETAIL_MAX_HEIGHT,
+                )}
+              </React.Fragment>
+            ))
+          : null;
+        return group.mode === "overview" ? (
           <OverviewToolCallGroupView
             group={group}
             expanded={expanded}
             isLastInSequence={layoutItem.isLastInToolSequence}
             onExpandedChange={setToolCallGroupExpanded}
           >
-            {expanded
-              ? group.run.calls.map((call, index) => (
-                  <React.Fragment key={call.id}>
-                    {renderSingleToolCallItem(
-                      call,
-                      index === group.run.calls.length - 1,
-                      GROUPED_TOOL_CALL_DETAIL_MAX_HEIGHT,
-                    )}
-                  </React.Fragment>
-                ))
-              : null}
+            {groupChildren}
           </OverviewToolCallGroupView>
+        ) : (
+          <BalancedToolCallGroupView
+            group={group}
+            expanded={expanded}
+            isLastInSequence={layoutItem.isLastInToolSequence}
+            onExpandedChange={setToolCallGroupExpanded}
+          >
+            {groupChildren}
+          </BalancedToolCallGroupView>
         );
       },
       [
@@ -791,6 +912,29 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const renderStreamItemContent = useCallback(
       (layoutItem: StreamLayoutItem) => {
         const item = layoutItem.item;
+        const digest = processRuns.runsByFirstItemId.get(item.id);
+        const wrapProcessRun = (existing: ReactNode): ReactNode => {
+          if (!digest) {
+            return existing;
+          }
+          const expanded = expandedProcessRunIds.has(digest.firstItemId);
+          const row = (
+            <ProcessRunRowBinder
+              digest={digest}
+              expanded={expanded}
+              onToggleRun={setProcessRunExpanded}
+            />
+          );
+          if (!expanded) {
+            return row;
+          }
+          return (
+            <>
+              {row}
+              {existing}
+            </>
+          );
+        };
         switch (item.kind) {
           case "user_message":
             return renderUserMessageItem(layoutItem, item);
@@ -799,10 +943,10 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             return renderAssistantMessageItem(layoutItem, item);
 
           case "thought":
-            return renderThoughtItem(layoutItem, item);
+            return wrapProcessRun(renderThoughtItem(layoutItem, item));
 
           case "tool_call":
-            return renderToolCallItem(layoutItem, item);
+            return wrapProcessRun(renderToolCallItem(layoutItem, item));
 
           case "activity_log":
             return (
@@ -815,7 +959,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             );
 
           case "todo_list":
-            return <TodoListCard items={item.items} activity={item.activity} />;
+            return wrapProcessRun(<TodoListCard items={item.items} activity={item.activity} />);
 
           case "compaction":
             return (
@@ -830,7 +974,15 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             return null;
         }
       },
-      [renderUserMessageItem, renderAssistantMessageItem, renderThoughtItem, renderToolCallItem],
+      [
+        expandedProcessRunIds,
+        processRuns.runsByFirstItemId,
+        renderAssistantMessageItem,
+        renderThoughtItem,
+        renderToolCallItem,
+        renderUserMessageItem,
+        setProcessRunExpanded,
+      ],
     );
 
     const bottomTurnFooterHost = streamLayout.auxiliaryTurnFooter;
@@ -838,15 +990,18 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const renderStreamItem = useCallback(
       (layoutItem: StreamLayoutItem) => {
         const content = renderStreamItemContent(layoutItem);
+        const footerHost = layoutItem.completedFooter;
         return renderStreamItemWithTurnFooter({
           content,
           layoutItem,
           strategy: streamRenderStrategy,
           supportsTimelineCursor: supportsAgentForkContextCursor,
           onForkAssistantTurn: readOnly ? undefined : handleForkAssistantTurn,
+          turnCollapse: footerHost ? buildTurnCollapsePresenter(footerHost) : undefined,
         });
       },
       [
+        buildTurnCollapsePresenter,
         handleForkAssistantTurn,
         readOnly,
         renderStreamItemContent,
@@ -879,6 +1034,9 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             supportsTimelineCursor={supportsAgentForkContextCursor}
             onForkAssistantTurn={readOnly ? undefined : handleForkAssistantTurn}
             onForkInFlightTurn={readOnly ? undefined : handleForkInFlightTurn}
+            turnCollapse={
+              bottomTurnFooterHost ? buildTurnCollapsePresenter(bottomTurnFooterHost) : undefined
+            }
           />
         ) : null,
       [
@@ -888,6 +1046,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         isTurnActive,
         baseRenderModel.turnTiming.runningStartedAt,
         bottomTurnFooterHost,
+        buildTurnCollapsePresenter,
         streamRenderStrategy,
         supportsAgentForkContextCursor,
       ],
@@ -1532,10 +1691,6 @@ const stylesheet = StyleSheet.create((theme) => ({
   syncingIndicatorText: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.base,
-  },
-  invertedWrapper: {
-    transform: [{ scaleY: -1 }],
-    width: "100%",
   },
   emptyStateText: {
     color: theme.colors.foregroundMuted,

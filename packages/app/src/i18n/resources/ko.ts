@@ -353,6 +353,15 @@ export const ko: TranslationResources = {
       withTokens: "컨텍스트가 압축되었습니다 ({{tokens}}K 토큰)",
       completed: "컨텍스트가 압축되었습니다",
     },
+    turnResult: {
+      workedFor: "{{duration}} 동안 작업함",
+      expand: "이 턴의 작업 보기",
+      collapse: "이 턴의 작업 숨기기",
+      moreFiles: "+{{count}}개 더",
+      changesSubtitle: "변경사항 열기",
+      fileCardAccessibility: "{{name}}의 변경사항 열기",
+      webCardAccessibility: "{{title}} 열기",
+    },
   },
   importSession: {
     title: "세션 가져오기",
@@ -1780,6 +1789,10 @@ export const ko: TranslationResources = {
       one: "{{count}}회 검색함",
       other: "{{count}}회 검색함",
     },
+    fetches: {
+      one: "페이지 {{count}}개 가져옴",
+      other: "페이지 {{count}}개 가져옴",
+    },
     otherTools: {
       one: "기타 도구 {{count}}개 사용함",
       other: "기타 도구 {{count}}개 사용함",
@@ -1787,6 +1800,14 @@ export const ko: TranslationResources = {
     paseoCalls: {
       one: "Paseo를 {{count}}회 호출함",
       other: "Paseo를 {{count}}회 호출함",
+    },
+    thoughts: {
+      one: "생각 {{count}}",
+      other: "생각 {{count}}",
+    },
+    todos: {
+      one: "할 일 {{count}}개",
+      other: "할 일 {{count}}개",
     },
     and: "그리고",
   },
@@ -1948,6 +1969,7 @@ export const ko: TranslationResources = {
         accessibilityLabel: "도구 호출 표시 선택({{value}})",
         options: {
           overview: "요약",
+          auto: "서랍",
           detailed: "전체 세부정보",
         },
       },

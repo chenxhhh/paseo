@@ -350,6 +350,15 @@ export const en = {
       withTokens: "Context compacted ({{tokens}}K tokens)",
       completed: "Context compacted",
     },
+    turnResult: {
+      workedFor: "Worked for {{duration}}",
+      expand: "Show work from this turn",
+      collapse: "Hide work from this turn",
+      moreFiles: "+{{count}} more",
+      changesSubtitle: "Open changes",
+      fileCardAccessibility: "Open changes to {{name}}",
+      webCardAccessibility: "Open {{title}}",
+    },
   },
   importSession: {
     title: "Import session",
@@ -1780,6 +1789,10 @@ export const en = {
       one: "searched {{count}} time",
       other: "searched {{count}} times",
     },
+    fetches: {
+      one: "fetched {{count}} page",
+      other: "fetched {{count}} pages",
+    },
     otherTools: {
       one: "used {{count}} other tool",
       other: "used {{count}} other tools",
@@ -1787,6 +1800,14 @@ export const en = {
     paseoCalls: {
       one: "called Paseo {{count}} time",
       other: "called Paseo {{count}} times",
+    },
+    thoughts: {
+      one: "{{count}} thought",
+      other: "{{count}} thoughts",
+    },
+    todos: {
+      one: "{{count}} todo",
+      other: "{{count}} todos",
     },
     and: "and",
   },
@@ -2001,6 +2022,7 @@ export const en = {
         accessibilityLabel: "Select tool call display ({{value}})",
         options: {
           overview: "Summary",
+          auto: "Drawer",
           detailed: "Full detail",
         },
       },

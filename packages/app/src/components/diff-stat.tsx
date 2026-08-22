@@ -3,7 +3,7 @@ import { StyleSheet } from "react-native-unistyles";
 
 interface DiffStatProps {
   additions: number;
-  deletions: number;
+  deletions?: number;
   testID?: string;
 }
 
@@ -20,7 +20,9 @@ export function DiffStat({ additions, deletions, testID }: DiffStatProps) {
   return (
     <View style={styles.row} testID={testID}>
       <Text style={styles.additions}>+{formatDiffCount(additions)}</Text>
-      <Text style={styles.deletions}>-{formatDiffCount(deletions)}</Text>
+      {deletions !== undefined ? (
+        <Text style={styles.deletions}>-{formatDiffCount(deletions)}</Text>
+      ) : null}
     </View>
   );
 }

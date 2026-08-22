@@ -355,6 +355,15 @@ export const ja: TranslationResources = {
       withTokens: "コンテキストを圧縮しました（{{tokens}}Kトークン）",
       completed: "コンテキストを圧縮しました",
     },
+    turnResult: {
+      workedFor: "{{duration}} 作業しました",
+      expand: "このターンの作業を表示",
+      collapse: "このターンの作業を隠す",
+      moreFiles: "+{{count}} 件",
+      changesSubtitle: "変更を開く",
+      fileCardAccessibility: "{{name}} の変更を開く",
+      webCardAccessibility: "{{title}} を開く",
+    },
   },
   importSession: {
     title: "セッションをインポート",
@@ -1788,6 +1797,10 @@ export const ja: TranslationResources = {
       one: "{{count}}回検索",
       other: "{{count}}回検索",
     },
+    fetches: {
+      one: "{{count}}ページを取得",
+      other: "{{count}}ページを取得",
+    },
     otherTools: {
       one: "その他のツールを{{count}}回使用",
       other: "その他のツールを{{count}}回使用",
@@ -1795,6 +1808,14 @@ export const ja: TranslationResources = {
     paseoCalls: {
       one: "Paseoを{{count}}回呼び出し",
       other: "Paseoを{{count}}回呼び出し",
+    },
+    thoughts: {
+      one: "思考{{count}}",
+      other: "思考{{count}}",
+    },
+    todos: {
+      one: "ToDo {{count}}件",
+      other: "ToDo {{count}}件",
     },
     and: "および",
   },
@@ -1954,6 +1975,7 @@ export const ja: TranslationResources = {
         accessibilityLabel: "ツール呼び出しの表示を選択（{{value}}）",
         options: {
           overview: "要約",
+          auto: "ドロワー",
           detailed: "すべての詳細",
         },
       },

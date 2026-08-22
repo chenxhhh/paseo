@@ -354,6 +354,15 @@ export const ru: TranslationResources = {
       withTokens: "Сжатый контекст (токены{{tokens}}K)",
       completed: "Контекст сжат",
     },
+    turnResult: {
+      workedFor: "Работал {{duration}}",
+      expand: "Показать работу этого хода",
+      collapse: "Скрыть работу этого хода",
+      moreFiles: "+{{count}} ещё",
+      changesSubtitle: "Открыть изменения",
+      fileCardAccessibility: "Открыть изменения в {{name}}",
+      webCardAccessibility: "Открыть {{title}}",
+    },
   },
   importSession: {
     title: "Импортировать сеанс",
@@ -1806,6 +1815,10 @@ export const ru: TranslationResources = {
       one: "выполнен {{count}} поиск",
       other: "выполнено {{count}} поисков",
     },
+    fetches: {
+      one: "получена {{count}} страница",
+      other: "получено {{count}} страниц",
+    },
     otherTools: {
       one: "использован {{count}} другой инструмент",
       other: "использовано {{count}} других инструментов",
@@ -1813,6 +1826,14 @@ export const ru: TranslationResources = {
     paseoCalls: {
       one: "Paseo вызван {{count}} раз",
       other: "Paseo вызван {{count}} раз",
+    },
+    thoughts: {
+      one: "{{count}} размышление",
+      other: "{{count}} размышлений",
+    },
+    todos: {
+      one: "{{count}} задача",
+      other: "{{count}} задач",
     },
     and: "и",
   },
@@ -1974,6 +1995,7 @@ export const ru: TranslationResources = {
         accessibilityLabel: "Выбрать отображение вызовов инструментов ({{value}})",
         options: {
           overview: "Сводка",
+          auto: "Ящик",
           detailed: "Полная детализация",
         },
       },

@@ -20,6 +20,8 @@ import type { TurnFooterHost } from "./layout";
 import { AssistantForkMenu } from "@/components/assistant-fork-menu";
 import { SyncedLoader } from "@/components/synced-loader";
 import { useRetainedPanelActive } from "@/components/retained-panel";
+import type { TurnCollapseSummary } from "./turn-collapse";
+import { TurnResultCardsRow } from "./turn-result-cards";
 
 const ThemedSyncedLoader = withUnistyles(SyncedLoader);
 const workingIndicatorColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
@@ -42,6 +44,13 @@ export type AssistantTurnForkHandler = (input: {
  */
 export type InFlightTurnForkHandler = (target: AssistantForkTarget) => Promise<void> | void;
 
+export interface TurnCollapsePresenter {
+  summary: TurnCollapseSummary;
+  onOpenFile?: (path: string) => void;
+  onOpenChanges?: () => void;
+  onOpenWebUrl?: (url: string) => void;
+}
+
 export const TurnFooter = memo(function TurnFooter({
   isRunning,
   inFlightTurnStartedAt,
@@ -50,6 +59,7 @@ export const TurnFooter = memo(function TurnFooter({
   supportsTimelineCursor,
   onForkAssistantTurn,
   onForkInFlightTurn,
+  turnCollapse,
 }: {
   isRunning: boolean;
   inFlightTurnStartedAt: Date | null;
@@ -58,6 +68,7 @@ export const TurnFooter = memo(function TurnFooter({
   supportsTimelineCursor: boolean;
   onForkAssistantTurn?: AssistantTurnForkHandler;
   onForkInFlightTurn?: InFlightTurnForkHandler;
+  turnCollapse?: TurnCollapsePresenter;
 }) {
   if (isRunning) {
     return (
@@ -80,9 +91,14 @@ export const TurnFooter = memo(function TurnFooter({
       startIndex={host.startIndex}
       supportsTimelineCursor={supportsTimelineCursor}
       onForkAssistantTurn={onForkAssistantTurn}
+      turnCollapse={turnCollapse}
     />
   );
 });
+
+function noopPath(_path: string): void {}
+function noopUrl(_url: string): void {}
+function noop(): void {}
 
 export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
   strategy,
@@ -91,6 +107,7 @@ export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
   startIndex,
   supportsTimelineCursor,
   onForkAssistantTurn,
+  turnCollapse,
 }: {
   strategy: TurnContentStrategy;
   items: StreamItem[];
@@ -98,9 +115,22 @@ export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
   startIndex: number;
   supportsTimelineCursor: boolean;
   onForkAssistantTurn?: AssistantTurnForkHandler;
+  turnCollapse?: TurnCollapsePresenter;
 }) {
+  const hasResultCards =
+    turnCollapse !== undefined &&
+    (turnCollapse.summary.files.length > 0 || turnCollapse.summary.webPages.length > 0);
   return (
     <TurnFooterRow>
+      {hasResultCards && turnCollapse ? (
+        <TurnResultCardsRow
+          files={turnCollapse.summary.files}
+          webPages={turnCollapse.summary.webPages}
+          onOpenFile={turnCollapse.onOpenFile ?? noopPath}
+          onOpenChanges={turnCollapse.onOpenChanges ?? noop}
+          onOpenWebUrl={turnCollapse.onOpenWebUrl ?? noopUrl}
+        />
+      ) : null}
       <CompletedTurnFooter
         strategy={strategy}
         items={items}
@@ -221,6 +251,7 @@ const stylesheet = StyleSheet.create((theme) => ({
   },
   turnFooterRow: {
     marginTop: theme.spacing[4],
+    gap: theme.spacing[2],
   },
   turnFooterSlot: {
     flexDirection: "row",

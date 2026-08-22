@@ -355,6 +355,15 @@ export const ptBR: TranslationResources = {
       withTokens: "Contexto compactado ({{tokens}}K tokens)",
       completed: "Contexto compactado",
     },
+    turnResult: {
+      workedFor: "Trabalhou por {{duration}}",
+      expand: "Mostrar o trabalho deste turno",
+      collapse: "Ocultar o trabalho deste turno",
+      moreFiles: "+{{count}} mais",
+      changesSubtitle: "Abrir alterações",
+      fileCardAccessibility: "Abrir alterações de {{name}}",
+      webCardAccessibility: "Abrir {{title}}",
+    },
   },
   importSession: {
     title: "Importar sessão",
@@ -1802,6 +1811,10 @@ export const ptBR: TranslationResources = {
       one: "pesquisou {{count}} vez",
       other: "pesquisou {{count}} vezes",
     },
+    fetches: {
+      one: "buscou {{count}} página",
+      other: "buscou {{count}} páginas",
+    },
     otherTools: {
       one: "usou {{count}} outra ferramenta",
       other: "usou {{count}} outras ferramentas",
@@ -1809,6 +1822,14 @@ export const ptBR: TranslationResources = {
     paseoCalls: {
       one: "chamou o Paseo {{count}} vez",
       other: "chamou o Paseo {{count}} vezes",
+    },
+    thoughts: {
+      one: "{{count}} pensamento",
+      other: "{{count}} pensamentos",
+    },
+    todos: {
+      one: "{{count}} tarefa",
+      other: "{{count}} tarefas",
     },
     and: "e",
   },
@@ -1971,6 +1992,7 @@ export const ptBR: TranslationResources = {
         accessibilityLabel: "Selecionar exibição de chamadas de ferramentas ({{value}})",
         options: {
           overview: "Resumo",
+          auto: "Gaveta",
           detailed: "Detalhes completos",
         },
       },

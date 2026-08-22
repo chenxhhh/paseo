@@ -15,7 +15,7 @@ describe("tool-call-display", () => {
     });
 
     expect(display).toEqual({
-      displayName: "Shell",
+      displayName: "Ran",
       summary: "npm test",
     });
   });
@@ -35,6 +35,79 @@ describe("tool-call-display", () => {
     expect(display).toEqual({
       displayName: "Read",
       summary: "src/index.ts",
+    });
+  });
+
+  it("builds display model from canonical edit detail", () => {
+    const display = buildToolCallDisplayModel({
+      name: "edit",
+      status: "completed",
+      error: null,
+      detail: {
+        type: "edit",
+        filePath: "/tmp/repo/src/index.ts",
+        oldString: "a",
+        newString: "b",
+      },
+      cwd: "/tmp/repo",
+    });
+
+    expect(display).toEqual({
+      displayName: "Edited",
+      summary: "src/index.ts",
+    });
+  });
+
+  it("builds display model from canonical write detail", () => {
+    const display = buildToolCallDisplayModel({
+      name: "write",
+      status: "completed",
+      error: null,
+      detail: {
+        type: "write",
+        filePath: "/tmp/repo/README.md",
+        content: "# hi",
+      },
+      cwd: "/tmp/repo",
+    });
+
+    expect(display).toEqual({
+      displayName: "Wrote",
+      summary: "README.md",
+    });
+  });
+
+  it("builds display model from canonical search detail", () => {
+    const display = buildToolCallDisplayModel({
+      name: "search",
+      status: "completed",
+      error: null,
+      detail: {
+        type: "search",
+        query: "paseo",
+      },
+    });
+
+    expect(display).toEqual({
+      displayName: "Searched",
+      summary: "paseo",
+    });
+  });
+
+  it("builds display model from canonical fetch detail", () => {
+    const display = buildToolCallDisplayModel({
+      name: "fetch",
+      status: "completed",
+      error: null,
+      detail: {
+        type: "fetch",
+        url: "https://paseo.sh",
+      },
+    });
+
+    expect(display).toEqual({
+      displayName: "Fetched",
+      summary: "https://paseo.sh",
     });
   });
 

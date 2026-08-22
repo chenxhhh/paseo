@@ -3,16 +3,19 @@ import type { ToolCallDetailLevel } from "@/hooks/use-settings/storage";
 import {
   groupLiveToolCalls,
   prepareGroupedHistory,
+  createRunHosts,
+  type BuildToolCallHosts,
   type GroupedHistory,
   type GroupedToolCalls,
 } from "./grouping";
 import { buildOverviewGroup, type OverviewToolCallGroup } from "./overview/model";
+import { buildBalancedHosts, type BalancedToolCallGroup } from "./balanced/model";
 
 export type { ToolCallDetailLevel } from "@/hooks/use-settings/storage";
-export type ToolCallDetailGroup = OverviewToolCallGroup;
+export type ToolCallDetailGroup = OverviewToolCallGroup | BalancedToolCallGroup;
 
 export interface PreparedToolCallHistory {
-  mode: "overview";
+  mode: "overview" | "balanced";
   grouped: GroupedHistory<ToolCallDetailGroup>;
 }
 
@@ -20,16 +23,30 @@ export interface ToolCallDetailProjection extends GroupedToolCalls<ToolCallDetai
 
 const EMPTY_TOOL_CALL_GROUPS = new Map<string, ToolCallDetailGroup>();
 
+function resolveProjectionLevel(level: ToolCallDetailLevel): "overview" | "balanced" | "detailed" {
+  return level === "auto" ? "balanced" : level;
+}
+
+function getBuildHostsForLevel(
+  level: "overview" | "balanced",
+): BuildToolCallHosts<ToolCallDetailGroup> {
+  if (level === "overview") {
+    return createRunHosts(buildOverviewGroup);
+  }
+  return buildBalancedHosts;
+}
+
 export function prepareToolCallHistory(
   level: ToolCallDetailLevel,
   tail: StreamItem[],
 ): PreparedToolCallHistory | null {
-  if (level === "detailed") {
+  const resolved = resolveProjectionLevel(level);
+  if (resolved === "detailed") {
     return null;
   }
   return {
-    mode: "overview",
-    grouped: prepareGroupedHistory({ tail, buildGroup: buildOverviewGroup }),
+    mode: resolved,
+    grouped: prepareGroupedHistory({ tail, buildHosts: getBuildHostsForLevel(resolved) }),
   };
 }
 
@@ -40,7 +57,8 @@ export function projectToolCallDetailLevel(input: {
   preparedHistory: PreparedToolCallHistory | null;
   isTurnActive: boolean;
 }): ToolCallDetailProjection {
-  if (input.level === "detailed") {
+  const resolved = resolveProjectionLevel(input.level);
+  if (resolved === "detailed") {
     return {
       tail: input.tail,
       head: input.head,
@@ -48,13 +66,13 @@ export function projectToolCallDetailLevel(input: {
       historyGroupUpdatesByHostId: EMPTY_TOOL_CALL_GROUPS,
     };
   }
-  if (!input.preparedHistory || input.preparedHistory.mode !== input.level) {
-    throw new Error(`Missing prepared ${input.level} tool call history`);
+  if (!input.preparedHistory || input.preparedHistory.mode !== resolved) {
+    throw new Error(`Missing prepared ${resolved} tool call history`);
   }
   return groupLiveToolCalls({
     history: input.preparedHistory.grouped,
     head: input.head,
     isTurnActive: input.isTurnActive,
-    buildGroup: buildOverviewGroup,
+    buildHosts: getBuildHostsForLevel(resolved),
   });
 }

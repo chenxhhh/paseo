@@ -5,6 +5,7 @@ import {
   formatDuration,
   formatMessageTimestamp,
   formatTimeAgo,
+  formatTurnWorkedForLabel,
 } from "./time";
 
 describe("formatTimeAgo", () => {
@@ -87,6 +88,14 @@ describe("formatDuration", () => {
   it("guards against negative and NaN", () => {
     expect(formatDuration(-1)).toBe("0s");
     expect(formatDuration(Number.NaN)).toBe("0s");
+  });
+});
+
+describe("formatTurnWorkedForLabel", () => {
+  it("wraps formatDuration in the worked-for copy", () => {
+    const t = (key: string, options: { duration: string }) => `${key}:${options.duration}`;
+    expect(formatTurnWorkedForLabel(8_000, t)).toBe("message.turnResult.workedFor:8s");
+    expect(formatTurnWorkedForLabel(75_230, t)).toBe("message.turnResult.workedFor:1m 15s");
   });
 });
 

@@ -352,6 +352,15 @@ export const zhCN: TranslationResources = {
       withTokens: "上下文已压缩（{{tokens}}K tokens）",
       completed: "上下文已压缩",
     },
+    turnResult: {
+      workedFor: "工作了 {{duration}}",
+      expand: "显示此回合的工作过程",
+      collapse: "隐藏此回合的工作过程",
+      moreFiles: "+{{count}} 个文件",
+      changesSubtitle: "打开更改",
+      fileCardAccessibility: "打开 {{name}} 的更改",
+      webCardAccessibility: "打开 {{title}}",
+    },
   },
   importSession: {
     title: "导入会话",
@@ -1750,6 +1759,10 @@ export const zhCN: TranslationResources = {
       one: "搜索了 {{count}} 次",
       other: "搜索了 {{count}} 次",
     },
+    fetches: {
+      one: "抓取了 {{count}} 个页面",
+      other: "抓取了 {{count}} 个页面",
+    },
     otherTools: {
       one: "使用了 {{count}} 个其他工具",
       other: "使用了 {{count}} 个其他工具",
@@ -1757,6 +1770,14 @@ export const zhCN: TranslationResources = {
     paseoCalls: {
       one: "调用了 Paseo {{count}} 次",
       other: "调用了 Paseo {{count}} 次",
+    },
+    thoughts: {
+      one: "思考 {{count}}",
+      other: "思考 {{count}}",
+    },
+    todos: {
+      one: "{{count}} 项待办",
+      other: "{{count}} 项待办",
     },
     and: "并",
   },
@@ -1914,6 +1935,7 @@ export const zhCN: TranslationResources = {
         accessibilityLabel: "选择工具调用显示方式（{{value}}）",
         options: {
           overview: "摘要",
+          auto: "抽屉",
           detailed: "完整详情",
         },
       },

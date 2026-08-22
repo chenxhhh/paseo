@@ -33,9 +33,16 @@ vi.mock("react-native-unistyles", () => ({
 }));
 
 vi.mock("@/components/message", () => ({
-  AssistantTurnFooter: () => null,
+  AssistantTurnFooter: () => <div data-testid="assistant-turn-footer" />,
   LiveElapsed: () => <span data-testid="running-turn-timestamp" />,
   STREAM_METADATA_FONT_SIZE: 11,
+}));
+
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({
+    t: (key: string, options?: { count?: number }) =>
+      options?.count === undefined ? key : `${key}:${options.count}`,
+  }),
 }));
 
 vi.mock("@/components/assistant-fork-menu", () => ({
@@ -46,15 +53,46 @@ vi.mock("@/components/synced-loader", () => ({
   SyncedLoader: () => <span data-testid="running-turn-loader" />,
 }));
 
+vi.mock("./turn-result-cards", () => ({
+  TurnResultCardsRow: () => <div data-testid="turn-result-cards" />,
+}));
+
 vi.mock("@/components/retained-panel", () => ({
   useRetainedPanelActive: () => true,
 }));
 
-import { TurnFooter } from "./turn-footer";
+import { CompletedTurnFooterRow, TurnFooter } from "./turn-footer";
+import type { TurnCollapsePresenter } from "./turn-footer";
 
 const unusedRunningTurnStrategy = null as unknown as React.ComponentProps<
   typeof TurnFooter
 >["strategy"];
+
+const completedFooterItems = [
+  {
+    kind: "assistant_message" as const,
+    id: "a1",
+    text: "done",
+    timestamp: new Date("2026-08-01T10:00:00.000Z"),
+  },
+];
+
+const collapsePresenter: TurnCollapsePresenter = {
+  summary: {
+    anchorItemId: "a1",
+    editedFileCount: 2,
+    commandCount: 1,
+    files: [],
+    webPages: [],
+  },
+};
+
+const collapsePresenterWithCards: TurnCollapsePresenter = {
+  summary: {
+    ...collapsePresenter.summary,
+    files: [{ path: "/repo/a.ts", additions: 2, deletions: 1 }],
+  },
+};
 
 describe("TurnFooter", () => {
   let root: Root | null = null;
@@ -104,5 +142,47 @@ describe("TurnFooter", () => {
       "running-turn-fork",
       "running-turn-timestamp",
     ]);
+  });
+
+  it("renders result cards without a collapse toggle when the presenter has files", () => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    act(() => {
+      root?.render(
+        <CompletedTurnFooterRow
+          strategy={unusedRunningTurnStrategy}
+          items={completedFooterItems}
+          startIndex={0}
+          supportsTimelineCursor
+          turnCollapse={collapsePresenterWithCards}
+        />,
+      );
+    });
+
+    expect(container.querySelector('[data-testid="turn-result-cards"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="assistant-turn-footer"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="turn-collapse-header"]')).toBeNull();
+  });
+
+  it("renders the plain duration footer when turnCollapse is absent", () => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    act(() => {
+      root?.render(
+        <CompletedTurnFooterRow
+          strategy={unusedRunningTurnStrategy}
+          items={completedFooterItems}
+          startIndex={0}
+          supportsTimelineCursor
+        />,
+      );
+    });
+
+    expect(container.querySelector('[data-testid="assistant-turn-footer"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="turn-result-cards"]')).toBeNull();
   });
 });
