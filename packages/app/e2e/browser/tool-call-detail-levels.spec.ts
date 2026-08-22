@@ -58,11 +58,15 @@ test("drawer level folds process runs on a full finished timeline", async ({ pag
       await expect(page.getByTestId("tool-call-badge").filter({ hasText: verb })).toHaveCount(0);
     }
 
-    const narration = page.getByText("Cycle 1", { exact: true });
+    // The mock streams: intro ("## Cycle 1") → run 1 (thought/read/grep) →
+    // mid narration ("Now I have a clearer picture…") → run 2 (edit/shell) →
+    // closing reply. Assert the mid narration sits between the two runs.
+    const narration = page.getByText("Now I have a clearer picture");
     const closingReply = page.getByText("The change should keep scroll-to-bottom");
     await expect(narration).toBeVisible();
     await expect(closingReply).toBeVisible();
     await expectLocatorAbove(runRow, narration);
+    await expectLocatorAbove(narration, page.getByTestId("process-run-row").nth(1));
     await expectLocatorAbove(narration, closingReply);
 
     const fileCard = page.getByTestId("turn-result-file-card");
@@ -70,7 +74,7 @@ test("drawer level folds process runs on a full finished timeline", async ({ pag
     await expect(fileCard).toContainText("use-scroll-anchor.ts");
     await expect(fileCard.getByTestId("turn-result-file-diff-stat")).toBeVisible();
     await expect(page.getByTestId("turn-result-web-card")).toHaveCount(0);
-    await expect(page.getByTestId("assistant-turn-footer")).toContainText("Worked for");
+    await expect(page.getByText(/Worked for/).first()).toBeVisible();
 
     await runRow.click();
     await expect(
