@@ -98,6 +98,7 @@ export function collapseProcessRuns(input: {
   tail: StreamItem[];
   enabled: boolean;
   expandedRunIds: ReadonlySet<string>;
+  isTurnActive: boolean;
 }): ProcessRunCollapseProjection {
   if (!input.enabled || input.tail.length === 0) {
     return {
@@ -134,7 +135,10 @@ export function collapseProcessRuns(input: {
     const run = input.tail.slice(start, index);
     const first = run[0];
     const digest = buildDigest(run);
-    const isLive = run.some((runItem) => !isTerminalProcessItem(runItem));
+    // Restored history can carry stale non-terminal statuses (a thought left
+    // "loading" when its finalize event landed in another fetch batch). With no
+    // active turn nothing is genuinely streaming, so those runs still fold.
+    const isLive = input.isTurnActive && run.some((runItem) => !isTerminalProcessItem(runItem));
     if (!first || !digest || run.length < 2 || isLive) {
       nextTail.push(...run);
       continue;

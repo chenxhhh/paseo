@@ -77,12 +77,17 @@ test("drawer level folds process runs on a full finished timeline", async ({ pag
     await expect(page.getByText(/Worked for/).first()).toBeVisible();
 
     await runRow.click();
+    // Expansion reveals the run at the drawer level's inner detail tier: the
+    // Thinking badge plus the folded read/grep group chip. Per-call badges only
+    // appear once that group itself expands (or at the full-detail level).
     await expect(
-      page.getByTestId("tool-call-badge").filter({ hasText: "Read" }).first(),
+      page.getByTestId("tool-call-badge").filter({ hasText: "Thinking" }).first(),
     ).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("balanced-tool-call-group").first()).toBeVisible();
 
     await runRow.click();
     await expect(page.getByTestId("tool-call-badge")).toHaveCount(0);
+    await expect(page.getByTestId("balanced-tool-call-group")).toHaveCount(0);
   } finally {
     await agent.cleanup();
   }

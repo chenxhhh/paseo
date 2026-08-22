@@ -572,8 +572,9 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           tail: effectiveStreamItems,
           enabled: toolCallDetailLevel === "auto",
           expandedRunIds: expandedProcessRunIds,
+          isTurnActive,
         }),
-      [effectiveStreamItems, expandedProcessRunIds, toolCallDetailLevel],
+      [effectiveStreamItems, expandedProcessRunIds, isTurnActive, toolCallDetailLevel],
     );
     // Keep retained history outside the 48ms live-head flush path.
     const preparedToolCallHistory = useMemo(

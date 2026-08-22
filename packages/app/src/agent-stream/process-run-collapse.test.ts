@@ -84,6 +84,7 @@ describe("collapseProcessRuns", () => {
       tail,
       enabled: true,
       expandedRunIds: EMPTY_EXPANDED,
+      isTurnActive: false,
     });
 
     expect(result.tail).toEqual([user, thinking, reply]);
@@ -112,6 +113,7 @@ describe("collapseProcessRuns", () => {
       tail: [user, first, second, third, reply],
       enabled: true,
       expandedRunIds: EMPTY_EXPANDED,
+      isTurnActive: false,
     });
 
     expect(result.tail).toEqual([user, first, reply]);
@@ -131,6 +133,7 @@ describe("collapseProcessRuns", () => {
       tail: [user, firstThought, read, mid, edit, shell, final],
       enabled: true,
       expandedRunIds: EMPTY_EXPANDED,
+      isTurnActive: false,
     });
 
     expect(result.tail).toEqual([user, firstThought, mid, edit, final]);
@@ -152,6 +155,7 @@ describe("collapseProcessRuns", () => {
       tail,
       enabled: true,
       expandedRunIds: new Set(["th1"]),
+      isTurnActive: false,
     });
 
     expect(result.tail).toEqual([first, read, mid, edit]);
@@ -169,10 +173,26 @@ describe("collapseProcessRuns", () => {
       tail,
       enabled: true,
       expandedRunIds: EMPTY_EXPANDED,
+      isTurnActive: true,
     });
 
     expect(result.tail).toBe(tail);
     expect(result.runsByFirstItemId.size).toBe(0);
+  });
+
+  it("folds a finished turn even when restored statuses are stale", () => {
+    const staleThought = thought("th1", "loading");
+    const read = toolCall("1", { type: "read", filePath: "/repo/a.ts" });
+    const reply = assistant("a1");
+    const result = collapseProcessRuns({
+      tail: [staleThought, read, reply],
+      enabled: true,
+      expandedRunIds: EMPTY_EXPANDED,
+      isTurnActive: false,
+    });
+
+    expect(result.tail).toEqual([staleThought, reply]);
+    expect(result.runsByFirstItemId.get("th1")?.toolCountsByCategory.read).toBe(1);
   });
 
   it("returns the same tail reference when disabled or nothing is collapsible", () => {
@@ -185,6 +205,7 @@ describe("collapseProcessRuns", () => {
       tail: collapsible,
       enabled: false,
       expandedRunIds: EMPTY_EXPANDED,
+      isTurnActive: false,
     });
     expect(disabled.tail).toBe(collapsible);
     expect(disabled.runsByFirstItemId.size).toBe(0);
@@ -194,6 +215,7 @@ describe("collapseProcessRuns", () => {
       tail: singleton,
       enabled: true,
       expandedRunIds: EMPTY_EXPANDED,
+      isTurnActive: false,
     });
     expect(untouched.tail).toBe(singleton);
     expect(untouched.runsByFirstItemId.size).toBe(0);
@@ -206,6 +228,7 @@ describe("collapseProcessRuns", () => {
       tail: [fetch, unknown],
       enabled: true,
       expandedRunIds: EMPTY_EXPANDED,
+      isTurnActive: false,
     });
 
     expect(result.runsByFirstItemId.get("1")?.toolCountsByCategory).toEqual({
