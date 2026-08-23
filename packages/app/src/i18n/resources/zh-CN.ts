@@ -383,6 +383,11 @@ export const zhCN: TranslationResources = {
       withTokens: "上下文已压缩（{{tokens}}K tokens）",
       completed: "上下文已压缩",
     },
+    turn: {
+      openArtifact: "打开 {{name}}",
+      filesChanged_one: "{{count}} 个文件已更改",
+      filesChanged_other: "{{count}} 个文件已更改",
+    },
   },
   importSession: {
     title: "导入会话",

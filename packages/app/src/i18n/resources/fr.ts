@@ -388,6 +388,11 @@ export const fr: TranslationResources = {
       withTokens: "Contexte compacté (jetons{{tokens}}K)",
       completed: "Contexte compacté",
     },
+    turn: {
+      openArtifact: "Ouvrir {{name}}",
+      filesChanged_one: "{{count}} fichier modifié",
+      filesChanged_other: "{{count}} fichiers modifiés",
+    },
   },
   importSession: {
     title: "Session d'importation",

@@ -80,6 +80,7 @@ import {
   type InFlightTurnForkHandler,
   type TurnContentStrategy,
 } from "./turn-footer";
+import type { TurnArtifactsMeta } from "./turn-summary";
 import { resolveBottomOverlayTailInset } from "./bottom-overlay-inset";
 import { layoutStream, type StreamLayoutItem } from "./layout";
 import {
@@ -157,6 +158,7 @@ function renderStreamItemWithTurnFooter(input: {
   strategy: TurnContentStrategy;
   supportsTimelineCursor: boolean;
   onForkAssistantTurn?: AssistantTurnForkHandler;
+  meta?: TurnArtifactsMeta;
 }): ReactNode {
   if (!input.content) {
     return null;
@@ -171,6 +173,7 @@ function renderStreamItemWithTurnFooter(input: {
       startIndex={footerHost.startIndex}
       supportsTimelineCursor={input.supportsTimelineCursor}
       onForkAssistantTurn={input.onForkAssistantTurn}
+      meta={input.meta}
     />
   ) : null;
   const content = (
@@ -476,6 +479,19 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const handleToolCallOpenFile = useStableEvent((filePath: string) => {
       handleInlinePathPress({ raw: filePath, path: filePath }, "side");
     });
+
+    // Context for completed-turn footers: artifact chips open the produced file,
+    // and the rewind entry reverts the turn (hidden on read-only surfaces).
+    const turnFooterMeta = useMemo<TurnArtifactsMeta>(
+      () => ({
+        serverId: resolvedServerId,
+        agentId,
+        client,
+        capabilities: readOnly ? undefined : context.capabilities,
+        onOpenFile: handleToolCallOpenFile,
+      }),
+      [resolvedServerId, agentId, client, readOnly, context.capabilities, handleToolCallOpenFile],
+    );
 
     const handleForkAssistantTurn: AssistantTurnForkHandler = useStableEvent(
       async ({ target, boundary }) => {
@@ -894,6 +910,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           strategy: streamRenderStrategy,
           supportsTimelineCursor: supportsAgentForkContextCursor,
           onForkAssistantTurn: readOnly ? undefined : handleForkAssistantTurn,
+          meta: turnFooterMeta,
         });
       },
       [
@@ -902,6 +919,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         renderStreamItemContent,
         streamRenderStrategy,
         supportsAgentForkContextCursor,
+        turnFooterMeta,
       ],
     );
 
@@ -929,6 +947,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             supportsTimelineCursor={supportsAgentForkContextCursor}
             onForkAssistantTurn={readOnly ? undefined : handleForkAssistantTurn}
             onForkInFlightTurn={readOnly ? undefined : handleForkInFlightTurn}
+            meta={turnFooterMeta}
           />
         ) : null,
       [
@@ -940,6 +959,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         bottomTurnFooterHost,
         streamRenderStrategy,
         supportsAgentForkContextCursor,
+        turnFooterMeta,
       ],
     );
     const renderModel = useMemo<AgentStreamRenderModel>(() => {

@@ -385,6 +385,11 @@ export const ko: TranslationResources = {
       withTokens: "컨텍스트가 압축되었습니다 ({{tokens}}K 토큰)",
       completed: "컨텍스트가 압축되었습니다",
     },
+    turn: {
+      openArtifact: "{{name}} 열기",
+      filesChanged_one: "{{count}}개 파일 변경됨",
+      filesChanged_other: "{{count}}개 파일 변경됨",
+    },
   },
   importSession: {
     title: "세션 가져오기",

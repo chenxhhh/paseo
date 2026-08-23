@@ -387,6 +387,11 @@ export const es: TranslationResources = {
       withTokens: "Contexto compactado (tokens{{tokens}}K)",
       completed: "Contexto compactado",
     },
+    turn: {
+      openArtifact: "Abrir {{name}}",
+      filesChanged_one: "{{count}} archivo modificado",
+      filesChanged_other: "{{count}} archivos modificados",
+    },
   },
   importSession: {
     title: "Importar sesión",

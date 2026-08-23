@@ -196,6 +196,28 @@ function shouldEmitTurnFailure(prompt: AgentPromptInput): boolean {
   return /emit\s+(?:a\s+)?synthetic\s+turn\s+failure/i.test(promptToText(prompt));
 }
 
+interface SyntheticArtifactWrite {
+  filePath: string;
+  lines: number;
+}
+
+function parseSyntheticArtifactWritePrompt(
+  prompt: AgentPromptInput,
+): SyntheticArtifactWrite | null {
+  const match =
+    /emit\s+(?:a\s+)?synthetic\s+artifact\s+write\s+([\w./\\-]+\.[a-zA-Z0-9]+)(?:\s+with\s+(\d+)\s+lines)?/i.exec(
+      promptToText(prompt),
+    );
+  if (!match) {
+    return null;
+  }
+  const lines = Number(match[2]);
+  return {
+    filePath: match[1].replace(/\\/g, "/"),
+    lines: Number.isFinite(lines) && lines > 0 ? Math.min(lines, 10_000) : 24,
+  };
+}
+
 function parseSteeringReplayShape(prompt: AgentPromptInput): SteeringReplayShape | null {
   const match = /replay a (claude|codex)-shaped foreground shell tool call/i.exec(
     promptToText(prompt),
@@ -752,9 +774,12 @@ export class MockLoadTestAgentSession implements AgentSession {
     const structuredBranchName = parseStructuredBranchNamePrompt(prompt);
     const settledAssistantImageMarkdown = parseSettledAssistantImageMarkdown(prompt);
     const steeringReplayShape = parseSteeringReplayShape(prompt);
+    const syntheticArtifactWrite = parseSyntheticArtifactWritePrompt(prompt);
     const scheduleTurn = () => {
       if (shouldEmitTurnFailure(prompt)) {
         this.scheduleFailedTurn(turn);
+      } else if (syntheticArtifactWrite) {
+        this.scheduleSyntheticArtifactWriteTurn(turn, syntheticArtifactWrite);
       } else if (steeringReplayShape) {
         this.scheduleSteeringReplayTurn(turn, steeringReplayShape);
       } else if (this.streamingAssistantResponse !== null) {
@@ -1058,6 +1083,42 @@ export class MockLoadTestAgentSession implements AgentSession {
         canceled: false,
       });
     }, 0);
+    turn.timer.unref?.();
+  }
+
+  private scheduleSyntheticArtifactWriteTurn(
+    turn: ActiveTurn,
+    request: SyntheticArtifactWrite,
+  ): void {
+    turn.timer = setTimeout(() => {
+      if (this.activeTurn !== turn) return;
+      this.clearTurnTimer(turn);
+      this.emitTurnStarted(turn);
+      const content = Array.from(
+        { length: request.lines },
+        (_, index) => `synthetic artifact line ${index + 1}`,
+      ).join("\n");
+      const detail: ToolCallDetail = {
+        type: "write",
+        filePath: request.filePath,
+        content,
+      };
+      const callId = `${turn.turnId}:synthetic-artifact-write`;
+      this.emitTimeline(
+        turn.turnId,
+        createToolCall({ callId, name: "Write", status: "running", detail }),
+      );
+      this.emitTimeline(
+        turn.turnId,
+        createToolCall({ callId, name: "Write", status: "completed", detail }),
+      );
+      this.emitTimeline(turn.turnId, {
+        type: "assistant_message",
+        text: `Synthetic artifact written to ${request.filePath}.`,
+        messageId: turn.assistantMessageId,
+      });
+      this.finishTurnWithText(turn, `Synthetic artifact written to ${request.filePath}.`);
+    }, 250);
     turn.timer.unref?.();
   }
 
