@@ -96,6 +96,8 @@ import {
 } from "@/attachments/service";
 import { resolveAgentControlsMode } from "@/composer/agent-controls/mode";
 import { resolveComposerInputMode, type ComposerInputMode } from "@/composer/input-mode";
+import { buildQuickCommandInsertion } from "@/quick-commands/model";
+import { QuickCommandsButton } from "@/quick-commands/quick-commands-button";
 import { resolveActiveSendBehavior } from "./input/state";
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
@@ -1201,6 +1203,15 @@ function ComposerContentImpl({
 
   const agentState = useSessionStore(useShallow(buildAgentStateSelector(serverId, agentId)));
 
+  // Quick commands bind to the workspace's project; composers without a
+  // workspace (drafts) offer the global commands only.
+  const quickCommandWorkspace = useSessionStore((state) =>
+    workspaceId ? (state.sessions[serverId]?.workspaces?.get(workspaceId) ?? null) : null,
+  );
+  const quickCommandProjectId = quickCommandWorkspace?.projectId ?? null;
+  const quickCommandProjectName =
+    quickCommandWorkspace?.projectCustomName ?? quickCommandWorkspace?.projectDisplayName ?? null;
+
   const queuedMessagesRaw = useSessionStore((state) =>
     state.sessions[serverId]?.queuedMessages?.get(agentId),
   );
@@ -1282,6 +1293,15 @@ function ComposerContentImpl({
       onChangeText(text);
     },
     [onChangeText],
+  );
+
+  const insertQuickCommandPrompt = useCallback(
+    (prompt: string) => {
+      const insertion = buildQuickCommandInsertion({ text: userInput, prompt, cursorIndex });
+      replaceUserInput(insertion.text, insertion.selection);
+      messageInputRef.current?.focus();
+    },
+    [cursorIndex, replaceUserInput, userInput],
   );
 
   const runClientSlashCommand = useCallback(
@@ -2100,18 +2120,38 @@ function ComposerContentImpl({
     ],
   );
 
-  const leftContent = useMemo(
-    () =>
-      renderLeftContent({
-        agentControls,
-        agentId,
-        serverId,
-        focusInput,
-        isCompactLayout,
-        showAgentControls: mode.showAgentControls,
-      }),
-    [agentControls, agentId, focusInput, isCompactLayout, mode.showAgentControls, serverId],
-  );
+  const leftContent = useMemo(() => {
+    if (!mode.showAgentControls) return null;
+    return (
+      <>
+        {renderLeftContent({
+          agentControls,
+          agentId,
+          serverId,
+          focusInput,
+          isCompactLayout,
+          showAgentControls: true,
+        })}
+        <QuickCommandsButton
+          projectId={quickCommandProjectId}
+          projectName={quickCommandProjectName}
+          onInsert={insertQuickCommandPrompt}
+          disabled={isComposerLocked}
+        />
+      </>
+    );
+  }, [
+    agentControls,
+    agentId,
+    focusInput,
+    insertQuickCommandPrompt,
+    isCompactLayout,
+    isComposerLocked,
+    mode.showAgentControls,
+    quickCommandProjectId,
+    quickCommandProjectName,
+    serverId,
+  ]);
 
   const handleAttachButtonRef = useCallback((node: View | null) => {
     attachButtonRef.current = node;

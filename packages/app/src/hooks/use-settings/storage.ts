@@ -15,6 +15,7 @@ import {
   type SidebarRowItems,
 } from "@/components/sidebar/display-preferences/row-items";
 import { isNative } from "@/constants/platform";
+import { normalizeQuickCommands, type QuickCommand } from "@/quick-commands/model";
 import {
   FONT_SIZE,
   PLUGIN_THEME_PREFERENCE,
@@ -99,6 +100,8 @@ export interface AppSettings {
   vimKeybindings: boolean;
   /** Route implicitly opened supporting tabs into the Side panel. Desktop only. */
   openSupportingTabsInSidePanel: boolean;
+  /** User-defined prompt presets for the composer; each entry is global or project-bound. */
+  quickCommands: QuickCommand[];
 }
 
 export interface Settings extends AppSettings {
@@ -149,6 +152,8 @@ const StoredAppSettingsSchema = z.strictObject({
   chatOutlineEnabled: z.boolean().optional(),
   vimKeybindings: z.boolean().optional(),
   openSupportingTabsInSidePanel: z.boolean().optional(),
+  // Entries are re-validated entry-by-entry by normalizeQuickCommands on read.
+  quickCommands: z.array(z.unknown()).optional(),
   // COMPAT(rendererDesktopSettings): these fields used to share this renderer-owned key.
   manageBuiltInDaemon: z.boolean().optional(),
   releaseChannel: z.enum(["stable", "beta"]).optional(),
@@ -181,6 +186,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   chatOutlineEnabled: true,
   vimKeybindings: false,
   openSupportingTabsInSidePanel: true,
+  quickCommands: [],
 };
 
 export const DEFAULT_APP_SETTINGS: Settings = {
@@ -455,6 +461,9 @@ function pickAppSettings(stored: StoredAppSettings): Partial<AppSettings> {
     result.codeFontSize = codeFontSize;
   }
   Object.assign(result, pickBooleanAppSettings(stored));
+  if (Array.isArray(stored.quickCommands)) {
+    result.quickCommands = normalizeQuickCommands(stored.quickCommands);
+  }
   if (typeof stored.autoExpandReasoning === "boolean") {
     result.autoExpandReasoning = stored.autoExpandReasoning;
   }
