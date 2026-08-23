@@ -5,6 +5,10 @@ description: Paseo reference for managing projects, workspaces, workspace script
 
 Paseo is a remote daemon that manages coding agents, terminals. Control it through MCP tools or the CLI.
 
+## If the Paseo tools are missing
+
+The daemon injects the Paseo tools into agent sessions only when the host has enabled them. If `create_agent`, `create_task`, `list_tasks`, and friends are not in your tool list, injection is disabled. Tell the user to turn on **Enable Paseo tools** (Settings → their host → Agents) or set `daemon.mcp.injectIntoAgents` to `true` in the daemon config, then reload. Do not invent workarounds — no shell commands, curl, or npx clients can substitute for the missing tools.
+
 ## Projects
 
 Manage the daemon's project registry through the CLI:

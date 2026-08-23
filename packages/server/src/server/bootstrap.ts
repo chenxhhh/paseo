@@ -535,7 +535,10 @@ function createInitialMutableDaemonConfig(config: PaseoDaemonConfig): MutableDae
     relay: { enabled: config.relayEnabled ?? true },
     mcp: {
       enabled: config.mcpEnabled ?? true,
-      injectIntoAgents: config.mcpInjectIntoAgents ?? true,
+      // Same default as the runtime resolution (config.ts: injectIntoAgents
+      // defaults to false) — keep the mutable mirror from disagreeing with
+      // actual injection when a config path skips that resolution.
+      injectIntoAgents: config.mcpInjectIntoAgents ?? false,
     },
     ...(config.hostnames !== undefined ? { hostnames: config.hostnames } : {}),
     cors: { allowedOrigins: config.corsAllowedOrigins },
