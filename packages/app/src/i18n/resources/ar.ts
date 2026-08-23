@@ -383,6 +383,11 @@ export const ar: TranslationResources = {
       withTokens: "تم ضغط السياق (رموز{{tokens}}K)",
       completed: "تم ضغط السياق",
     },
+    turn: {
+      openArtifact: "فتح {{name}}",
+      filesChanged_one: "تم تغيير ملف واحد",
+      filesChanged_other: "تم تغيير {{count}} ملفات",
+    },
   },
   importSession: {
     title: "جلسة الاستيراد",

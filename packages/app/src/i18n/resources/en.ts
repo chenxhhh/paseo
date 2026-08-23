@@ -381,6 +381,11 @@ export const en = {
       withTokens: "Context compacted ({{tokens}}K tokens)",
       completed: "Context compacted",
     },
+    turn: {
+      openArtifact: "Open {{name}}",
+      filesChanged_one: "{{count}} file changed",
+      filesChanged_other: "{{count}} files changed",
+    },
   },
   importSession: {
     title: "Import session",

@@ -386,6 +386,11 @@ export const ru: TranslationResources = {
       withTokens: "Контекст сжат ({{tokens}} тыс. токенов)",
       completed: "Контекст сжат",
     },
+    turn: {
+      openArtifact: "Открыть {{name}}",
+      filesChanged_one: "Изменён {{count}} файл",
+      filesChanged_other: "Изменено файлов: {{count}}",
+    },
   },
   importSession: {
     title: "Импортировать сессию",

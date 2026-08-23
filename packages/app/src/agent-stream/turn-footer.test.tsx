@@ -38,6 +38,10 @@ vi.mock("@/components/message", () => ({
   STREAM_METADATA_FONT_SIZE: 11,
 }));
 
+vi.mock("./turn-summary", () => ({
+  TurnArtifactsSection: () => null,
+}));
+
 vi.mock("@/components/assistant-fork-menu", () => ({
   AssistantForkMenu: () => <button data-testid="running-turn-fork" type="button" />,
 }));

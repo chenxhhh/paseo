@@ -387,6 +387,11 @@ export const ptBR: TranslationResources = {
       withTokens: "Contexto compactado ({{tokens}}K tokens)",
       completed: "Contexto compactado",
     },
+    turn: {
+      openArtifact: "Abrir {{name}}",
+      filesChanged_one: "{{count}} arquivo alterado",
+      filesChanged_other: "{{count}} arquivos alterados",
+    },
   },
   importSession: {
     title: "Importar sessão",

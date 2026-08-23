@@ -387,6 +387,11 @@ export const ja: TranslationResources = {
       withTokens: "コンテキストを圧縮しました（{{tokens}}Kトークン）",
       completed: "コンテキストを圧縮しました",
     },
+    turn: {
+      openArtifact: "{{name}}を開く",
+      filesChanged_one: "{{count}} 件のファイルを変更",
+      filesChanged_other: "{{count}} 件のファイルを変更",
+    },
   },
   importSession: {
     title: "セッションをインポート",
