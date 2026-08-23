@@ -273,6 +273,11 @@ export function buildACPClientCapabilities(
 // NO_BROWSER is honored by Gemini CLI; other ACP agents ignore it.
 const PROBE_ENV: Record<string, string> = { NO_BROWSER: "true" };
 const ACP_DIAGNOSTIC_PHASE_TIMEOUT_MS = 20_000;
+// Cursor ACP often resolves session/prompt after Create Plan while listed
+// tasks are still pending. Finishing the Paseo turn there drops the rest of
+// the work; re-prompt on the same turn instead.
+const MAX_ACP_PLAN_YIELD_CONTINUES = 3;
+const ACP_PLAN_YIELD_CONTINUE_PROMPT = "Continue.";
 
 function summarizeMalformedACPStdoutError(error: unknown): { type: string; message: string } {
   return {
@@ -1456,6 +1461,8 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   private readonly extensionCommandsParser?: ACPExtensionCommandsParser;
   private currentTurnUsage: AgentUsage | undefined;
   private activeForegroundTurnId: string | null = null;
+  private lastTimelineItem: AgentTimelineItem | null = null;
+  private planYieldContinues = 0;
   private fallbackAssistantMessageId: string | null = null;
   private closed = false;
   private historyPending = false;
@@ -1623,33 +1630,14 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     const turnId = randomUUID();
     const messageId = options?.clientMessageId ?? randomUUID();
     this.activeForegroundTurnId = turnId;
+    this.lastTimelineItem = null;
+    this.planYieldContinues = 0;
     this.fallbackAssistantMessageId = null;
     this.submittedUserMessageTurnId = null;
     this.emitBootstrapThreadEvent();
     this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
     this.emitSubmittedUserMessage(prompt, messageId, turnId, options?.clientMessageId);
-
-    void this.connection
-      .prompt({
-        sessionId: this.sessionId,
-        messageId,
-        prompt: toACPContentBlocks(prompt),
-      })
-      .then((response) => {
-        this.handlePromptResponse(response, turnId);
-        return;
-      })
-      .catch((error) => {
-        const summary = summarizeACPRequestError(error);
-        this.finishTurn({
-          type: "turn_failed",
-          provider: this.provider,
-          error: summary.message,
-          code: summary.code,
-          diagnostic: this.collectDiagnostic(summary.diagnostic ?? summary.message),
-          turnId,
-        });
-      });
+    this.dispatchPrompt(turnId, prompt, messageId);
 
     return { turnId };
   }
@@ -2847,34 +2835,88 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   }
 
   private handlePromptResponse(response: PromptResponse, turnId: string): void {
+    if (this.activeForegroundTurnId !== turnId) {
+      return;
+    }
     this.currentTurnUsage = mapACPUsage(response.usage) ?? this.currentTurnUsage;
 
-    switch (response.stopReason) {
-      case "cancelled":
-        this.synthesizeCanceledToolCalls();
-        this.finishTurn({
-          type: "turn_canceled",
-          provider: this.provider,
-          reason: "Interrupted",
-          turnId,
-        });
-        break;
-      case "end_turn":
-      case "max_tokens":
-      case "max_turn_requests":
-      case "refusal":
-      default:
-        this.finishTurn({
-          type: "turn_completed",
-          provider: this.provider,
-          usage: this.currentTurnUsage,
-          turnId,
-        });
-        break;
+    if (response.stopReason === "cancelled") {
+      this.synthesizeCanceledToolCalls();
+      this.finishTurn({
+        type: "turn_canceled",
+        provider: this.provider,
+        reason: "Interrupted",
+        turnId,
+      });
+      return;
     }
+
+    if (this.shouldResumeAfterPlanYield(response.stopReason)) {
+      this.planYieldContinues += 1;
+      this.lastTimelineItem = null;
+      this.dispatchPrompt(turnId, ACP_PLAN_YIELD_CONTINUE_PROMPT, randomUUID());
+      return;
+    }
+
+    this.finishTurn({
+      type: "turn_completed",
+      provider: this.provider,
+      usage: this.currentTurnUsage,
+      turnId,
+    });
+  }
+
+  private shouldResumeAfterPlanYield(stopReason: PromptResponse["stopReason"]): boolean {
+    const promptStillLive = !this.closed && this.connection != null && this.sessionId != null;
+    if (stopReason !== "end_turn" || !promptStillLive) {
+      return false;
+    }
+    if (this.planYieldContinues >= MAX_ACP_PLAN_YIELD_CONTINUES) {
+      return false;
+    }
+    const last = this.lastTimelineItem;
+    if (last?.type !== "todo") {
+      return false;
+    }
+    return last.items.some((item) => !item.completed);
+  }
+
+  private dispatchPrompt(turnId: string, prompt: AgentPromptInput, messageId: string): void {
+    if (!this.connection || !this.sessionId) {
+      this.finishTurn({
+        type: "turn_failed",
+        provider: this.provider,
+        error: `${this.provider} session is not initialized`,
+        turnId,
+      });
+      return;
+    }
+
+    void this.connection
+      .prompt({
+        sessionId: this.sessionId,
+        messageId,
+        prompt: toACPContentBlocks(prompt),
+      })
+      .then((response) => {
+        this.handlePromptResponse(response, turnId);
+        return;
+      })
+      .catch((error) => {
+        const summary = summarizeACPRequestError(error);
+        this.finishTurn({
+          type: "turn_failed",
+          provider: this.provider,
+          error: summary.message,
+          code: summary.code,
+          diagnostic: this.collectDiagnostic(summary.diagnostic ?? summary.message),
+          turnId,
+        });
+      });
   }
 
   private wrapTimeline(item: AgentTimelineItem): AgentStreamEvent {
+    this.lastTimelineItem = item;
     return {
       type: "timeline",
       provider: this.provider,

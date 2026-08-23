@@ -72,8 +72,21 @@ import {
   type PendingForegroundRun,
 } from "./agent-run-state.js";
 import { invokeRewindCapability, type RewindMode } from "./rewind/rewind.js";
-import { isSystemInjectedEnvelope } from "./agent-prompt.js";
+import {
+  formatSystemNotificationPrompt,
+  isSystemInjectedEnvelope,
+  startAgentRun,
+} from "./agent-prompt.js";
 import { stripInternalPaseoMcpServer, withRuntimePaseoMcpServer } from "./runtime-mcp-config.js";
+import {
+  AUTO_CONTINUE_PROMPT,
+  MAX_AUTO_CONTINUE_ATTEMPTS,
+  autoContinueDelayMs,
+  classifyTurnEnding,
+  formatRecoveryExhaustedNotice,
+  formatRecoveryScheduledNotice,
+  type TurnRecoveryDecision,
+} from "./turn-recovery.js";
 import { resolveCreateAgentTitles } from "./create-agent-title.js";
 import type { PaseoToolCatalogFactory } from "./tools/types.js";
 import {
@@ -501,6 +514,20 @@ interface AgentMetadataPatch {
 
 const SYSTEM_ERROR_PREFIX = "[System Error]";
 
+interface TurnRecoveryState {
+  /** Consecutive abnormal turn endings that scheduled an auto-continue. */
+  consecutive: number;
+  /** Pending continuation timer, if one is scheduled. */
+  timer: NodeJS.Timeout | null;
+  /**
+   * True between firing an auto-continue and the continuation turn's first
+   * turn_started event. Distinguishes our own continuation (echoed user
+   * message / turn_started) from a genuine user takeover that should cancel
+   * and reset the recovery loop.
+   */
+  awaitingStart: boolean;
+}
+
 function attachPersistenceCwd(
   handle: AgentPersistenceHandle | null,
   cwd: string,
@@ -688,6 +715,7 @@ export class AgentManager {
   private readonly inFlightAgentCloses = new Map<string, Promise<void>>();
   private readonly lifecycleMutationTails = new Map<string, Promise<void>>();
   private readonly agentStreamCoalescer: AgentStreamCoalescer;
+  private readonly turnRecovery = new Map<string, TurnRecoveryState>();
   private mcpBaseUrl: string | null;
   private readonly mcpAuthToken: string | null;
   private paseoToolsEnabled = true;
@@ -1490,6 +1518,7 @@ export class AgentManager {
 
   private async closeAgentRuntime(agentId: string): Promise<void> {
     const agent = this.requireAgent(agentId);
+    this.cancelScheduledTurnRecovery(agentId);
     this.logger.trace(
       {
         agentId,
@@ -1556,6 +1585,7 @@ export class AgentManager {
 
   private async archiveAgentUnlocked(agentId: string): Promise<{ archivedAt: string }> {
     const agent = this.requireAgent(agentId);
+    this.cancelScheduledTurnRecovery(agentId);
     if (!this.registry) {
       throw new Error("Agent storage is not configured");
     }
@@ -3793,6 +3823,12 @@ export class AgentManager {
     const eventTurnId = identified.turnId;
     const isForegroundEvent = agent.activeForegroundTurnId === eventTurnId;
     this.traceHandleStreamEventStart(agent, event, eventTurnId, isForegroundEvent);
+    if (!options?.fromHistory) {
+      // A new turn or real user message supersedes any pending auto-continue.
+      // Our own continuation turn (and the echoed system-envelope message it
+      // produces) must NOT cancel the loop — see TurnRecoveryState.awaitingStart.
+      this.cancelRecoveryOnNewTurn(agent.id, event);
+    }
     if (
       eventTurnId &&
       isTurnTerminalEvent(event) &&
@@ -3840,6 +3876,7 @@ export class AgentManager {
         this.runs.settleTerminalRun(agent.id, eventTurnId);
         if (isForegroundEvent) {
           this.finalizeForegroundTurn(agent, eventTurnId);
+          this.maybeScheduleTurnRecovery(agent, event);
         }
       }
 
@@ -4398,6 +4435,168 @@ export class AgentManager {
       parts.push(diagnostic);
     }
     return parts.join("\n\n");
+  }
+
+  private cancelRecoveryOnNewTurn(agentId: string, event: AgentStreamEvent): void {
+    if (event.type === "turn_started") {
+      const state = this.turnRecovery.get(agentId);
+      if (state?.awaitingStart) {
+        state.awaitingStart = false;
+      } else {
+        this.cancelScheduledTurnRecovery(agentId);
+      }
+      return;
+    }
+    if (event.type === "timeline" && event.item.type === "user_message") {
+      if (!isSystemInjectedEnvelope(event.item.text)) {
+        const state = this.turnRecovery.get(agentId);
+        if (!state?.awaitingStart) {
+          this.cancelScheduledTurnRecovery(agentId);
+        }
+      }
+    }
+  }
+
+  /**
+   * After a foreground turn settles, decide whether it ended abnormally
+   * (rate limit / 5xx / network / silent stream death) and, if so, schedule an
+   * automatic continuation prompt with linear backoff. This lets unattended
+   * agents survive transient provider failures instead of stopping silently
+   * until the user manually nudges them.
+   */
+  private maybeScheduleTurnRecovery(agent: ActiveManagedAgent, terminal: AgentStreamEvent): void {
+    if (agent.pendingReplacement || agent.internal) {
+      return;
+    }
+    if (terminal.type === "turn_canceled") {
+      this.cancelScheduledTurnRecovery(agent.id);
+      return;
+    }
+    if (!agent.persistence?.sessionId) {
+      return;
+    }
+
+    const timeline = this.timelineStore.getItems(agent.id);
+    const lastItem = timeline.length > 0 ? timeline[timeline.length - 1] : null;
+    const hadToolActivity = timeline.some((item) => item.type === "tool_call");
+    const decision =
+      terminal.type === "turn_failed"
+        ? classifyTurnEnding({
+            outcome: "failed",
+            error: terminal.error,
+            lastTimelineItem: lastItem,
+            hadToolActivity,
+          })
+        : classifyTurnEnding({
+            outcome: "completed",
+            lastTimelineItem: lastItem,
+            hadToolActivity,
+          });
+
+    if (!decision.retryable) {
+      // A healthy turn (or one with a final assistant message) resets the loop.
+      const existing = this.turnRecovery.get(agent.id);
+      if (existing) {
+        existing.consecutive = 0;
+        existing.awaitingStart = false;
+      }
+      return;
+    }
+
+    const state = this.turnRecovery.get(agent.id) ?? {
+      consecutive: 0,
+      timer: null,
+      awaitingStart: false,
+    };
+    if (state.timer) {
+      return;
+    }
+    state.consecutive += 1;
+    if (state.consecutive > MAX_AUTO_CONTINUE_ATTEMPTS) {
+      this.exhaustTurnRecovery(agent, decision);
+      return;
+    }
+    const delayMs = autoContinueDelayMs(state.consecutive - 1);
+    this.turnRecovery.set(agent.id, state);
+    this.recordAndDispatchTimelineItem(
+      agent.id,
+      {
+        type: "assistant_message",
+        text: formatRecoveryScheduledNotice(decision, delayMs, state.consecutive),
+      },
+      agent.provider,
+    );
+    state.timer = setTimeout(() => {
+      state.timer = null;
+      state.awaitingStart = true;
+      void this.fireTurnRecovery(agent.id).catch((error) => {
+        this.logger.warn(
+          { err: error, agentId: agent.id },
+          "agent.manager.turn_recovery.fire_failed",
+        );
+      });
+    }, delayMs);
+  }
+
+  private async fireTurnRecovery(agentId: string): Promise<void> {
+    const state = this.turnRecovery.get(agentId);
+    if (!state) {
+      return;
+    }
+    const agent = this.agents.get(agentId);
+    if (!agent) {
+      this.turnRecovery.delete(agentId);
+      return;
+    }
+    // Safety re-check before injecting the continuation prompt:
+    if (
+      agent.pendingReplacement ||
+      agent.activeForegroundTurnId ||
+      agent.activeTurnId ||
+      this.runs.hasRun(agentId) ||
+      !agent.persistence?.sessionId
+    ) {
+      // Someone took over (new user message / autonomous turn / close / another
+      // run). Drop the loop.
+      this.cancelScheduledTurnRecovery(agentId);
+      return;
+    }
+    await startAgentRun(
+      this,
+      agentId,
+      formatSystemNotificationPrompt(AUTO_CONTINUE_PROMPT),
+      this.logger,
+      // Steer covers the race between the guard above and dispatch: a turn
+      // started in between absorbs the continuation instead of racing it.
+      { replaceRunning: false, activeTurnBehavior: "steer" },
+    );
+  }
+
+  private cancelScheduledTurnRecovery(agentId: string): void {
+    const state = this.turnRecovery.get(agentId);
+    if (state?.timer) {
+      clearTimeout(state.timer);
+    }
+    this.turnRecovery.delete(agentId);
+  }
+
+  private exhaustTurnRecovery(agent: ActiveManagedAgent, decision: TurnRecoveryDecision): void {
+    const mutableAgent = agent as ManagedAgent;
+    mutableAgent.attention = {
+      requiresAttention: true,
+      attentionReason: "error",
+      attentionTimestamp: new Date(),
+    };
+    this.broadcastAgentAttention(agent, "error");
+    this.emitState(agent);
+    this.recordAndDispatchTimelineItem(
+      agent.id,
+      {
+        type: "assistant_message",
+        text: formatRecoveryExhaustedNotice(decision),
+      },
+      agent.provider,
+    );
   }
 
   private recordTimeline(
