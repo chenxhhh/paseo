@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ToolCallDetail } from "@getpaseo/protocol/agent-types";
-import type { StreamItem, ToolCallItem } from "@/types/stream";
+import type { StreamItem, ThoughtItem, ToolCallItem } from "@/types/stream";
 import {
   prepareToolCallHistory,
   projectToolCallDetailLevel,
@@ -33,6 +33,16 @@ function toolCall(
         detail,
       },
     },
+  };
+}
+
+function thought(id: string, options: { status?: "loading" | "ready" } = {}): ThoughtItem {
+  return {
+    kind: "thought",
+    id,
+    text: `thinking ${id}`,
+    timestamp: new Date(`2026-01-01T00:00:${id.padStart(2, "0")}.000Z`),
+    status: options.status ?? "ready",
   };
 }
 
@@ -233,6 +243,7 @@ describe("tool call detail-level projection", () => {
       run: expect.any(Object),
       isLoading: false,
       summary: {
+        thinkingCount: 0,
         editedFileCount: 1,
         commandCount: 1,
         readFileCount: 2,
@@ -455,6 +466,95 @@ describe("tool call detail-level projection", () => {
 
     expect(result.head).toEqual([singleCall, plan, speak]);
     expect(result.groupsByHostId.get(singleCall.id)?.run.calls).toEqual([singleCall]);
+    expect(result.groupsByHostId.size).toBe(1);
+  });
+
+  it("leaves thinking items ungrouped in overview", () => {
+    const thinking = thought("1");
+    const call = toolCall("2", { type: "shell", command: "one" });
+
+    const result = project({ level: "overview", head: [thinking, call] });
+
+    expect(result.head).toEqual([thinking, call]);
+    expect(result.groupsByHostId.get("2")).toMatchObject({
+      summary: { thinkingCount: 0, commandCount: 1 },
+    });
+  });
+
+  it("groups adjacent thinking and tool calls into one drawer run", () => {
+    const before = thought("1");
+    const call = toolCall("2", { type: "shell", command: "one" });
+    const read = toolCall("3", { type: "read", filePath: "/repo/a.ts" });
+    const after = thought("4");
+
+    const result = project({ level: "drawer", head: [before, call, read, after] });
+
+    expect(result.head).toEqual([
+      expect.objectContaining({
+        kind: "tool_call",
+        id: "1",
+        payload: {
+          source: "orchestrator",
+          data: expect.objectContaining({ toolName: "thinking" }),
+        },
+      }),
+    ]);
+    expect(result.groupsByHostId.get("1")?.run).toMatchObject({
+      calls: [before, call, read, after],
+      latest: after,
+    });
+    expect(result.groupsByHostId.get("1")).toMatchObject({
+      summary: { thinkingCount: 2, commandCount: 1, readFileCount: 1 },
+    });
+  });
+
+  it("hosts a thinking-only drawer run on a synthesized tool call", () => {
+    const thinking = thought("1");
+
+    const result = project({ level: "drawer", head: [thinking] });
+
+    expect(result.head).toEqual([
+      expect.objectContaining({
+        kind: "tool_call",
+        id: "1",
+        payload: {
+          source: "orchestrator",
+          data: expect.objectContaining({ toolName: "thinking", arguments: "thinking 1" }),
+        },
+      }),
+    ]);
+    expect(result.groupsByHostId.get("1")).toMatchObject({
+      summary: { thinkingCount: 1 },
+    });
+  });
+
+  it("keeps a drawer group loading while a thought is still streaming", () => {
+    const result = project({
+      level: "drawer",
+      head: [thought("1", { status: "loading" }), toolCall("2", { type: "shell", command: "one" })],
+      isTurnActive: true,
+    });
+
+    expect(result.groupsByHostId.get("1")?.isLoading).toBe(true);
+  });
+
+  it("keeps planning and spoken messages out of drawer runs", () => {
+    const thinking = thought("1");
+    const plan = toolCall("2", { type: "plan", text: "Plan" });
+    const speak = toolCall(
+      "3",
+      { type: "unknown", input: "Hello", output: null },
+      { name: "speak" },
+    );
+
+    const result = project({ level: "drawer", head: [thinking, plan, speak] });
+
+    expect(result.head).toEqual([
+      expect.objectContaining({ kind: "tool_call", id: "1" }),
+      plan,
+      speak,
+    ]);
+    expect(result.groupsByHostId.get("1")?.run.calls).toEqual([thinking]);
     expect(result.groupsByHostId.size).toBe(1);
   });
 });

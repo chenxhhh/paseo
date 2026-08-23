@@ -2,23 +2,33 @@ import type { StreamItem } from "@/types/stream";
 import type { ToolCallDetailLevel } from "@/hooks/use-settings/storage";
 import {
   groupLiveToolCalls,
+  isDrawerGroupableItem,
+  isGroupableToolCall,
   prepareGroupedHistory,
   type GroupedHistory,
   type GroupedToolCalls,
+  type IsGroupableStreamItem,
 } from "./grouping";
 import { buildOverviewGroup, type OverviewToolCallGroup } from "./overview/model";
 
 export type { ToolCallDetailLevel } from "@/hooks/use-settings/storage";
 export type ToolCallDetailGroup = OverviewToolCallGroup;
 
+export type ToolCallGroupingMode = Exclude<ToolCallDetailLevel, "detailed">;
+
 export interface PreparedToolCallHistory {
-  mode: "overview";
+  mode: ToolCallGroupingMode;
   grouped: GroupedHistory<ToolCallDetailGroup>;
 }
 
 export interface ToolCallDetailProjection extends GroupedToolCalls<ToolCallDetailGroup> {}
 
 const EMPTY_TOOL_CALL_GROUPS = new Map<string, ToolCallDetailGroup>();
+
+const GROUPING_PREDICATES: Record<ToolCallGroupingMode, IsGroupableStreamItem> = {
+  overview: isGroupableToolCall,
+  drawer: isDrawerGroupableItem,
+};
 
 export function prepareToolCallHistory(
   level: ToolCallDetailLevel,
@@ -28,8 +38,12 @@ export function prepareToolCallHistory(
     return null;
   }
   return {
-    mode: "overview",
-    grouped: prepareGroupedHistory({ tail, buildGroup: buildOverviewGroup }),
+    mode: level,
+    grouped: prepareGroupedHistory({
+      tail,
+      buildGroup: buildOverviewGroup,
+      isGroupable: GROUPING_PREDICATES[level],
+    }),
   };
 }
 
@@ -56,5 +70,6 @@ export function projectToolCallDetailLevel(input: {
     head: input.head,
     isTurnActive: input.isTurnActive,
     buildGroup: buildOverviewGroup,
+    isGroupable: GROUPING_PREDICATES[input.level],
   });
 }

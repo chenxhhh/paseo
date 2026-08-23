@@ -1804,6 +1804,10 @@ export const en = {
     output: "Output",
   },
   toolCallGroup: {
+    thinking: {
+      one: "thought {{count}} time",
+      other: "thought {{count}} times",
+    },
     editedFiles: {
       one: "edited {{count}} file",
       other: "edited {{count}} files",
@@ -2042,11 +2046,12 @@ export const en = {
       },
       toolCallDetail: {
         label: "Tool call display",
-        description: "How tool calls appear in the timeline",
+        description: "How tool calls and thinking appear in the timeline",
         accessibilityLabel: "Select tool call display ({{value}})",
         options: {
           overview: "Summary",
           detailed: "Full detail",
+          drawer: "Drawer",
         },
       },
       language: {

@@ -1846,6 +1846,10 @@ export const fr: TranslationResources = {
     output: "Sortir",
   },
   toolCallGroup: {
+    thinking: {
+      one: "a réfléchi {{count}} fois",
+      other: "a réfléchi {{count}} fois",
+    },
     editedFiles: {
       one: "a modifié {{count}} fichier",
       other: "a modifié {{count}} fichiers",
@@ -2032,11 +2036,12 @@ export const fr: TranslationResources = {
       },
       toolCallDetail: {
         label: "Affichage des appels d’outils",
-        description: "Comment les appels d’outils apparaissent dans la chronologie",
+        description: "Comment les appels d’outils et la réflexion apparaissent dans la chronologie",
         accessibilityLabel: "Sélectionner l’affichage des appels d’outils ({{value}})",
         options: {
           overview: "Résumé",
           detailed: "Détails complets",
+          drawer: "Tiroir",
         },
       },
       language: {

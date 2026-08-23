@@ -1826,6 +1826,10 @@ export const ru: TranslationResources = {
     output: "Выходные данные",
   },
   toolCallGroup: {
+    thinking: {
+      one: "выполнено размышлений: {{count}}",
+      other: "выполнено размышлений: {{count}}",
+    },
     editedFiles: {
       one: "изменён {{count}} файл",
       other: "изменены файлы ({{count}})",
@@ -2013,11 +2017,12 @@ export const ru: TranslationResources = {
       },
       toolCallDetail: {
         label: "Отображение вызовов инструментов",
-        description: "Как вызовы инструментов отображаются на временной шкале",
+        description: "Как вызовы инструментов и размышления отображаются на временной шкале",
         accessibilityLabel: "Выбрать отображение вызовов инструментов ({{value}})",
         options: {
           overview: "Сводка",
           detailed: "Все подробности",
+          drawer: "Сворачивание",
         },
       },
       language: {

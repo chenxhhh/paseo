@@ -1841,6 +1841,10 @@ export const es: TranslationResources = {
     output: "Producción",
   },
   toolCallGroup: {
+    thinking: {
+      one: "pensó {{count}} vez",
+      other: "pensó {{count}} veces",
+    },
     editedFiles: {
       one: "editó {{count}} archivo",
       other: "editó {{count}} archivos",
@@ -2029,11 +2033,12 @@ export const es: TranslationResources = {
       },
       toolCallDetail: {
         label: "Visualización de llamadas a herramientas",
-        description: "Cómo aparecen las llamadas a herramientas en la cronología",
+        description: "Cómo aparecen las llamadas a herramientas y el razonamiento en la cronología",
         accessibilityLabel: "Seleccionar visualización de llamadas a herramientas ({{value}})",
         options: {
           overview: "Resumen",
           detailed: "Detalle completo",
+          drawer: "Cajón",
         },
       },
       language: {

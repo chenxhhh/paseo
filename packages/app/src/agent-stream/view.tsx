@@ -707,8 +707,8 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       [agentId, client, handleInlinePathPress, resolvedServerId, toast, workspaceRoot],
     );
 
-    const renderThoughtItem = useCallback(
-      (layoutItem: StreamLayoutItem, item: Extract<StreamItem, { kind: "thought" }>) => {
+    const renderThoughtContent = useCallback(
+      (item: Extract<StreamItem, { kind: "thought" }>, isLastInSequence: boolean) => {
         return (
           <ToolCallSlot
             itemId={item.id}
@@ -716,13 +716,20 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             toolName="thinking"
             args={item.text}
             status={item.status === "ready" ? "completed" : "executing"}
-            isLastInSequence={layoutItem.isLastInToolSequence}
+            isLastInSequence={isLastInSequence}
             defaultExpanded={autoExpandReasoning}
             forceInline={autoExpandReasoning}
           />
         );
       },
       [autoExpandReasoning, setInlineDetailsExpanded],
+    );
+
+    const renderThoughtItem = useCallback(
+      (layoutItem: StreamLayoutItem, item: Extract<StreamItem, { kind: "thought" }>) => {
+        return renderThoughtContent(item, layoutItem.isLastInToolSequence);
+      },
+      [renderThoughtContent],
     );
 
     const renderSingleToolCallItem = useCallback(
@@ -797,15 +804,20 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             onExpandedChange={setToolCallGroupExpanded}
           >
             {expanded
-              ? group.run.calls.map((call, index) => (
-                  <React.Fragment key={call.id}>
-                    {renderSingleToolCallItem(
-                      call,
-                      index === group.run.calls.length - 1,
-                      GROUPED_TOOL_CALL_DETAIL_MAX_HEIGHT,
-                    )}
-                  </React.Fragment>
-                ))
+              ? group.run.calls.map((call, index) => {
+                  const isLastInGroup = index === group.run.calls.length - 1;
+                  return (
+                    <React.Fragment key={call.id}>
+                      {call.kind === "thought"
+                        ? renderThoughtContent(call, isLastInGroup)
+                        : renderSingleToolCallItem(
+                            call,
+                            isLastInGroup,
+                            GROUPED_TOOL_CALL_DETAIL_MAX_HEIGHT,
+                          )}
+                    </React.Fragment>
+                  );
+                })
               : null}
           </OverviewToolCallGroupView>
         );
@@ -814,6 +826,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         projectedToolCalls.groupsByHostId,
         expandedToolCallGroupIds,
         renderSingleToolCallItem,
+        renderThoughtContent,
         setToolCallGroupExpanded,
       ],
     );
