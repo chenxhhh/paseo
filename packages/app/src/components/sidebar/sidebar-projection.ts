@@ -1,5 +1,9 @@
 import { buildStatusGroups } from "@/hooks/sidebar-status-view-model";
 import {
+  buildUserStatusGroups,
+  userStatusWorkspaceGroups,
+} from "@/hooks/sidebar-user-status-view-model";
+import {
   splitPinnedSidebarGroups,
   type PinnedSidebarGroups,
   type PinnedSidebarKeys,
@@ -9,6 +13,7 @@ import type {
   SidebarWorkspaceEntry,
 } from "@/hooks/use-sidebar-workspaces-list";
 import type { SidebarGroupMode } from "@/stores/sidebar-view-store";
+import type { WorkspaceStatusDefinition } from "@/utils/workspace-statuses";
 import {
   resolveSidebarProjectIconTargets,
   type SidebarProjectIconTarget,
@@ -45,6 +50,7 @@ export interface SidebarProjectionInput {
   pinnedCollapsed: boolean;
   collapsedProjectKeys: ReadonlySet<string>;
   collapsedWorkspaceGroupKeys: ReadonlySet<string>;
+  statuses: readonly WorkspaceStatusDefinition[];
 }
 
 export function buildSidebarProjection(input: SidebarProjectionInput): SidebarProjection {
@@ -101,6 +107,10 @@ function buildWorkspaceGroups(
     case "status":
       return statusWorkspaceGroups(
         buildStatusGroups(unpinnedWorkspaces, input.projectNamesByViewKey),
+      );
+    case "user-status":
+      return userStatusWorkspaceGroups(
+        buildUserStatusGroups(unpinnedWorkspaces, input.statuses, input.projectNamesByViewKey),
       );
   }
 }

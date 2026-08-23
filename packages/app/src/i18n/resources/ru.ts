@@ -1020,6 +1020,22 @@ export const ru: TranslationResources = {
     moveTitle: "Переместить в статус",
     clear: "Сбросить статус",
     updateHost: "Обновите этот хост, чтобы назначать статусы.",
+    board: {
+      title: "Доска рабочих пространств",
+      empty: "Рабочих пространств пока нет. Создайте одно и перетащите в колонку.",
+      emptyLane: "Пока пусто",
+    },
+    manage: {
+      title: "Управление колонками",
+      add: "Добавить колонку",
+      addTitle: "Новая колонка",
+      namePlaceholder: "Название колонки",
+      renameTitle: "Переименовать колонку",
+      moveLeft: "Сдвинуть влево",
+      moveRight: "Сдвинуть вправо",
+      remove: "Удалить колонку",
+      done: "Готово",
+    },
   },
   workspaceLabels: {
     title: "Метки",
@@ -1088,6 +1104,7 @@ export const ru: TranslationResources = {
         checks: "Проверки",
         services: "Сервисы",
         labels: "Метки",
+        status: "Статус",
         diff: "Статистика изменений",
         timestamp: "Последняя активность",
       },
@@ -1141,6 +1158,7 @@ export const ru: TranslationResources = {
     sections: {
       sessions: "История",
       schedules: "Расписания",
+      board: "Доска",
     },
     worktreeSetup: {
       title: "Настроить скрипты worktree",

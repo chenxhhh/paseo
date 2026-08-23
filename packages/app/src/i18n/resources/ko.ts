@@ -1012,6 +1012,22 @@ export const ko: TranslationResources = {
     moveTitle: "상태로 이동",
     clear: "상태 지우기",
     updateHost: "상태를 할당하려면 이 호스트를 업데이트하세요.",
+    board: {
+      title: "워크스페이스 보드",
+      empty: "아직 워크스페이스가 없습니다. 하나 만든 후 레인으로 드래그하세요.",
+      emptyLane: "아직 없음",
+    },
+    manage: {
+      title: "열 관리",
+      add: "열 추가",
+      addTitle: "새 열",
+      namePlaceholder: "열 이름",
+      renameTitle: "열 이름 바꾸기",
+      moveLeft: "왼쪽으로 이동",
+      moveRight: "오른쪽으로 이동",
+      remove: "열 삭제",
+      done: "완료",
+    },
   },
   workspaceLabels: {
     title: "레이블",
@@ -1080,6 +1096,7 @@ export const ko: TranslationResources = {
         checks: "검사",
         services: "서비스",
         labels: "레이블",
+        status: "상태",
         diff: "Diff 통계",
         timestamp: "마지막 활동",
       },
@@ -1132,6 +1149,7 @@ export const ko: TranslationResources = {
     sections: {
       sessions: "기록",
       schedules: "일정",
+      board: "보드",
     },
     worktreeSetup: {
       title: "워크트리 스크립트 설정",

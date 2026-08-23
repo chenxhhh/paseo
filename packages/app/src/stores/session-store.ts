@@ -54,6 +54,10 @@ import {
   type WorkspaceAgentActivity,
 } from "@/utils/workspace-agent-activity";
 import {
+  buildWorkspaceAgentRowsIndex,
+  type WorkspaceAgentRowSummary,
+} from "@/utils/workspace-agent-rows";
+import {
   applyTurnLivenessTransition,
   resolveTurnPresentation,
   TURN_LIVENESS_IDLE,
@@ -119,6 +123,8 @@ export interface WorkspaceDescriptor {
   title?: string | null;
   pinnedAt?: string | null;
   labels?: string[];
+  // COMPAT(workspaceUserStatus): old daemons omit the assignment.
+  userStatus?: string | null;
   status: WorkspaceDescriptorPayload["status"];
   statusEnteredAt: Date | null;
   archivingAt: string | null;
@@ -157,6 +163,8 @@ export function normalizeWorkspaceDescriptor(
     pinnedAt: payload.pinnedAt ?? null,
     // COMPAT(workspaceLabels): old daemons omit assignments.
     labels: payload.labels ?? [],
+    // COMPAT(workspaceUserStatus): old daemons omit the assignment.
+    userStatus: payload.userStatus ?? null,
     status: payload.status,
     statusEnteredAt,
     archivingAt: payload.archivingAt ?? null,
@@ -427,6 +435,8 @@ export interface SessionState {
   // Agents
   agents: Map<string, Agent>;
   workspaceAgentActivity: Map<string, WorkspaceAgentActivity>;
+  /** Root agents worth a row under a workspace, keyed by workspace id. */
+  workspaceAgentRows: ReadonlyMap<string, readonly WorkspaceAgentRowSummary[]>;
   agentDetails: Map<string, Agent>;
   workspaces: Map<string, WorkspaceDescriptor>;
   // All active project descriptors, keyed by host-local projectId.
@@ -680,6 +690,7 @@ function createInitialSessionState(
     initializingAgents: new Map(),
     agents: new Map(),
     workspaceAgentActivity: new Map(),
+    workspaceAgentRows: new Map(),
     agentDetails: new Map(),
     workspaces: new Map(),
     projects: new Map(),
@@ -816,6 +827,7 @@ export const useSessionStore = create<SessionStore>()(
                 ...session,
                 agents: replica.agents,
                 workspaceAgentActivity: buildWorkspaceAgentActivityIndex(replica.agents),
+                workspaceAgentRows: buildWorkspaceAgentRowsIndex(replica.agents),
                 workspaces: replica.workspaces,
                 projects: replica.projects,
                 hasWorkspaceDirectorySnapshot: true,
@@ -1624,6 +1636,10 @@ export const useSessionStore = create<SessionStore>()(
                 workspaceAgentActivity: buildWorkspaceAgentActivityIndex(
                   nextAgents,
                   session.workspaceAgentActivity,
+                ),
+                workspaceAgentRows: buildWorkspaceAgentRowsIndex(
+                  nextAgents,
+                  session.workspaceAgentRows,
                 ),
               },
             },

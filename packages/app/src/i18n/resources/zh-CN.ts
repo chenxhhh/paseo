@@ -996,6 +996,22 @@ export const zhCN: TranslationResources = {
     moveTitle: "移动到状态",
     clear: "清除状态",
     updateHost: "更新此宿主后才能指派状态。",
+    board: {
+      title: "工作区看板",
+      empty: "还没有工作区。先创建一个，再拖入泳道。",
+      emptyLane: "暂无工作区",
+    },
+    manage: {
+      title: "管理列",
+      add: "添加列",
+      addTitle: "新建列",
+      namePlaceholder: "列名称",
+      renameTitle: "重命名列",
+      moveLeft: "左移",
+      moveRight: "右移",
+      remove: "删除列",
+      done: "完成",
+    },
   },
   workspaceLabels: {
     title: "标签",
@@ -1064,6 +1080,7 @@ export const zhCN: TranslationResources = {
         checks: "检查",
         services: "服务",
         labels: "标签",
+        status: "状态",
         diff: "差异统计",
         timestamp: "最近活动",
       },
@@ -1116,6 +1133,7 @@ export const zhCN: TranslationResources = {
     sections: {
       sessions: "历史",
       schedules: "计划",
+      board: "看板",
     },
     worktreeSetup: {
       title: "设置 worktree scripts",

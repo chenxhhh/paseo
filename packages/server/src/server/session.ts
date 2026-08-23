@@ -1924,7 +1924,7 @@ export class Session {
       this.dispatchCheckoutMessage(msg) ??
       this.dispatchWorkspaceRecoveryMessage(msg) ??
       this.dispatchWorkspaceLabelMessage(msg) ??
-      this.dispatchWorkspaceAndProjectMessage(msg) ??
+      this.dispatchWorkspaceOrMutationMessage(msg) ??
       this.dispatchWorkspaceFileMessage(msg, source) ??
       this.dispatchProviderMessage(msg) ??
       this.dispatchOrchestrationSkillsMessage(msg) ??
@@ -2391,6 +2391,16 @@ export class Session {
     }
   }
 
+  // One link in the parent dispatch chain for both workspace dispatchers, so
+  // adding the mutation family did not lengthen that chain's complexity.
+  private dispatchWorkspaceOrMutationMessage(
+    msg: SessionInboundMessage,
+  ): Promise<void> | undefined {
+    return (
+      this.dispatchWorkspaceAndProjectMessage(msg) ?? this.dispatchWorkspaceMutationMessage(msg)
+    );
+  }
+
   private dispatchWorkspaceAndProjectMessage(
     msg: SessionInboundMessage,
   ): Promise<void> | undefined {
@@ -2400,40 +2410,103 @@ export class Session {
       case "project.list.request":
         return this.handleProjectListRequest(msg);
       case "paseo_worktree_list_request":
-        return this.handlePaseoWorktreeListRequest(msg);
       case "paseo_worktree_archive_request":
-        return this.handlePaseoWorktreeArchiveRequest(msg);
       case "create_paseo_worktree_request":
-        return this.handleCreatePaseoWorktreeRequest(msg);
+        return this.dispatchPaseoWorktreeMessage(msg);
       case "workspace_setup_status_request":
         return this.handleWorkspaceSetupStatusRequest(msg);
       // COMPAT(desktopEditorBridge): added in v0.1.88, remove after 2026-12-03 once old clients no longer call daemon editor RPCs.
+      case "list_available_editors_request":
+      case "open_in_editor_request":
+      case "open_project_request":
+        return this.dispatchEditorBridgeMessage(msg);
+      case "project.add.request":
+      case "project.create_directory.request":
+      case "project.github.clone.request":
+      case "project.remove.request":
+        return this.dispatchProjectLifecycleMessage(msg);
+      case "workspace.github.search_repositories.request":
+        return this.handleWorkspaceGithubSearchRepositoriesRequest(msg);
+      default:
+        return undefined;
+    }
+  }
+
+  // Read-write workspace mutations (archive/create/attention/metadata setters)
+  // split from the read side above so neither dispatch switch exceeds the
+  // complexity budget.
+  private dispatchWorkspaceMutationMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
+      case "archive_workspace_request":
+      case "workspace.create.request":
+      case "workspace.clear_attention.request":
+        return this.dispatchWorkspaceLifecycleMessage(msg);
+      case "workspace.title.set.request":
+      case "workspace.pin.set.request":
+      case "workspace.user-status.set.request":
+        return this.dispatchWorkspaceMetadataSetMessage(msg);
+      default:
+        return undefined;
+    }
+  }
+
+  // The workspace archive/create/attention family shares a dispatch group so
+  // the parent switch stays under the complexity budget.
+  private dispatchWorkspaceLifecycleMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
+      case "archive_workspace_request":
+        return this.handleArchiveWorkspaceRequest(msg);
+      case "workspace.create.request":
+        return this.handleWorkspaceCreateRequest(msg);
+      case "workspace.clear_attention.request":
+        return this.handleWorkspaceClearAttentionRequest(msg);
+      default:
+        return undefined;
+    }
+  }
+
+  // COMPAT(desktopEditorBridge): grouped dispatch for the legacy editor/open
+  // bridge RPCs; see the note on the parent switch cases.
+  private dispatchEditorBridgeMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
       case "list_available_editors_request":
         return this.handleLegacyListAvailableEditorsRequest(msg);
       case "open_in_editor_request":
         return this.handleLegacyOpenInEditorRequest(msg);
       case "open_project_request":
         return this.handleOpenProjectRequest(msg);
+      default:
+        return undefined;
+    }
+  }
+
+  // The paseo-owned worktree inspection family, grouped for the same reason as
+  // the project lifecycle group below.
+  private dispatchPaseoWorktreeMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
+      case "paseo_worktree_list_request":
+        return this.handlePaseoWorktreeListRequest(msg);
+      case "paseo_worktree_archive_request":
+        return this.handlePaseoWorktreeArchiveRequest(msg);
+      case "create_paseo_worktree_request":
+        return this.handleCreatePaseoWorktreeRequest(msg);
+      default:
+        return undefined;
+    }
+  }
+
+  // The project add/create/clone/remove family shares a dispatch group so the
+  // parent switch stays under the complexity budget.
+  private dispatchProjectLifecycleMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
       case "project.add.request":
         return this.handleProjectAddRequest(msg);
       case "project.create_directory.request":
         return this.handleProjectCreateDirectoryRequest(msg);
-      case "workspace.github.search_repositories.request":
-        return this.handleWorkspaceGithubSearchRepositoriesRequest(msg);
       case "project.github.clone.request":
         return this.handleProjectGithubCloneRequest(msg);
-      case "archive_workspace_request":
-        return this.handleArchiveWorkspaceRequest(msg);
       case "project.remove.request":
         return this.handleProjectRemoveRequest(msg);
-      case "workspace.create.request":
-        return this.handleWorkspaceCreateRequest(msg);
-      case "workspace.clear_attention.request":
-        return this.handleWorkspaceClearAttentionRequest(msg);
-      case "workspace.title.set.request":
-        return this.handleWorkspaceTitleSetRequest(msg.workspaceId, msg.title, msg.requestId);
-      case "workspace.pin.set.request":
-        return this.handleWorkspacePinSetRequest(msg.workspaceId, msg.pinned, msg.requestId);
       default:
         return undefined;
     }
@@ -3211,6 +3284,27 @@ export class Session {
     }
   }
 
+  // The three workspace metadata setters share a family; grouping their dispatch
+  // keeps the parent switch under the complexity budget.
+  private dispatchWorkspaceMetadataSetMessage(
+    msg: SessionInboundMessage,
+  ): Promise<void> | undefined {
+    switch (msg.type) {
+      case "workspace.title.set.request":
+        return this.handleWorkspaceTitleSetRequest(msg.workspaceId, msg.title, msg.requestId);
+      case "workspace.pin.set.request":
+        return this.handleWorkspacePinSetRequest(msg.workspaceId, msg.pinned, msg.requestId);
+      case "workspace.user-status.set.request":
+        return this.handleWorkspaceUserStatusSetRequest(
+          msg.workspaceId,
+          msg.userStatus,
+          msg.requestId,
+        );
+      default:
+        return undefined;
+    }
+  }
+
   private async handleWorkspaceTitleSetRequest(
     workspaceId: string,
     title: string | null,
@@ -3326,6 +3420,52 @@ export class Session {
         },
       });
       emitResponse(false, null, getErrorMessageOr(error, "Failed to pin workspace"));
+    }
+  }
+
+  private async handleWorkspaceUserStatusSetRequest(
+    workspaceId: string,
+    userStatus: string | null,
+    requestId: string,
+  ): Promise<void> {
+    const logContext = { workspaceId, userStatus, requestId };
+    this.sessionLogger.info(logContext, "session: workspace.user-status.set.request");
+    const emitResponse = (accepted: boolean, error: string | null) => {
+      this.emit({
+        type: "workspace.user-status.set.response",
+        payload: { requestId, workspaceId, accepted, userStatus, error },
+      });
+    };
+
+    try {
+      const nextUserStatus = userStatus === null ? null : userStatus.trim() || null;
+      const updatedAt = new Date().toISOString();
+      const updated = await this.workspaceRegistry.update(workspaceId, (existing) => ({
+        ...existing,
+        userStatus: nextUserStatus,
+        updatedAt,
+      }));
+      if (!updated) {
+        emitResponse(false, "Workspace not found");
+        return;
+      }
+      emitResponse(true, null);
+      await this.emitWorkspaceUpdatesForWorkspaceIds([workspaceId]);
+    } catch (error) {
+      this.sessionLogger.error(
+        { ...logContext, err: error },
+        "session: workspace.user-status.set.request error",
+      );
+      this.emit({
+        type: "activity_log",
+        payload: {
+          id: uuidv4(),
+          timestamp: new Date(),
+          type: "error",
+          content: `Failed to set workspace status: ${getErrorMessage(error)}`,
+        },
+      });
+      emitResponse(false, getErrorMessageOr(error, "Failed to set workspace status"));
     }
   }
 
@@ -4771,6 +4911,8 @@ export class Session {
       title: workspace.title,
       pinnedAt: workspace.pinnedAt,
       ...(workspace.labels && workspace.labels.length > 0 ? { labels: workspace.labels } : {}),
+      // COMPAT(workspaceUserStatus): omitted when null so old clients keep parsing.
+      ...(workspace.userStatus ? { userStatus: workspace.userStatus } : {}),
       archivingAt: null,
       status: "done",
       statusEnteredAt: null,
@@ -4865,6 +5007,7 @@ export class Session {
       ...(result.workspace.labels && result.workspace.labels.length > 0
         ? { labels: result.workspace.labels }
         : {}),
+      ...(result.workspace.userStatus ? { userStatus: result.workspace.userStatus } : {}),
       archivingAt: null,
       status: "done",
       statusEnteredAt: result.workspace.createdAt,

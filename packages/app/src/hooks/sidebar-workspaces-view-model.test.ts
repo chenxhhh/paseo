@@ -322,6 +322,7 @@ describe("shared sidebar workspace model", () => {
         {
           serverId: "host-a",
           workspaceAgentActivity: new Map(),
+          workspaceAgentRows: new Map(),
           workspaces: new Map([
             [
               "main",
@@ -338,6 +339,7 @@ describe("shared sidebar workspace model", () => {
         {
           serverId: "host-b",
           workspaceAgentActivity: new Map(),
+          workspaceAgentRows: new Map(),
           workspaces: new Map([
             [
               "feature",
@@ -425,6 +427,7 @@ describe("shared sidebar workspace model", () => {
         {
           serverId: "srv",
           workspaceAgentActivity: new Map(),
+          workspaceAgentRows: new Map(),
           workspaces: new Map([
             ["one", one],
             ["two", two],
@@ -438,6 +441,7 @@ describe("shared sidebar workspace model", () => {
         {
           serverId: "srv",
           workspaceAgentActivity: new Map(),
+          workspaceAgentRows: new Map(),
           workspaces: new Map([
             ["one", one],
             ["two", { ...two, status: "running" }],
@@ -462,6 +466,7 @@ describe("shared sidebar workspace model", () => {
         {
           serverId: "srv",
           workspaceAgentActivity: new Map(),
+          workspaceAgentRows: new Map(),
           workspaces: new Map([
             [
               "clone-a",
@@ -730,6 +735,7 @@ function sessionWith(input: {
     workspaceAgentActivity: buildWorkspaceAgentActivityIndex(
       new Map((input.agents ?? []).map((entry) => [entry.id, entry])),
     ),
+    workspaceAgentRows: new Map(),
   };
 }
 
