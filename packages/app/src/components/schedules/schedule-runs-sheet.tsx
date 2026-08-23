@@ -1,4 +1,5 @@
 import { useRouter, type Href } from "expo-router";
+import * as Clipboard from "expo-clipboard";
 import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
 import {
   Pressable,
@@ -8,18 +9,21 @@ import {
   type PressableStateCallbackType,
 } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { ChevronRight, ExternalLink } from "lucide-react-native";
+import { ChevronRight, Copy, ExternalLink } from "lucide-react-native";
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { MarkdownRenderer } from "@/components/markdown/renderer";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { useToast } from "@/contexts/toast-context";
 import { useIsCompactFormFactor } from "@/constants/layout";
+import { useScheduleMutations } from "@/hooks/use-schedule-mutations";
 import { useScheduleRuns } from "@/hooks/use-schedule-runs";
 import { settingsStyles } from "@/styles/settings";
 import { buildHostAgentDetailRoute } from "@/utils/host-routes";
 import { resolveScheduleTitle } from "@/utils/schedule-format";
-import { formatDuration, formatTimeAgo } from "@/utils/time";
+import { formatTimeAgo } from "@/utils/time";
 import type { Theme } from "@/styles/theme";
 import type { ScheduleRun, ScheduleSummary } from "@getpaseo/protocol/schedule/types";
 import {
@@ -27,16 +31,28 @@ import {
   type ScheduleRunSheetBodyState,
   type ScheduleRunsSheetView,
 } from "./schedule-runs-sheet-state";
+import {
+  RUN_STATUS_FILTER_OPTIONS,
+  buildScheduleRunDetailMeta,
+  buildScheduleRunRowModel,
+  filterScheduleRuns,
+  groupScheduleRunsByDay,
+  resolveFilteredEmptyLabel,
+  resolveRunsHeaderLabel,
+  type ScheduleRunStatusFilter,
+} from "./schedule-runs-view-model";
 
 // Themed lucide wrappers — module-scope so only the icon re-renders on theme
 // change (never call useUnistyles in render). See docs/unistyles.md.
 const ThemedChevronRight = withUnistyles(ChevronRight);
 const ThemedExternalLink = withUnistyles(ExternalLink);
+const ThemedCopy = withUnistyles(Copy);
 
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
 // Runs have no server-side cap on output length; truncate
 // before handing the text to the markdown renderer to bound render cost.
+// Copy always uses the untruncated output.
 export const MAX_OUTPUT_CHARS = 50_000;
 
 interface ScheduleRunsSheetProps {
@@ -92,12 +108,14 @@ function OpenScheduleRunsSheet({
   onClose: () => void;
 }): ReactElement {
   const [view, setView] = useState<ScheduleRunsSheetView>({ kind: "list" });
+  const [statusFilter, setStatusFilter] = useState<ScheduleRunStatusFilter>("all");
 
-  // Reset the drill-down whenever the sheet closes so the next open always
-  // lands on the run list.
+  // Reset the drill-down and the filter whenever the sheet closes so the next
+  // open always lands on the full run list.
   useEffect(() => {
     if (!visible) {
       setView({ kind: "list" });
+      setStatusFilter("all");
     }
   }, [visible]);
 
@@ -122,20 +140,86 @@ function OpenScheduleRunsSheet({
   }, []);
   const handleBack = useCallback(() => setView({ kind: "list" }), []);
 
+  const toast = useToast();
+  const detailRun = bodyState.kind === "detail" ? bodyState.run : null;
+  const handleCopy = useCallback(() => {
+    const output = detailRun?.output;
+    if (!output) {
+      return;
+    }
+    void Clipboard.setStringAsync(output)
+      .then(() => toast.copied("Run output"))
+      .catch(() => toast.error("Copy failed"));
+  }, [detailRun, toast]);
+
+  const copyButtonStyle = useCallback(
+    ({ hovered, pressed }: PressableStateCallbackType) => [
+      styles.headerIconButton,
+      (Boolean(hovered) || pressed) && styles.headerIconButtonHovered,
+      detailRun?.output ? null : styles.headerIconButtonDisabled,
+    ],
+    [detailRun],
+  );
+
+  // Rerender time-dependent labels (elapsed running time, "latest X ago")
+  // whenever fresh run data arrives — the query polls every 5s while a run is
+  // in flight. The dep is the result identity, not a value read inside.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const now = useMemo(() => Date.now(), [result]);
+
   const header = useMemo<SheetHeader>(() => {
     if (view.kind === "detail") {
       return {
         title: "Run output",
         back: { onPress: handleBack, label: "Run history" },
+        actions: (
+          <Pressable
+            onPress={handleCopy}
+            disabled={!detailRun?.output}
+            hitSlop={8}
+            style={copyButtonStyle}
+            accessibilityRole="button"
+            accessibilityLabel="Copy run output"
+            testID="schedule-runs-copy"
+          >
+            <ThemedCopy size={16} uniProps={mutedColorMapping} />
+          </Pressable>
+        ),
       };
     }
+    const runsLabel =
+      result.status === "loaded" && result.runs.length > 0
+        ? resolveRunsHeaderLabel(result.runs, now)
+        : null;
     return {
       title: "Run history",
-      subtitle: resolveScheduleTitle(schedule),
+      subtitle: runsLabel
+        ? `${resolveScheduleTitle(schedule)} · ${runsLabel}`
+        : resolveScheduleTitle(schedule),
     };
-  }, [handleBack, schedule, view.kind]);
+  }, [copyButtonStyle, detailRun, handleBack, handleCopy, now, result, schedule, view.kind]);
 
   const reconnecting = result.status === "connecting";
+
+  // The empty state's "Run now" CTA reuses the schedules mutations; the settle
+  // invalidation already refreshes this sheet's runs query (prefix match on the
+  // shared "schedules" key), so the new run appears without extra wiring.
+  const mutations = useScheduleMutations({ serverId });
+  const [runNowPending, setRunNowPending] = useState(false);
+  const canRunNow =
+    schedule.status === "active" && schedule.target.type === "new-agent" && !runNowPending;
+  const handleRunNow = useCallback(() => {
+    setRunNowPending(true);
+    mutations
+      .runScheduleNow(schedule.id)
+      .catch(() => {
+        // The mutation rolls back its optimistic cache and refetches on error;
+        // surfacing a toast here is out of scope.
+      })
+      .finally(() => {
+        setRunNowPending(false);
+      });
+  }, [mutations, schedule.id]);
 
   // Tapping outside the sheet (or Escape) steps back one drill-down level
   // instead of always closing the whole sheet: from a run's output it returns
@@ -165,6 +249,12 @@ function OpenScheduleRunsSheet({
         state={bodyState}
         reconnecting={reconnecting}
         serverId={serverId}
+        now={now}
+        statusFilter={statusFilter}
+        onStatusFilterChange={setStatusFilter}
+        canRunNow={canRunNow}
+        runNowPending={runNowPending}
+        onRunNow={handleRunNow}
         onOpenRun={handleOpenRun}
         onRetry={refetch}
         retrying={isRefetching}
@@ -177,6 +267,12 @@ function ScheduleRunsSheetBody({
   state,
   reconnecting,
   serverId,
+  now,
+  statusFilter,
+  onStatusFilterChange,
+  canRunNow,
+  runNowPending,
+  onRunNow,
   onOpenRun,
   onRetry,
   retrying,
@@ -184,6 +280,12 @@ function ScheduleRunsSheetBody({
   state: ScheduleRunSheetBodyState;
   reconnecting: boolean;
   serverId: string;
+  now: number;
+  statusFilter: ScheduleRunStatusFilter;
+  onStatusFilterChange: (filter: ScheduleRunStatusFilter) => void;
+  canRunNow: boolean;
+  runNowPending: boolean;
+  onRunNow: () => void;
   onOpenRun: (runId: string) => void;
   onRetry: () => void;
   retrying: boolean;
@@ -214,36 +316,87 @@ function ScheduleRunsSheetBody({
     return (
       <View style={styles.centered}>
         <Text style={styles.emptyText}>No runs yet</Text>
+        {canRunNow ? (
+          <Button
+            variant="ghost"
+            onPress={onRunNow}
+            disabled={runNowPending}
+            testID="schedule-runs-empty-run-now"
+          >
+            {runNowPending ? "Starting…" : "Run now"}
+          </Button>
+        ) : null}
       </View>
     );
   }
 
   if (state.kind === "detail") {
-    return <ScheduleRunDetail run={state.run} />;
+    return <ScheduleRunDetail run={state.run} now={now} serverId={serverId} />;
   }
 
-  return <ScheduleRunsList runs={state.runs} serverId={serverId} onOpenRun={onOpenRun} />;
+  return (
+    <ScheduleRunsList
+      runs={state.runs}
+      serverId={serverId}
+      now={now}
+      statusFilter={statusFilter}
+      onStatusFilterChange={onStatusFilterChange}
+      onOpenRun={onOpenRun}
+    />
+  );
 }
 
 function ScheduleRunsList({
   runs,
   serverId,
+  now,
+  statusFilter,
+  onStatusFilterChange,
   onOpenRun,
 }: {
   runs: ScheduleRun[];
   serverId: string;
+  now: number;
+  statusFilter: ScheduleRunStatusFilter;
+  onStatusFilterChange: (filter: ScheduleRunStatusFilter) => void;
   onOpenRun: (runId: string) => void;
 }): ReactElement {
+  const filtered = useMemo(() => filterScheduleRuns(runs, statusFilter), [runs, statusFilter]);
+  const groups = useMemo(() => groupScheduleRunsByDay(filtered, now), [filtered, now]);
+
+  if (filtered.length === 0) {
+    return (
+      <View style={styles.centered}>
+        <Text style={styles.emptyText}>{resolveFilteredEmptyLabel(statusFilter)}</Text>
+      </View>
+    );
+  }
+
   return (
-    <View style={settingsStyles.card}>
-      {runs.map((run, index) => (
-        <ScheduleRunRow
-          key={run.id}
-          run={run}
-          serverId={serverId}
-          isFirst={index === 0}
-          onOpenRun={onOpenRun}
-        />
+    <View style={styles.list}>
+      <SegmentedControl
+        size="xs"
+        value={statusFilter}
+        onValueChange={onStatusFilterChange}
+        options={RUN_STATUS_FILTER_OPTIONS}
+        testID="schedule-runs-filter"
+      />
+      {groups.map((group) => (
+        <View key={group.label} style={styles.group}>
+          <Text style={styles.groupLabel}>{group.label}</Text>
+          <View style={settingsStyles.card}>
+            {group.runs.map((run, index) => (
+              <ScheduleRunRow
+                key={run.id}
+                run={run}
+                serverId={serverId}
+                now={now}
+                isFirst={index === 0}
+                onOpenRun={onOpenRun}
+              />
+            ))}
+          </View>
+        </View>
       ))}
     </View>
   );
@@ -264,8 +417,9 @@ function runBadge(run: ScheduleRun): {
 }
 
 /**
- * One run as a settings-style row: started-at title, a duration/preview meta
- * line, a status badge, the agent shortcut (when the run spawned one), and a
+ * One run as a settings-style row: absolute started-at title, a duration /
+ * preview meta line (the preview renders red when it came from the run's
+ * error), a status badge, the agent shortcut (when the run spawned one), and a
  * chevron marking the drill-down. Hover lives on the outer plain View
  * (docs/hover.md): the inner Pressable owns press, and the nested agent button
  * stops propagation so it never fights the row's drill-down.
@@ -273,11 +427,13 @@ function runBadge(run: ScheduleRun): {
 function ScheduleRunRow({
   run,
   serverId,
+  now,
   isFirst,
   onOpenRun,
 }: {
   run: ScheduleRun;
   serverId: string;
+  now: number;
   isFirst: boolean;
   onOpenRun: (runId: string) => void;
 }): ReactElement {
@@ -285,13 +441,9 @@ function ScheduleRunRow({
   const [isHovered, setIsHovered] = useState(false);
   const handlePointerEnter = useCallback(() => setIsHovered(true), []);
   const handlePointerLeave = useCallback(() => setIsHovered(false), []);
+  const model = useMemo(() => buildScheduleRunRowModel(run, now), [run, now]);
   const badge = runBadge(run);
   const handleOpen = useCallback(() => onOpenRun(run.id), [onOpenRun, run.id]);
-
-  const durationLabel = run.endedAt
-    ? formatDuration(Date.parse(run.endedAt) - Date.parse(run.startedAt))
-    : "Running…";
-  const preview = (run.error ?? run.output ?? "").replace(/\s+/g, " ").trim();
 
   const rowStyle = useCallback(
     ({ pressed }: PressableStateCallbackType) => [
@@ -314,16 +466,21 @@ function ScheduleRunRow({
         style={rowStyle}
         onPress={handleOpen}
         accessibilityRole="button"
-        accessibilityLabel={`Run ${formatTimeAgo(new Date(run.startedAt))}`}
+        accessibilityLabel={`Run started ${formatTimeAgo(new Date(run.startedAt), new Date(now))}`}
         testID={`schedule-run-${run.id}`}
       >
         <View style={styles.runMain}>
           <Text style={settingsStyles.rowTitle} numberOfLines={1}>
-            {formatTimeAgo(new Date(run.startedAt))}
+            {model.title}
           </Text>
           <Text style={settingsStyles.rowHint} numberOfLines={1}>
-            {durationLabel}
-            {preview ? ` · ${preview}` : ""}
+            {model.durationLabel}
+            {model.preview ? " · " : null}
+            {model.preview ? (
+              <Text style={model.previewIsError ? styles.previewError : undefined}>
+                {model.preview}
+              </Text>
+            ) : null}
           </Text>
         </View>
         <View style={styles.runTrailing}>
@@ -379,13 +536,87 @@ function OpenRunAgentButton({
   );
 }
 
-function ScheduleRunDetail({ run }: { run: ScheduleRun }): ReactElement {
+/** The metadata card pinned above a run's output: status, timing, delay, agent. */
+function RunDetailMetaCard({
+  run,
+  meta,
+  serverId,
+}: {
+  run: ScheduleRun;
+  meta: ReturnType<typeof buildScheduleRunDetailMeta>;
+  serverId: string;
+}): ReactElement {
+  const router = useRouter();
+  const badge = runBadge(run);
+  const handleOpenAgent = useCallback(() => {
+    if (!run.agentId) {
+      return;
+    }
+    const route = buildHostAgentDetailRoute(serverId, run.agentId, run.workspaceId ?? undefined);
+    router.push(route as Href);
+  }, [router, run.agentId, run.workspaceId, serverId]);
+
+  const agentRowStyle = useCallback(
+    ({ pressed }: PressableStateCallbackType) => [
+      settingsStyles.row,
+      settingsStyles.rowBorder,
+      styles.agentRow,
+      pressed && styles.rowPressed,
+    ],
+    [],
+  );
+
+  return (
+    <View style={settingsStyles.card} testID="schedule-run-detail-meta">
+      <View style={[settingsStyles.row, styles.metaRow]}>
+        <View style={styles.runMain}>
+          <Text style={settingsStyles.rowTitle} numberOfLines={1}>
+            {meta.startedLabel}
+          </Text>
+          <Text style={settingsStyles.rowHint} numberOfLines={1}>
+            {`Started ${meta.startedAgoLabel} · ${meta.durationLabel}`}
+          </Text>
+        </View>
+        <StatusBadge label={badge.label} variant={badge.variant} />
+      </View>
+      {meta.lateLabel ? (
+        <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
+          <Text style={styles.detailError}>{meta.lateLabel}</Text>
+        </View>
+      ) : null}
+      {run.agentId ? (
+        <Pressable
+          style={agentRowStyle}
+          onPress={handleOpenAgent}
+          accessibilityRole="button"
+          accessibilityLabel="Open agent"
+          testID="schedule-run-detail-open-agent"
+        >
+          <Text style={settingsStyles.rowTitle}>Open agent</Text>
+          <ThemedChevronRight size={16} uniProps={mutedColorMapping} />
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
+function ScheduleRunDetail({
+  run,
+  now,
+  serverId,
+}: {
+  run: ScheduleRun;
+  now: number;
+  serverId: string;
+}): ReactElement {
+  const meta = useMemo(() => buildScheduleRunDetailMeta(run, now), [run, now]);
   const output = run.output ?? "";
   const isTruncated = output.length > MAX_OUTPUT_CHARS;
   const displayOutput = isTruncated ? output.slice(0, MAX_OUTPUT_CHARS) : output;
 
   return (
     <View style={styles.detail}>
+      <RunDetailMetaCard run={run} meta={meta} serverId={serverId} />
       {/* error and output can coexist; both render, error first */}
       {run.error ? <Text style={styles.detailError}>{run.error}</Text> : null}
       {displayOutput.length > 0 ? (
@@ -430,6 +661,22 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.palette.red[300],
     fontSize: theme.fontSize.sm,
   },
+  previewError: {
+    color: theme.colors.palette.red[300],
+  },
+  list: {
+    gap: theme.spacing[4],
+    paddingBottom: theme.spacing[2],
+  },
+  group: {
+    gap: theme.spacing[2],
+  },
+  groupLabel: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+  },
   runRowContainer: {
     position: "relative",
   },
@@ -460,6 +707,25 @@ const styles = StyleSheet.create((theme) => ({
   },
   agentButtonPressed: {
     backgroundColor: theme.colors.surface2,
+  },
+  headerIconButton: {
+    width: 28,
+    height: 28,
+    borderRadius: theme.borderRadius.full,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerIconButtonHovered: {
+    backgroundColor: theme.colors.surface2,
+  },
+  headerIconButtonDisabled: {
+    opacity: 0.4,
+  },
+  metaRow: {
+    gap: theme.spacing[3],
+  },
+  agentRow: {
+    justifyContent: "space-between",
   },
   detail: {
     gap: theme.spacing[3],
