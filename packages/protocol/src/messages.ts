@@ -43,6 +43,18 @@ import {
   ScheduleUpdateResponseSchema,
 } from "./schedule/rpc-schemas.js";
 import {
+  TaskListRequestSchema,
+  TaskInspectRequestSchema,
+  TaskResolveGateRequestSchema,
+  TaskAnswerQuestionRequestSchema,
+  TaskQuestionsRequestSchema,
+  TaskListResponseSchema,
+  TaskInspectResponseSchema,
+  TaskResolveGateResponseSchema,
+  TaskAnswerQuestionResponseSchema,
+  TaskQuestionsResponseSchema,
+} from "./tasks/rpc-schemas.js";
+import {
   LoopRunRequestSchema,
   LoopListRequestSchema,
   LoopInspectRequestSchema,
@@ -3123,6 +3135,11 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   ScheduleDeleteRequestSchema,
   ScheduleRunOnceRequestSchema,
   ScheduleUpdateRequestSchema,
+  TaskListRequestSchema,
+  TaskInspectRequestSchema,
+  TaskResolveGateRequestSchema,
+  TaskAnswerQuestionRequestSchema,
+  TaskQuestionsRequestSchema,
   LoopRunRequestSchema,
   LoopListRequestSchema,
   LoopInspectRequestSchema,
@@ -6350,6 +6367,11 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ScheduleDeleteResponseSchema,
   ScheduleRunOnceResponseSchema,
   ScheduleUpdateResponseSchema,
+  TaskListResponseSchema,
+  TaskInspectResponseSchema,
+  TaskResolveGateResponseSchema,
+  TaskAnswerQuestionResponseSchema,
+  TaskQuestionsResponseSchema,
   LoopRunResponseSchema,
   LoopListResponseSchema,
   LoopInspectResponseSchema,
@@ -6523,6 +6545,11 @@ export type ScheduleResumeResponse = z.infer<typeof ScheduleResumeResponseSchema
 export type ScheduleDeleteResponse = z.infer<typeof ScheduleDeleteResponseSchema>;
 export type ScheduleRunOnceResponse = z.infer<typeof ScheduleRunOnceResponseSchema>;
 export type ScheduleUpdateResponse = z.infer<typeof ScheduleUpdateResponseSchema>;
+export type TaskListResponse = z.infer<typeof TaskListResponseSchema>;
+export type TaskInspectResponse = z.infer<typeof TaskInspectResponseSchema>;
+export type TaskResolveGateResponse = z.infer<typeof TaskResolveGateResponseSchema>;
+export type TaskAnswerQuestionResponse = z.infer<typeof TaskAnswerQuestionResponseSchema>;
+export type TaskQuestionsResponse = z.infer<typeof TaskQuestionsResponseSchema>;
 export type LoopRunResponse = z.infer<typeof LoopRunResponseSchema>;
 export type LoopListResponse = z.infer<typeof LoopListResponseSchema>;
 export type LoopInspectResponse = z.infer<typeof LoopInspectResponseSchema>;

@@ -100,6 +100,24 @@ Only set feature IDs returned by `inspect_provider`. For Codex fast mode, look f
 
 Schedules have the full list/inspect/update/pause/resume/run-once/log/delete surface. Heartbeats deliberately do not.
 
+## Coordination tasks, gates, and questions
+
+Durable state for orchestrating work across agents. Tasks are your external memory: they survive restarts, and their readiness is derived from dependencies at read time.
+
+**`create_task`** — record a unit of work you own. Required: `title`. Optional: `spec`, `deps` (task ids), `assignee_agent_id`, `gate: { question, options? }`. A pending task becomes ready once all deps are completed and its gate is resolved.
+
+**`list_tasks`** — your tasks. Use `status=ready` to see what can be dispatched now; `status=blocked` to see tasks with failed dependencies.
+
+**`start_task` / `complete_task` / `fail_task`** — lifecycle. `complete_task` accepts a `result` that dependents can read; `fail_task` blocks every downstream task transitively. You or the assignee may mutate a task; nobody else.
+
+**`resolve_task_gate`** — resolve a decision gate on your task. When a gate has `options`, the resolution must be one of them. Humans can also resolve gates from the CLI (`paseo task gate <id> <resolution>`) — if you need a human decision before work starts, gate the task and tell the user.
+
+**`ask_parent`** — ask your parent agent a durable question. Required: `question`; optional: `task_id`. Your parent is notified and answers with `answer_question`; the answer arrives as a system notification. Do not poll, and do not re-ask — the question survives restarts and the parent can recover it with `list_questions`.
+
+**`answer_question` / `list_questions`** — answer questions from your child agents, and recover pending questions addressed to you.
+
+Dispatch pattern: create tasks for the plan, dispatch ready ones by putting the task id and spec in each child agent's prompt, then react to finish notifications by completing/failing tasks. Check `list_tasks status=ready` between waves.
+
 ## Waiting
 
 Agents take time — 10–30+ minutes is routine. Favor asynchronous workflows.
@@ -122,6 +140,9 @@ paseo send <agent-id> "<follow-up>"
 paseo ls
 paseo schedule create --cron "*/15 * * * *" "ping main build"
 paseo heartbeat create --cron "*/15 * * * *" "check the build"
+paseo task ls --owner <agent-id>
+paseo task gate <task-id> "yes"
+paseo task answer <question-id> "use main"
 ```
 
 Discover with `paseo --help` and `paseo <cmd> --help`.

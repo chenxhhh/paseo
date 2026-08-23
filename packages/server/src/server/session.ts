@@ -165,6 +165,7 @@ import {
   createGitMetadataGenerator,
 } from "./session/checkout/git-metadata-generator.js";
 import { ScheduleSession } from "./session/schedule/schedule-session.js";
+import { TaskSession } from "./session/tasks/task-session.js";
 import { ProviderCatalogSession } from "./session/provider/provider-catalog-session.js";
 import { WorkspaceFilesSession } from "./session/files/workspace-files-session.js";
 import { AgentConfigSession } from "./session/agent-config/agent-config-session.js";
@@ -457,6 +458,7 @@ export interface SessionOptions {
   workspaceLabelService?: WorkspaceLabelService;
   filesystem?: SessionFileSystem;
   scheduleService: ScheduleService;
+  taskService?: import("./tasks/service.js").TaskService;
   checkoutDiffManager: CheckoutDiffManager;
   github?: ForgeService;
   createAgentMcpTransport?: AgentMcpTransportFactory;
@@ -728,6 +730,7 @@ export class Session {
   private readonly voiceSession: VoiceSession;
   private readonly checkoutSession: CheckoutSession;
   private readonly scheduleSession: ScheduleSession;
+  private readonly taskSession: TaskSession;
   private readonly providerCatalogSession: ProviderCatalogSession;
   private readonly workspaceFilesSession: WorkspaceFilesSession;
   private readonly agentConfigSession: AgentConfigSession;
@@ -899,6 +902,11 @@ export class Session {
     this.scheduleSession = new ScheduleSession({
       host: { emit: (msg) => this.emit(msg) },
       scheduleService,
+      logger: this.sessionLogger,
+    });
+    this.taskSession = new TaskSession({
+      host: { emit: (msg) => this.emit(msg) },
+      taskService: options.taskService,
       logger: this.sessionLogger,
     });
     this.providerCatalogSession = new ProviderCatalogSession({
@@ -2553,8 +2561,41 @@ export class Session {
         return this.scheduleSession.handleScheduleRunOnceRequest(msg);
       case "schedule/update":
         return this.scheduleSession.handleScheduleUpdateRequest(msg);
+      case "task/list":
+      case "task/inspect":
+      case "task/resolve-gate":
+      case "task/answer-question":
+      case "task/questions":
+        return this.handleTaskMessage(msg);
       default:
         return undefined;
+    }
+  }
+
+  private async handleTaskMessage(
+    msg: Extract<
+      SessionInboundMessage,
+      {
+        type:
+          | "task/list"
+          | "task/inspect"
+          | "task/resolve-gate"
+          | "task/answer-question"
+          | "task/questions";
+      }
+    >,
+  ): Promise<void> {
+    switch (msg.type) {
+      case "task/list":
+        return this.taskSession.handleTaskListRequest(msg);
+      case "task/inspect":
+        return this.taskSession.handleTaskInspectRequest(msg);
+      case "task/resolve-gate":
+        return this.taskSession.handleTaskResolveGateRequest(msg);
+      case "task/answer-question":
+        return this.taskSession.handleTaskAnswerQuestionRequest(msg);
+      case "task/questions":
+        return this.taskSession.handleTaskQuestionsRequest(msg);
     }
   }
 
