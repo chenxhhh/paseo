@@ -124,7 +124,9 @@ export async function waitForMetro(port: number, options: WaitForServerOptions):
 
 export async function warmMetro(port: number): Promise<void> {
   const origin = `http://127.0.0.1:${port}`;
-  const documentResponse = await fetch(origin, { signal: AbortSignal.timeout(120_000) });
+  // Match the server wait ceiling: a cold-cache bundle can take minutes.
+  const fetchTimeoutMs = 300_000;
+  const documentResponse = await fetch(origin, { signal: AbortSignal.timeout(fetchTimeoutMs) });
   if (!documentResponse.ok) {
     throw new Error(`Metro document warmup failed with HTTP ${documentResponse.status}`);
   }
@@ -138,7 +140,7 @@ export async function warmMetro(port: number): Promise<void> {
   for (const source of scriptSources) {
     const scriptUrl = new URL(source, origin);
     if (scriptUrl.origin !== origin) continue;
-    const response = await fetch(scriptUrl, { signal: AbortSignal.timeout(120_000) });
+    const response = await fetch(scriptUrl, { signal: AbortSignal.timeout(fetchTimeoutMs) });
     if (!response.ok) {
       throw new Error(
         `Metro bundle warmup failed for ${scriptUrl.pathname}: HTTP ${response.status}`,
@@ -171,6 +173,8 @@ function startMetro(port: number, buffer: ReturnType<typeof createLineBuffer>): 
   const appDir = path.resolve(__dirname, "../..");
   const child = spawn("npx", ["expo", "start", "--web", "--port", String(port)], {
     cwd: appDir,
+    // Windows resolves npx to npx.cmd, which Node only spawns through a shell.
+    shell: process.platform === "win32",
     env: {
       ...process.env,
       BROWSER: "none",
@@ -199,15 +203,23 @@ export default async function globalSetup() {
   const repoRoot = path.resolve(__dirname, "../../../..");
   await loadHarnessEnvironment(repoRoot);
 
-  const metroPort = await getAvailableE2EPort();
+  // With E2E_BASE_URL pointing at an already-running dev Metro (e.g. the
+  // `npm run dev` server on 8081), reuse it instead of bundling a second copy
+  // from a cold cache alongside the dev server.
+  const reuseBaseUrl = process.env.E2E_BASE_URL;
+  const metroPort = reuseBaseUrl ? Number(new URL(reuseBaseUrl).port) : await getAvailableE2EPort();
   const metroOutput = createLineBuffer();
   let metroProcess: ChildProcess | null = null;
 
   try {
-    metroProcess = startMetro(metroPort, metroOutput);
+    if (!reuseBaseUrl) {
+      metroProcess = startMetro(metroPort, metroOutput);
+    }
     await waitForMetro(metroPort, {
       label: "Metro web server",
-      timeoutMs: 120_000,
+      // Cold-cache Windows bundling can exceed two minutes; success returns as
+      // soon as the probe passes, so a generous ceiling costs nothing.
+      timeoutMs: 300_000,
       childProcess: metroProcess,
       getRecentOutput: metroOutput.dump,
     });
@@ -216,11 +228,15 @@ export default async function globalSetup() {
     console.log(`[e2e] Metro warmed on port ${metroPort}`);
 
     return async () => {
-      await stopProcess(metroProcess);
-      console.log("[e2e] Metro stopped");
+      if (metroProcess) {
+        await stopProcess(metroProcess);
+        console.log("[e2e] Metro stopped");
+      }
     };
   } catch (error) {
-    await stopProcess(metroProcess);
+    if (metroProcess) {
+      await stopProcess(metroProcess);
+    }
     throw error;
   }
 }
