@@ -1228,6 +1228,7 @@ export const ar: TranslationResources = {
     isolation: {
       local: "محلي",
       worktree: "شجرة عمل جديدة",
+      existingWorktree: "شجرة عمل موجودة",
       label: "العزل",
     },
     fields: {
@@ -1241,11 +1242,13 @@ export const ar: TranslationResources = {
       createWorktreeFailed: "فشل في إنشاء شجرة العمل",
       composerStateRequired: "حالة الملحن مطلوبة",
       selectModel: "اختر نموذجا",
+      chooseWorktree: "اختر شجرة عمل",
     },
     tooltips: {
       project: "Choose the project",
       host: "Choose the host",
       isolation: "Choose the isolation level",
+      existingWorktree: "اختر شجرة عمل موجودة",
       startingRef: "اختر من أين تبدأ",
       launch: "Choose what to launch",
     },
@@ -1256,6 +1259,13 @@ export const ar: TranslationResources = {
       noMatchingRefs: "لا توجد مراجع مطابقة.",
       searchPlaceholder: "بحث الفروع والعلاقات العامة",
       title: "ابدأ من",
+    },
+    worktreePicker: {
+      title: "شجرة العمل",
+      searchPlaceholder: "بحث أشجار العمل",
+      noWorktrees: "لا توجد أشجار عمل متاحة.",
+      inUse: "قيد الاستخدام",
+      chooseWorktree: "اختر شجرة عمل",
     },
     launch: {
       title: "What to launch",

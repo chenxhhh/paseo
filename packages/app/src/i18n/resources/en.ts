@@ -1237,6 +1237,7 @@ export const en = {
     isolation: {
       local: "Local",
       worktree: "New worktree",
+      existingWorktree: "Existing worktree",
       label: "Isolation",
     },
     fields: {
@@ -1250,11 +1251,13 @@ export const en = {
       createWorktreeFailed: "Failed to create worktree",
       composerStateRequired: "Composer state is required",
       selectModel: "Select a model",
+      chooseWorktree: "Choose a worktree",
     },
     tooltips: {
       project: "Choose the project",
       host: "Choose the host",
       isolation: "Choose the isolation level",
+      existingWorktree: "Choose an existing worktree",
       startingRef: "Choose where to start from",
       launch: "Choose what to launch",
     },
@@ -1265,6 +1268,13 @@ export const en = {
       noMatchingRefs: "No matching refs.",
       searchPlaceholder: "Search branches and PRs",
       title: "Start from",
+    },
+    worktreePicker: {
+      title: "Worktree",
+      searchPlaceholder: "Search worktrees",
+      noWorktrees: "No worktrees available.",
+      inUse: "in use",
+      chooseWorktree: "Choose worktree",
     },
     launch: {
       title: "What to launch",

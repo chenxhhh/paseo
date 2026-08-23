@@ -1241,6 +1241,7 @@ export const ja: TranslationResources = {
     isolation: {
       local: "ローカル",
       worktree: "新しいワークツリー",
+      existingWorktree: "既存のワークツリー",
       label: "分離方法",
     },
     fields: {
@@ -1254,11 +1255,13 @@ export const ja: TranslationResources = {
       createWorktreeFailed: "ワークツリーの作成に失敗しました",
       composerStateRequired: "コンポーザーの状態が必要です",
       selectModel: "モデルを選択してください",
+      chooseWorktree: "ワークツリーを選択してください",
     },
     tooltips: {
       project: "Choose the project",
       host: "Choose the host",
       isolation: "Choose the isolation level",
+      existingWorktree: "既存のワークツリーを選択",
       startingRef: "開始点を選択",
       launch: "Choose what to launch",
     },
@@ -1269,6 +1272,13 @@ export const ja: TranslationResources = {
       noMatchingRefs: "一致するRefがありません。",
       searchPlaceholder: "ブランチとPRを検索",
       title: "開始点",
+    },
+    worktreePicker: {
+      title: "ワークツリー",
+      searchPlaceholder: "ワークツリーを検索",
+      noWorktrees: "利用できるワークツリーがありません。",
+      inUse: "使用中",
+      chooseWorktree: "ワークツリーを選択",
     },
     launch: {
       title: "What to launch",
