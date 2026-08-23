@@ -385,7 +385,7 @@ export const ar: TranslationResources = {
     },
     turn: {
       openArtifact: "فتح {{name}}",
-      filesChanged_one: "تم تغيير ملف واحد",
+      filesChanged_one: "تم تغيير {{count}} ملف",
       filesChanged_other: "تم تغيير {{count}} ملفات",
     },
   },
