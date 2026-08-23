@@ -99,6 +99,17 @@ export interface QuickCommandInsertionInput {
   cursorIndex: number;
 }
 
+/** Single-line preview of a prompt for menus and list rows. */
+export function quickCommandPromptPreview(prompt: string, maxLength = 80): string {
+  const firstLine =
+    prompt
+      .split("\n")
+      .map((line) => line.trim())
+      .find((line) => line.length > 0) ?? "";
+  const collapsed = firstLine.replace(/\s+/g, " ");
+  return [...collapsed].slice(0, maxLength).join("") + (collapsed.length > maxLength ? "…" : "");
+}
+
 /** Builds the composer text with `prompt` spliced in at the cursor, adding a
  * separating space when the preceding character is not whitespace. */
 export function buildQuickCommandInsertion(input: QuickCommandInsertionInput): {

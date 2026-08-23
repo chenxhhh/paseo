@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { Pressable, Text, View } from "react-native";
-import { StyleSheet } from "react-native-unistyles";
+import type { PressableStateCallbackType } from "react-native";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import { FolderOpen, Globe, Zap } from "lucide-react-native";
 import {
   AdaptiveModalSheet,
   AdaptiveTextInput,
@@ -12,14 +14,22 @@ import { Button } from "@/components/ui/button";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { settingsStyles } from "@/styles/settings";
+import type { Theme } from "@/styles/theme";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import {
   MAX_QUICK_COMMAND_LABEL_LENGTH,
   MAX_QUICK_COMMAND_PROMPT_LENGTH,
   createQuickCommandId,
+  quickCommandPromptPreview,
   type QuickCommand,
   type QuickCommandScope,
 } from "./model";
+
+const ThemedZap = withUnistyles(Zap);
+const ThemedGlobe = withUnistyles(Globe);
+const ThemedFolderOpen = withUnistyles(FolderOpen);
+
+const iconForegroundMutedMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
 interface QuickCommandsManageSheetProps {
   visible: boolean;
@@ -211,6 +221,8 @@ export function QuickCommandsManageSheet({
     );
   }, [closeEditor, editor, handleSave, openNew, t]);
 
+  const scopeHintText = resolveScopeHint(scopeValue, projectName, t);
+
   return (
     <AdaptiveModalSheet
       header={header}
@@ -220,28 +232,26 @@ export function QuickCommandsManageSheet({
       testID="quick-commands-manage-sheet"
     >
       {editor === null ? (
-        <SettingsSection title={t("composer.quickCommands.sheetTitle")} flush>
-          <View style={settingsStyles.card} testID="quick-commands-list">
-            {commands.length === 0 ? (
-              <View style={settingsStyles.row}>
-                <View style={settingsStyles.rowContent}>
-                  <Text style={settingsStyles.rowHint}>
-                    {t("composer.quickCommands.emptyManage")}
-                  </Text>
-                </View>
+        <View style={settingsStyles.card} testID="quick-commands-list">
+          {commands.length === 0 ? (
+            <View style={styles.emptyState}>
+              <View style={styles.iconChip}>
+                <ThemedZap size={15} uniProps={iconForegroundMutedMapping} />
               </View>
-            ) : (
-              commands.map((command, index) => (
-                <CommandRow
-                  key={command.id}
-                  command={command}
-                  withBorder={index > 0}
-                  onPress={openEdit}
-                />
-              ))
-            )}
-          </View>
-        </SettingsSection>
+              <Text style={styles.emptyText}>{t("composer.quickCommands.emptyManage")}</Text>
+            </View>
+          ) : (
+            commands.map((command, index) => (
+              <CommandRow
+                key={command.id}
+                command={command}
+                projectName={projectName}
+                withBorder={index > 0}
+                onPress={openEdit}
+              />
+            ))
+          )}
+        </View>
       ) : (
         <View>
           <SettingsSection title={t("composer.quickCommands.labelLabel")}>
@@ -278,13 +288,10 @@ export function QuickCommandsManageSheet({
                 onValueChange={changeScope}
                 testID="quick-commands-scope"
               />
-              <Text style={styles.scopeHint}>
-                {scopeValue === "project"
-                  ? t("composer.quickCommands.scopeProjectHint", {
-                      project: projectName ?? t("composer.quickCommands.scopeProjectFallback"),
-                    })
-                  : t("composer.quickCommands.scopeGlobalHint")}
-              </Text>
+              <View style={styles.scopePreviewRow}>
+                <ScopeBadge scope={editor.scope} projectName={projectName} />
+                <Text style={styles.scopeHint}>{scopeHintText}</Text>
+              </View>
             </SettingsSection>
           ) : null}
           {editor.mode === "edit" ? (
@@ -305,39 +312,168 @@ function resolveHeaderTitle(editor: EditorState | null, t: TFunction): string {
   return t("composer.quickCommands.editCommand");
 }
 
+function resolveScopeHint(scopeValue: string, projectName: string | null, t: TFunction): string {
+  if (scopeValue === "project") {
+    return t("composer.quickCommands.scopeProjectHint", {
+      project: projectName ?? t("composer.quickCommands.scopeProjectFallback"),
+    });
+  }
+  return t("composer.quickCommands.scopeGlobalHint");
+}
+
+function ScopeBadge({
+  scope,
+  projectName,
+}: {
+  scope: QuickCommandScope;
+  projectName: string | null;
+}) {
+  const { t } = useTranslation();
+  const isGlobal = scope.type === "global";
+  const leadingIcon = useMemo(
+    () =>
+      isGlobal ? (
+        <ThemedGlobe size={11} uniProps={iconForegroundMutedMapping} />
+      ) : (
+        <ThemedFolderOpen size={11} uniProps={iconForegroundMutedMapping} />
+      ),
+    [isGlobal],
+  );
+  const label = isGlobal
+    ? t("composer.quickCommands.sectionGlobal")
+    : (projectName ?? t("composer.quickCommands.sectionProject"));
+  return (
+    <View style={styles.scopeBadge}>
+      {leadingIcon}
+      <Text style={styles.scopeBadgeText} numberOfLines={1}>
+        {label}
+      </Text>
+    </View>
+  );
+}
+
 function CommandRow({
   command,
+  projectName,
   withBorder,
   onPress,
 }: {
   command: QuickCommand;
+  projectName: string | null;
   withBorder: boolean;
   onPress: (command: QuickCommand) => void;
 }) {
-  const { t } = useTranslation();
   const handlePress = useCallback(() => onPress(command), [command, onPress]);
+  const rowStyle = useCallback(
+    ({ hovered, pressed }: PressableStateCallbackType) => [
+      styles.row,
+      withBorder ? styles.rowBorder : null,
+      hovered && !pressed ? styles.rowHovered : null,
+      pressed ? styles.rowPressed : null,
+    ],
+    [withBorder],
+  );
   return (
     <Pressable
-      style={[settingsStyles.row, withBorder ? settingsStyles.rowBorder : null]}
+      style={rowStyle}
       onPress={handlePress}
       accessibilityRole="button"
       accessibilityLabel={command.label}
       testID={`quick-commands-row-${command.id}`}
     >
-      <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>{command.label}</Text>
-        <Text style={settingsStyles.rowHint} numberOfLines={1}>
-          {command.scope.type === "global"
-            ? t("composer.quickCommands.scopeGlobal")
-            : t("composer.quickCommands.scopeProject")}{" "}
-          · {command.prompt}
+      <View style={styles.iconChip}>
+        <ThemedZap size={15} uniProps={iconForegroundMutedMapping} />
+      </View>
+      <View style={styles.rowContent}>
+        <Text style={styles.rowTitle} numberOfLines={1}>
+          {command.label}
+        </Text>
+        <Text style={styles.rowHint} numberOfLines={1}>
+          {quickCommandPromptPreview(command.prompt)}
         </Text>
       </View>
+      <ScopeBadge scope={command.scope} projectName={projectName} />
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create((theme) => ({
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[3],
+    paddingVertical: theme.spacing[3],
+    paddingHorizontal: theme.spacing[4],
+  },
+  rowBorder: {
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+  },
+  rowHovered: {
+    backgroundColor: theme.colors.surface2,
+  },
+  rowPressed: {
+    backgroundColor: theme.colors.surface0,
+  },
+  rowContent: {
+    flex: 1,
+    minWidth: 0,
+  },
+  rowTitle: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.base,
+  },
+  rowHint: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+    marginTop: theme.spacing[1],
+  },
+  iconChip: {
+    width: 30,
+    height: 30,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: theme.borderRadius.md,
+    backgroundColor: theme.colors.surface2,
+  },
+  scopeBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+    paddingVertical: 2,
+    paddingHorizontal: theme.spacing[2],
+    borderRadius: theme.borderRadius.full,
+    backgroundColor: theme.colors.surface2,
+    maxWidth: 140,
+  },
+  scopeBadgeText: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+  },
+  scopePreviewRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    marginTop: theme.spacing[2],
+    flexWrap: "wrap",
+  },
+  scopeHint: {
+    flex: 1,
+    minWidth: 0,
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.base,
+  },
+  emptyState: {
+    alignItems: "center",
+    gap: theme.spacing[3],
+    paddingVertical: theme.spacing[8],
+    paddingHorizontal: theme.spacing[4],
+  },
+  emptyText: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.base,
+    textAlign: "center",
+  },
   footerRow: {
     flex: 1,
     flexDirection: "row",
@@ -345,10 +481,5 @@ const styles = StyleSheet.create((theme) => ({
   },
   footerButton: {
     flex: 1,
-  },
-  scopeHint: {
-    marginTop: theme.spacing[2],
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.base,
   },
 }));

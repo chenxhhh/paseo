@@ -6,6 +6,7 @@ import { ListPlus, Settings2, Zap } from "lucide-react-native";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuHint,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -15,7 +16,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import type { Theme } from "@/styles/theme";
 import { useQuickCommands } from "./use-quick-commands";
 import { QuickCommandsManageSheet } from "./quick-commands-manage-sheet";
-import type { QuickCommand } from "./model";
+import { quickCommandPromptPreview, type QuickCommand } from "./model";
 
 const ThemedZap = withUnistyles(Zap);
 const ThemedListPlus = withUnistyles(ListPlus);
@@ -74,15 +75,6 @@ export function QuickCommandsButton({
     setManageSheet("closed");
   }, []);
 
-  const newListIcon = useMemo(
-    () => <ThemedListPlus size={16} uniProps={iconForegroundMutedMapping} />,
-    [],
-  );
-  const newManageIcon = useMemo(
-    () => <ThemedSettings2 size={16} uniProps={iconForegroundMutedMapping} />,
-    [],
-  );
-
   const triggerLabel = t("composer.quickCommands.trigger");
   const triggerStyle = useCallback(
     ({ hovered }: { hovered?: boolean }) => [
@@ -95,6 +87,15 @@ export function QuickCommandsButton({
     const colorMapping = hovered ? iconForegroundMapping : iconForegroundMutedMapping;
     return <ThemedZap size={16} uniProps={colorMapping} />;
   }, []);
+
+  const newListIcon = useMemo(
+    () => <ThemedListPlus size={16} uniProps={iconForegroundMutedMapping} />,
+    [],
+  );
+  const newManageIcon = useMemo(
+    () => <ThemedSettings2 size={16} uniProps={iconForegroundMutedMapping} />,
+    [],
+  );
 
   return (
     <>
@@ -119,12 +120,12 @@ export function QuickCommandsButton({
           side="top"
           align="start"
           offset={8}
-          minWidth={240}
+          minWidth={280}
           sheetTitle={triggerLabel}
           testID="composer-quick-commands-menu"
         >
           {commands.length === 0 ? (
-            <DropdownMenuLabel>{t("composer.quickCommands.empty")}</DropdownMenuLabel>
+            <DropdownMenuHint>{t("composer.quickCommands.empty")}</DropdownMenuHint>
           ) : null}
           {projectCommands.length > 0 && projectId !== null ? (
             <DropdownMenuLabel>{t("composer.quickCommands.sectionProject")}</DropdownMenuLabel>
@@ -179,9 +180,18 @@ function CommandMenuItem({
   command: QuickCommand;
   onSelect: (command: QuickCommand) => void;
 }) {
+  const leadingIcon = useMemo(
+    () => <ThemedZap size={16} uniProps={iconForegroundMutedMapping} />,
+    [],
+  );
   const handleSelect = useCallback(() => onSelect(command), [command, onSelect]);
   return (
-    <DropdownMenuItem onSelect={handleSelect} testID={`composer-quick-commands-item-${command.id}`}>
+    <DropdownMenuItem
+      onSelect={handleSelect}
+      leading={leadingIcon}
+      description={quickCommandPromptPreview(command.prompt)}
+      testID={`composer-quick-commands-item-${command.id}`}
+    >
       {command.label}
     </DropdownMenuItem>
   );

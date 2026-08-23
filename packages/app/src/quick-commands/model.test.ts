@@ -5,6 +5,7 @@ import {
   normalizeQuickCommand,
   normalizeQuickCommands,
   quickCommandMatchesProject,
+  quickCommandPromptPreview,
   removeQuickCommand,
   upsertQuickCommand,
   type QuickCommand,
@@ -122,6 +123,23 @@ describe("removeQuickCommand", () => {
   it("removes only the targeted id", () => {
     const next = removeQuickCommand([command({ id: "a" }), command({ id: "b" })], "a");
     expect(next.map((entry) => entry.id)).toEqual(["b"]);
+  });
+});
+
+describe("quickCommandPromptPreview", () => {
+  it("returns the first non-empty line with collapsed whitespace", () => {
+    expect(quickCommandPromptPreview("line one\nline two")).toBe("line one");
+    expect(quickCommandPromptPreview("  \n  spaced   out  \nrest")).toBe("spaced out");
+  });
+
+  it("truncates long prompts with an ellipsis", () => {
+    const preview = quickCommandPromptPreview("x".repeat(100), 40);
+    expect(preview).toHaveLength(41);
+    expect(preview.endsWith("…")).toBe(true);
+  });
+
+  it("falls back to an empty string for blank prompts", () => {
+    expect(quickCommandPromptPreview(" \n \n ")).toBe("");
   });
 });
 
