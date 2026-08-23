@@ -1807,6 +1807,10 @@ export const ko: TranslationResources = {
     output: "출력",
   },
   toolCallGroup: {
+    thinking: {
+      one: "생각 {{count}}회",
+      other: "생각 {{count}}회",
+    },
     editedFiles: {
       one: "{{count}} 파일을 편집했습니다.",
       other: "{{count}} 파일을 편집했습니다.",
@@ -1992,11 +1996,12 @@ export const ko: TranslationResources = {
       },
       toolCallDetail: {
         label: "도구 호출 표시",
-        description: "타임라인에 도구 호출이 표시되는 방식",
+        description: "타임라인에 도구 호출과 생각이 표시되는 방식",
         accessibilityLabel: "도구 호출 표시 선택({{value}})",
         options: {
           overview: "요약",
           detailed: "전체 세부정보",
+          drawer: "서랍",
         },
       },
       language: {

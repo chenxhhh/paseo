@@ -1815,6 +1815,10 @@ export const ja: TranslationResources = {
     output: "出力",
   },
   toolCallGroup: {
+    thinking: {
+      one: "思考 {{count}} 回",
+      other: "思考 {{count}} 回",
+    },
     editedFiles: {
       one: "{{count}}個のファイルを編集",
       other: "{{count}}個のファイルを編集",
@@ -1998,11 +2002,12 @@ export const ja: TranslationResources = {
       },
       toolCallDetail: {
         label: "ツール呼び出しの表示",
-        description: "タイムラインでのツール呼び出しの表示方法",
+        description: "タイムラインでのツール呼び出しと思考の表示方法",
         accessibilityLabel: "ツール呼び出しの表示を選択（{{value}}）",
         options: {
           overview: "要約",
           detailed: "すべての詳細",
+          drawer: "ドロワー",
         },
       },
       language: {

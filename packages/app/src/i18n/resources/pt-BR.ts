@@ -1829,6 +1829,10 @@ export const ptBR: TranslationResources = {
     output: "Saída",
   },
   toolCallGroup: {
+    thinking: {
+      one: "pensou {{count}} vez",
+      other: "pensou {{count}} vezes",
+    },
     editedFiles: {
       one: "editou {{count}} arquivo",
       other: "editou {{count}} arquivos",
@@ -2015,11 +2019,12 @@ export const ptBR: TranslationResources = {
       },
       toolCallDetail: {
         label: "Exibição de chamadas de ferramentas",
-        description: "Como as chamadas de ferramentas aparecem na linha do tempo",
+        description: "Como as chamadas de ferramentas e o raciocínio aparecem na linha do tempo",
         accessibilityLabel: "Selecionar exibição de chamadas de ferramentas ({{value}})",
         options: {
           overview: "Resumo",
           detailed: "Detalhes completos",
+          drawer: "Gaveta",
         },
       },
       language: {

@@ -1,11 +1,5 @@
 import { once } from "node:events";
-import {
-  spawn,
-  execFileSync,
-  execSync,
-  type ChildProcess,
-  type SpawnOptions,
-} from "node:child_process";
+import { spawn, execFileSync, type ChildProcess, type SpawnOptions } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import { tmpdir } from "node:os";
@@ -48,7 +42,9 @@ async function getAvailablePort(): Promise<number> {
 }
 
 async function waitForServer(port: number, child: ChildProcess): Promise<void> {
-  const deadline = Date.now() + 20_000;
+  // tsx cold-starting the dev supervisor can exceed 20s on Windows; success
+  // returns on first probe, so the ceiling only bounds the failure case.
+  const deadline = Date.now() + 90_000;
   let lastError: unknown = null;
 
   while (Date.now() < deadline) {
@@ -155,7 +151,9 @@ export async function startIsolatedHostDaemon(
   const serverDir = publishedPackageRoot
     ? path.join(publishedPackageRoot, "node_modules", "@getpaseo", "server")
     : path.resolve(__dirname, "../../../../server");
-  const tsxBin = execSync("which tsx").toString().trim();
+  // `which tsx` yields a POSIX-path sh shim that Windows cannot spawn; resolve
+  // the tsx CLI module and run it through the current Node executable instead.
+  const tsxCli = path.resolve(__dirname, "../../../../../node_modules/tsx/dist/cli.mjs");
   const spawnDaemon = async (): Promise<ChildProcess> => {
     const spawnOptions: SpawnOptions = {
       cwd: serverDir,
@@ -169,13 +167,20 @@ export async function startIsolatedHostDaemon(
         PASEO_RELAY_ENABLED: options.mutableRelay ? undefined : "0",
         PASEO_NODE_ENV: "development",
         NODE_ENV: "development",
+        // The dev supervisor attaches --inspect by default; parallel e2e
+        // daemons and any developer daemon would fight over port 9229.
+        PASEO_NODE_INSPECT: "off",
       }),
       stdio: ["ignore", "ignore", "pipe"],
       detached: false,
     };
     const child = publishedPackageRoot
       ? spawn(process.execPath, ["dist/scripts/supervisor-entrypoint.js"], spawnOptions)
-      : spawn(tsxBin, ["scripts/supervisor-entrypoint.ts", "--dev"], spawnOptions);
+      : spawn(
+          process.execPath,
+          [tsxCli, "scripts/supervisor-entrypoint.ts", "--dev"],
+          spawnOptions,
+        );
 
     let stderr = "";
     child.stderr?.on("data", (chunk: Buffer) => {

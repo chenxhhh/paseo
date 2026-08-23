@@ -1775,6 +1775,10 @@ export const zhCN: TranslationResources = {
     output: "输出",
   },
   toolCallGroup: {
+    thinking: {
+      one: "思考了 {{count}} 次",
+      other: "思考了 {{count}} 次",
+    },
     editedFiles: {
       one: "编辑了 {{count}} 个文件",
       other: "编辑了 {{count}} 个文件",
@@ -1955,11 +1959,12 @@ export const zhCN: TranslationResources = {
       },
       toolCallDetail: {
         label: "工具调用显示",
-        description: "工具调用在时间线中的显示方式",
+        description: "工具调用和思考内容在时间线中的显示方式",
         accessibilityLabel: "选择工具调用显示方式（{{value}}）",
         options: {
           overview: "摘要",
           detailed: "完整详情",
+          drawer: "抽屉",
         },
       },
       language: {
