@@ -5,6 +5,7 @@ import {
   GitBranch,
   History,
   Home,
+  KanbanSquare,
   Plus,
   Search,
   Server,
@@ -64,6 +65,7 @@ import { useCloseAgentListGesture } from "@/mobile-panels/gestures";
 import { MobilePanelOverlay } from "@/mobile-panels/presentation";
 import { useIsMobilePanelPresented } from "@/mobile-panels/provider";
 import {
+  buildBoardRoute,
   buildOpenProjectRoute,
   buildNewWorkspaceRoute,
   buildSchedulesRoute,
@@ -117,6 +119,7 @@ interface SidebarLabels {
   searchHosts: string;
   sessions: string;
   schedules: string;
+  board: string;
   closeSidebar: string;
 }
 
@@ -126,6 +129,7 @@ interface MobileSidebarProps extends SidebarSharedProps {
   closeSidebar: () => void;
   handleViewMoreNavigate: () => void;
   handleViewSchedulesNavigate: () => void;
+  handleViewBoardNavigate: () => void;
 }
 
 interface DesktopSidebarProps extends SidebarSharedProps {
@@ -133,6 +137,7 @@ interface DesktopSidebarProps extends SidebarSharedProps {
   active: boolean;
   handleViewMore: () => void;
   handleViewSchedules: () => void;
+  handleViewBoard: () => void;
 }
 
 export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boolean }) {
@@ -231,6 +236,10 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
     router.push(buildSchedulesRoute());
   }, []);
 
+  const handleViewBoardNavigate = useCallback(() => {
+    router.push(buildBoardRoute());
+  }, []);
+
   const newWorkspaceKeys = useShortcutKeys("new-workspace");
   const labels = useMemo(
     (): SidebarLabels => ({
@@ -242,6 +251,7 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
       searchHosts: t("sidebar.host.searchPlaceholder"),
       sessions: t("sidebar.sections.sessions"),
       schedules: t("sidebar.sections.schedules"),
+      board: t("sidebar.sections.board"),
       closeSidebar: t("sidebar.actions.closeSidebar"),
     }),
     [t],
@@ -283,6 +293,7 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
           handleOpenHostSettings={handleOpenHostSettingsMobile}
           handleViewMoreNavigate={handleViewMoreNavigate}
           handleViewSchedulesNavigate={handleViewSchedulesNavigate}
+          handleViewBoardNavigate={handleViewBoardNavigate}
         />
       </RetainedPanelActivity>
     );
@@ -301,6 +312,7 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
         handleOpenHostSettings={handleOpenHostSettingsDesktop}
         handleViewMore={handleViewMoreNavigate}
         handleViewSchedules={handleViewSchedulesNavigate}
+        handleViewBoard={handleViewBoardNavigate}
       />
     </RetainedPanelActivity>
   );
@@ -632,11 +644,13 @@ function MobileSidebar({
   closeSidebar,
   handleViewMoreNavigate,
   handleViewSchedulesNavigate,
+  handleViewBoardNavigate,
 }: MobileSidebarProps) {
   const pathname = usePathname();
   const hasActiveHostFilter = useSidebarViewStore((state) => state.hostFilters.length > 0);
   const isSessionsActive = pathname.includes("/sessions");
   const isSchedulesActive = pathname.includes("/schedules");
+  const isBoardActive = pathname.includes("/board");
   const { gesture: closeGesture, gestureRef: closeGestureRef } = useCloseAgentListGesture();
   const dragGestureHostPresented = useIsMobilePanelPresented("agent-list");
 
@@ -649,6 +663,11 @@ function MobileSidebar({
     closeSidebar();
     handleViewSchedulesNavigate();
   }, [closeSidebar, handleViewSchedulesNavigate]);
+
+  const handleViewBoard = useCallback(() => {
+    closeSidebar();
+    handleViewBoardNavigate();
+  }, [closeSidebar, handleViewBoardNavigate]);
 
   const handleWorkspacePress = useCallback(() => {
     closeSidebar();
@@ -693,6 +712,14 @@ function MobileSidebar({
             onPress={handleViewSchedules}
             isActive={isSchedulesActive}
             testID="sidebar-schedules"
+            variant="compact"
+          />
+          <SidebarHeaderRow
+            icon={KanbanSquare}
+            label={labels.board}
+            onPress={handleViewBoard}
+            isActive={isBoardActive}
+            testID="sidebar-board"
             variant="compact"
           />
           <PluginSidebarItems onBeforeNavigate={closeSidebar} />
@@ -784,12 +811,14 @@ function DesktopSidebar({
   active,
   handleViewMore,
   handleViewSchedules,
+  handleViewBoard,
 }: DesktopSidebarProps) {
   const ownsTopLeft = useOwnsWindowChromeCorner("top-left");
   const pathname = usePathname();
   const hasActiveHostFilter = useSidebarViewStore((state) => state.hostFilters.length > 0);
   const isSessionsActive = pathname.includes("/sessions");
   const isSchedulesActive = pathname.includes("/schedules");
+  const isBoardActive = pathname.includes("/board");
   const sidebarWidth = usePanelStore((state) => state.sidebarWidth);
   const setSidebarWidth = usePanelStore((state) => state.setSidebarWidth);
   const { width: viewportWidth } = useWindowDimensions();
@@ -918,6 +947,14 @@ function DesktopSidebar({
               onPress={handleViewSchedules}
               isActive={isSchedulesActive}
               testID="sidebar-schedules"
+              variant="compact"
+            />
+            <SidebarHeaderRow
+              icon={KanbanSquare}
+              label={labels.board}
+              onPress={handleViewBoard}
+              isActive={isBoardActive}
+              testID="sidebar-board"
               variant="compact"
             />
             <PluginSidebarItems />

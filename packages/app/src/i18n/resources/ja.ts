@@ -1016,6 +1016,22 @@ export const ja: TranslationResources = {
     moveTitle: "ステータスへ移動",
     clear: "ステータスをクリア",
     updateHost: "ステータスを割り当てるにはこのホストを更新してください。",
+    board: {
+      title: "ワークスペースボード",
+      empty: "ワークスペースがまだありません。作成してレーンにドラッグしてください。",
+      emptyLane: "まだ何もありません",
+    },
+    manage: {
+      title: "列の管理",
+      add: "列を追加",
+      addTitle: "新しい列",
+      namePlaceholder: "列名",
+      renameTitle: "列の名前を変更",
+      moveLeft: "左へ移動",
+      moveRight: "右へ移動",
+      remove: "列を削除",
+      done: "完了",
+    },
   },
   workspaceLabels: {
     title: "ラベル",
@@ -1084,6 +1100,7 @@ export const ja: TranslationResources = {
         checks: "チェック",
         services: "サービス",
         labels: "ラベル",
+        status: "ステータス",
         diff: "差分統計",
         timestamp: "最終アクティビティ",
       },
@@ -1137,6 +1154,7 @@ export const ja: TranslationResources = {
     sections: {
       sessions: "履歴",
       schedules: "スケジュール",
+      board: "ボード",
     },
     worktreeSetup: {
       title: "ワークツリースクリプトを設定",

@@ -27,6 +27,8 @@ function makeWorkspace(
     workspaceDirectory: "",
     workspaceDirectoryLabel: "",
     title: null,
+    userStatus: null,
+    activeAgents: [],
     currentBranch: null,
     statusBucket,
     statusEnteredAt: null,
@@ -64,7 +66,7 @@ function makeProject(
 }
 
 function projectionInput(options?: {
-  groupMode?: "project" | "status";
+  groupMode?: "project" | "status" | "user-status";
   pinnedCollapsed?: boolean;
 }) {
   const pinned = makeWorkspace("pinned", "running");
@@ -85,6 +87,7 @@ function projectionInput(options?: {
     pinnedCollapsed: options?.pinnedCollapsed ?? false,
     collapsedProjectKeys: new Set<string>(),
     collapsedWorkspaceGroupKeys: new Set<string>(),
+    statuses: [],
   };
 }
 
@@ -92,7 +95,7 @@ function projectionInput(options?: {
  * Two projects, one workspace each, both labelled — so every grouping mode puts rows from more
  * than one project on screen, and a mode that asked for fewer icons than it renders would show it.
  */
-function twoProjectInput(groupMode: "project" | "status") {
+function twoProjectInput(groupMode: "project" | "status" | "user-status") {
   const first = makeWorkspace("first", "running", ["Urgent"], "project");
   const second = makeWorkspace("second", "needs_input", ["Backend"], "other-project");
   return {
@@ -172,5 +175,45 @@ describe("buildSidebarProjection", () => {
     expect(projection.shortcutModel.shortcutTargets).toEqual([
       { serverId: "srv", workspaceId: "unpinned" },
     ]);
+  });
+
+  it("groups user-status lanes in catalog order and resolves unassigned to the default lane", () => {
+    const todo = makeWorkspace("todo", "done");
+    const unassigned = makeWorkspace("unassigned", "running");
+    const stale = makeWorkspace("stale", "failed");
+    todo.entry.userStatus = "todo";
+    stale.entry.userStatus = "deleted-status";
+    const input = {
+      ...projectionInput({ groupMode: "user-status" as const }),
+      projects: [makeProject([todo.placement, unassigned.placement, stale.placement])],
+      pinnedKeys: { pinnedWorkspaceKeys: [], pinnedAtByKey: {} },
+      workspaceEntriesByKey: new Map([
+        [todo.entry.workspaceKey, todo.entry],
+        [unassigned.entry.workspaceKey, unassigned.entry],
+        [stale.entry.workspaceKey, stale.entry],
+      ]),
+      statuses: [
+        { id: "todo", label: "Todo", color: "sky" as const },
+        { id: "in-progress", label: "In progress", color: "amber" as const },
+      ],
+    };
+
+    const projection = buildSidebarProjection(input);
+
+    expect(projection.workspaceGroups.map((group) => group.key)).toEqual([
+      "user-status:todo",
+      "user-status:in-progress",
+    ]);
+    expect(projection.workspaceGroups[0]?.rows.map((row) => row.workspaceId)).toEqual(["todo"]);
+    // Unassigned and stale-assigned workspaces both resolve to the default lane.
+    expect(projection.workspaceGroups[1]?.rows.map((row) => row.workspaceId)).toEqual([
+      "stale",
+      "unassigned",
+    ]);
+    expect(projection.workspaceGroups[0]?.leading).toEqual({
+      kind: "user-status",
+      statusId: "todo",
+      color: "sky",
+    });
   });
 });

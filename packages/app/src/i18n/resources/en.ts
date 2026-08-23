@@ -1013,6 +1013,22 @@ export const en = {
     moveTitle: "Move to status",
     clear: "Clear status",
     updateHost: "Update this host to assign statuses.",
+    board: {
+      title: "Workspace board",
+      empty: "No workspaces yet. Create one, then drag it into a lane.",
+      emptyLane: "Nothing here yet",
+    },
+    manage: {
+      title: "Manage columns",
+      add: "Add column",
+      addTitle: "New column",
+      namePlaceholder: "Column name",
+      renameTitle: "Rename column",
+      moveLeft: "Move left",
+      moveRight: "Move right",
+      remove: "Remove column",
+      done: "Done",
+    },
   },
   workspaceLabels: {
     title: "Labels",
@@ -1081,6 +1097,7 @@ export const en = {
         checks: "Checks",
         services: "Services",
         labels: "Labels",
+        status: "Status",
         diff: "Diff stats",
         timestamp: "Last activity",
       },
@@ -1133,6 +1150,7 @@ export const en = {
     sections: {
       sessions: "History",
       schedules: "Schedules",
+      board: "Board",
     },
     worktreeSetup: {
       title: "Set up worktree scripts",

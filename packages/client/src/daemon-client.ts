@@ -2731,6 +2731,26 @@ export class DaemonClient {
     return { pinnedAt: payload.pinnedAt };
   }
 
+  async setWorkspaceUserStatus(
+    workspaceId: string,
+    userStatus: string | null,
+    requestId?: string,
+  ): Promise<{ userStatus: string | null }> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "workspace.user-status.set.request",
+        workspaceId,
+        userStatus,
+      },
+      responseType: "workspace.user-status.set.response",
+    });
+    if (!payload.accepted) {
+      throw new Error(payload.error ?? "setWorkspaceUserStatus rejected");
+    }
+    return { userStatus: payload.userStatus };
+  }
+
   async inspectWorkspaceRecovery(
     workspaceId: string,
     requestId?: string,

@@ -1036,6 +1036,22 @@ export const es: TranslationResources = {
     moveTitle: "Mover a estado",
     clear: "Borrar estado",
     updateHost: "Actualiza este host para asignar estados.",
+    board: {
+      title: "Tablero de espacios de trabajo",
+      empty: "Aún no hay espacios de trabajo. Crea uno y arrástralo a un carril.",
+      emptyLane: "Aún no hay nada",
+    },
+    manage: {
+      title: "Gestionar columnas",
+      add: "Añadir columna",
+      addTitle: "Nueva columna",
+      namePlaceholder: "Nombre de la columna",
+      renameTitle: "Renombrar columna",
+      moveLeft: "Mover a la izquierda",
+      moveRight: "Mover a la derecha",
+      remove: "Eliminar columna",
+      done: "Listo",
+    },
   },
   workspaceLabels: {
     title: "Etiquetas",
@@ -1107,6 +1123,7 @@ export const es: TranslationResources = {
         checks: "Comprobaciones",
         services: "Servicios",
         labels: "Etiquetas",
+        status: "Estado",
         diff: "Estadísticas de cambios",
         timestamp: "Última actividad",
       },
@@ -1159,6 +1176,7 @@ export const es: TranslationResources = {
     sections: {
       sessions: "Historial",
       schedules: "Horarios",
+      board: "Tablero",
     },
     worktreeSetup: {
       title: "Configurar secuencias de comandos del árbol de trabajo",

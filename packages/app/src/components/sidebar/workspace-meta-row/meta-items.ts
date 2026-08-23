@@ -2,6 +2,7 @@ import type { WorkspaceLabelDefinition } from "@getpaseo/protocol/workspace-labe
 import type { PrHint } from "@/git/pr-hint";
 import type { SidebarChecksDisplay } from "@/components/sidebar/display-preferences/checks-display";
 import type { SidebarRowItems } from "@/components/sidebar/display-preferences/row-items";
+import type { WorkspaceStatusDefinition } from "@/utils/workspace-statuses";
 import { selectCheckSummary, type CheckSummary } from "./check-summary";
 import type { WorkspaceServiceSummary } from "./service-summary";
 
@@ -22,6 +23,7 @@ export type MetaRowItem =
   | { kind: "changeRequest"; hint: PrHint }
   | { kind: "checks"; summary: CheckSummary; label: boolean }
   | { kind: "services"; summary: WorkspaceServiceSummary }
+  | { kind: "userStatus"; status: WorkspaceStatusDefinition }
   | { kind: "labels"; labels: readonly WorkspaceLabelDefinition[] };
 
 /**
@@ -40,6 +42,7 @@ export function selectMetaRowItems(input: {
   hasHostBadge: boolean;
   prHint: PrHint | null;
   serviceSummary: WorkspaceServiceSummary | null;
+  userStatus: WorkspaceStatusDefinition | null;
   labels: readonly WorkspaceLabelDefinition[];
   visible: SidebarRowItems;
   checksDisplay: SidebarChecksDisplay;
@@ -50,6 +53,7 @@ export function selectMetaRowItems(input: {
     hasHostBadge,
     prHint,
     serviceSummary,
+    userStatus,
     labels,
     visible,
     checksDisplay,
@@ -82,6 +86,13 @@ export function selectMetaRowItems(input: {
 
   if (serviceSummary && visible.services) {
     items.push({ kind: "services", summary: serviceSummary });
+  }
+
+  // The status rides the same chip ground the labels use: both are things a person chose, so
+  // they share the identity colors while everything else on the line reports state. Only an
+  // assigned status draws — the default lane is an absence, not a fact worth a chip.
+  if (userStatus && visible.status) {
+    items.push({ kind: "userStatus", status: userStatus });
   }
 
   if (labels.length > 0 && visible.labels) {

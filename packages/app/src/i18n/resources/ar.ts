@@ -1004,6 +1004,22 @@ export const ar: TranslationResources = {
     moveTitle: "نقل إلى حالة",
     clear: "مسح الحالة",
     updateHost: "حدّث هذا المضيف لتعيين الحالات.",
+    board: {
+      title: "لوحة مساحات العمل",
+      empty: "لا توجد مساحات عمل بعد. أنشئ واحدة ثم اسحبها إلى مسار.",
+      emptyLane: "لا شيء هنا بعد",
+    },
+    manage: {
+      title: "إدارة الأعمدة",
+      add: "إضافة عمود",
+      addTitle: "عمود جديد",
+      namePlaceholder: "اسم العمود",
+      renameTitle: "إعادة تسمية العمود",
+      moveLeft: "تحريك لليسار",
+      moveRight: "تحريك لليمين",
+      remove: "إزالة العمود",
+      done: "تم",
+    },
   },
   workspaceLabels: {
     title: "التسميات",
@@ -1072,6 +1088,7 @@ export const ar: TranslationResources = {
         checks: "الفحوصات",
         services: "الخدمات",
         labels: "التسميات",
+        status: "الحالة",
         diff: "إحصائيات الفروق",
         timestamp: "آخر نشاط",
       },
@@ -1124,6 +1141,7 @@ export const ar: TranslationResources = {
     sections: {
       sessions: "السجل",
       schedules: "الجداول",
+      board: "اللوحة",
     },
     worktreeSetup: {
       title: "إعداد البرامج النصية لشجرة العمل",

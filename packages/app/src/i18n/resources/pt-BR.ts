@@ -1027,6 +1027,22 @@ export const ptBR: TranslationResources = {
     moveTitle: "Mover para status",
     clear: "Limpar status",
     updateHost: "Atualize este host para atribuir status.",
+    board: {
+      title: "Quadro de workspaces",
+      empty: "Ainda não há workspaces. Crie um e arraste para uma coluna.",
+      emptyLane: "Nada aqui ainda",
+    },
+    manage: {
+      title: "Gerenciar colunas",
+      add: "Adicionar coluna",
+      addTitle: "Nova coluna",
+      namePlaceholder: "Nome da coluna",
+      renameTitle: "Renomear coluna",
+      moveLeft: "Mover para a esquerda",
+      moveRight: "Mover para a direita",
+      remove: "Remover coluna",
+      done: "Concluir",
+    },
   },
   workspaceLabels: {
     title: "Etiquetas",
@@ -1098,6 +1114,7 @@ export const ptBR: TranslationResources = {
         checks: "Verificações",
         services: "Serviços",
         labels: "Etiquetas",
+        status: "Status",
         diff: "Estatísticas de diff",
         timestamp: "Última atividade",
       },
@@ -1150,6 +1167,7 @@ export const ptBR: TranslationResources = {
     sections: {
       sessions: "Histórico",
       schedules: "Agendamentos",
+      board: "Quadro",
     },
     worktreeSetup: {
       title: "Configurar scripts de worktree",

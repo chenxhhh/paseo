@@ -1035,6 +1035,23 @@ export const fr: TranslationResources = {
     moveTitle: "Déplacer vers le statut",
     clear: "Effacer le statut",
     updateHost: "Mettez à jour cet hôte pour assigner des statuts.",
+    board: {
+      title: "Tableau des espaces de travail",
+      empty:
+        "Aucun espace de travail pour l’instant. Créez-en un, puis glissez-le dans une colonne.",
+      emptyLane: "Rien pour l’instant",
+    },
+    manage: {
+      title: "Gérer les colonnes",
+      add: "Ajouter une colonne",
+      addTitle: "Nouvelle colonne",
+      namePlaceholder: "Nom de la colonne",
+      renameTitle: "Renommer la colonne",
+      moveLeft: "Déplacer à gauche",
+      moveRight: "Déplacer à droite",
+      remove: "Supprimer la colonne",
+      done: "Terminé",
+    },
   },
   workspaceLabels: {
     title: "Étiquettes",
@@ -1106,6 +1123,7 @@ export const fr: TranslationResources = {
         checks: "Vérifications",
         services: "Services",
         labels: "Libellés",
+        status: "Statut",
         diff: "Statistiques de diff",
         timestamp: "Dernière activité",
       },
@@ -1159,6 +1177,7 @@ export const fr: TranslationResources = {
     sections: {
       sessions: "Historique",
       schedules: "Planifications",
+      board: "Tableau",
     },
     worktreeSetup: {
       title: "Configurer les scripts d'arbre de travail",

@@ -18,19 +18,23 @@ import {
 } from "react-native";
 import { NestableScrollContainer } from "react-native-draggable-flatlist";
 import type { GestureType } from "react-native-gesture-handler";
-import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
-import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
+import {
+  navigateToWorkspace,
+  useActiveWorkspaceSelection,
+} from "@/stores/navigation-active-workspace-store";
+
 import { type SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
-import type { StatusBucket } from "@/hooks/sidebar-status-view-model";
 import type { SidebarWorkspaceGroup } from "@/components/sidebar/sidebar-labels";
+import type { WorkspaceStatusDefinition } from "@/utils/workspace-statuses";
+import { statusDotStyle } from "@/utils/workspace-status-colors";
 import { SidebarFilterEmptyState } from "@/components/sidebar/empty-states";
 import type { HostBadgeModel } from "@/hosts/appearance";
 import { isWeb as platformIsWeb, isNative as platformIsNative } from "@/constants/platform";
 import { useIsCompactFormFactor } from "@/constants/layout";
-import { StyleSheet } from "react-native-unistyles";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { Theme } from "@/styles/theme";
 import type { SidebarSurfaceBackdrop } from "@/styles/surface-backdrop";
-import { withUnistyles } from "react-native-unistyles";
+
 import {
   ChevronDown,
   ChevronRight,
@@ -61,6 +65,7 @@ import {
   SidebarWorkspaceTrailingActionSlot,
   sidebarWorkspaceRowStyles,
 } from "@/components/sidebar/sidebar-workspace-row-content";
+import { WorkspaceAgentRows } from "@/components/sidebar/workspace-agent-rows";
 import { useOpenKebabMenuVisibility } from "@/components/sidebar/use-open-kebab-menu-visibility";
 import { getSidebarRowBackdrop } from "@/components/sidebar/sidebar-row-backdrop";
 import { getStatusDotColor } from "@/utils/status-dot-color";
@@ -468,7 +473,7 @@ function StatusGroupLeadingVisual({
   showChevron: boolean;
 }) {
   if (!showChevron) {
-    return <StatusGroupIcon bucket={leading.bucket} />;
+    return <StatusGroupIcon leading={leading} />;
   }
   if (collapsed) {
     return <ThemedChevronRight size={14} uniProps={foregroundMutedColorMapping} />;
@@ -476,8 +481,11 @@ function StatusGroupLeadingVisual({
   return <ThemedChevronDown size={14} uniProps={foregroundMutedColorMapping} />;
 }
 
-function StatusGroupIcon({ bucket }: { bucket: StatusBucket }) {
-  switch (bucket) {
+function StatusGroupIcon({ leading }: { leading: SidebarWorkspaceGroup["leading"] }) {
+  if (leading.kind === "user-status") {
+    return <UserStatusDot color={leading.color} />;
+  }
+  switch (leading.bucket) {
     case "needs_input":
       return <ThemedCircleAlert size={14} uniProps={needsInputColorMapping} />;
     case "failed":
@@ -489,6 +497,14 @@ function StatusGroupIcon({ bucket }: { bucket: StatusBucket }) {
     case "done":
       return <ThemedCircleCheck size={14} uniProps={foregroundMutedColorMapping} />;
   }
+}
+
+// A user-status lane leads with its catalog color the way a label chip carries
+// its own hue: something a person chose, not state the workspace reports.
+function UserStatusDot({ color }: { color: WorkspaceStatusDefinition["color"] }) {
+  return (
+    <View style={[styles.userStatusDot, statusDotStyle(color)]} testID="sidebar-user-status-dot" />
+  );
 }
 
 const StatusWorkspaceRow = memo(function StatusWorkspaceRow({
@@ -947,6 +963,7 @@ function StatusWorkspaceRowInnerContent({
                   />
                 ) : null}
               </SidebarWorkspaceRowContent>
+              <WorkspaceAgentRows agents={workspace.activeAgents} />
             </SidebarWorkspaceContextMenu>
           </View>
         );
@@ -1105,6 +1122,11 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 0,
     alignItems: "center",
     justifyContent: "center",
+  },
+  userStatusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: theme.borderRadius.full,
   },
   statusGroupTitleGroup: {
     flexDirection: "row",

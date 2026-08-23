@@ -116,6 +116,7 @@ import {
   SidebarWorkspaceTrailingActionOverlay,
   SidebarWorkspaceTrailingActionSlot,
 } from "@/components/sidebar/sidebar-workspace-row-content";
+import { WorkspaceAgentRows } from "@/components/sidebar/workspace-agent-rows";
 import { useOpenKebabMenuVisibility } from "@/components/sidebar/use-open-kebab-menu-visibility";
 import {
   SidebarFilterEmptyState,
@@ -1218,6 +1219,7 @@ function WorkspaceRowInner({
                   onTogglePin={onTogglePin}
                 />
               </SidebarWorkspaceRowContent>
+              <WorkspaceAgentRows agents={workspace.activeAgents} />
             </SidebarWorkspaceContextMenu>
           </View>
         );
