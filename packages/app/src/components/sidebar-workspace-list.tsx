@@ -332,7 +332,7 @@ interface WorkspaceRowInnerProps {
   isPinned?: boolean;
   onTogglePin?: () => void;
   reserveIdleStatusIndicatorSpace?: boolean;
-  indented?: boolean;
+  inSubgroup?: boolean;
 }
 
 export function PrBadge({ hint, style }: { hint: PrHint; style?: StyleProp<ViewStyle> }) {
@@ -409,17 +409,17 @@ function getProjectWorkspaceRowStyle({
   isPressed,
   selected,
   isHovered,
-  indented,
+  inSubgroup,
 }: {
   isDragging: boolean;
   isPressed: boolean;
   selected: boolean;
   isHovered: boolean;
-  indented?: boolean;
+  inSubgroup?: boolean;
 }) {
   return [
     styles.workspaceRow,
-    indented && sidebarWorkspaceRowStyles.rowIndented,
+    inSubgroup && sidebarWorkspaceRowStyles.rowIndentedNested,
     isHovered && styles.workspaceRowHovered,
     selected && styles.sidebarRowSelected,
     isDragging && styles.workspaceRowDragging,
@@ -1118,7 +1118,7 @@ function WorkspaceRowInner({
   isPinned,
   onTogglePin,
   reserveIdleStatusIndicatorSpace = true,
-  indented = false,
+  inSubgroup = false,
 }: WorkspaceRowInnerProps) {
   const isCompact = useIsCompactFormFactor();
   const [isPressed, setIsPressed] = useState(false);
@@ -1165,7 +1165,7 @@ function WorkspaceRowInner({
           isPressed,
           selected,
           isHovered,
-          indented,
+          inSubgroup,
         });
         const backdrop = getSidebarRowBackdrop({ isDragging, isPressed, selected, isHovered });
         return (
@@ -1266,7 +1266,7 @@ function WorkspaceRowWithMenu({
   onToggleWorkspacePin,
   reserveIdleStatusIndicatorSpace = true,
   isCreating = false,
-  indented = false,
+  inSubgroup = false,
 }: {
   workspace: SidebarWorkspaceEntry;
   hostBadge?: HostBadgeModel | null;
@@ -1284,7 +1284,7 @@ function WorkspaceRowWithMenu({
   onToggleWorkspacePin: ToggleSidebarWorkspacePin;
   reserveIdleStatusIndicatorSpace?: boolean;
   isCreating?: boolean;
-  indented?: boolean;
+  inSubgroup?: boolean;
 }) {
   const { t } = useTranslation();
   const toast = useToast();
@@ -1425,7 +1425,7 @@ function WorkspaceRowWithMenu({
         isPinned={isPinned}
         onTogglePin={onTogglePin}
         reserveIdleStatusIndicatorSpace={reserveIdleStatusIndicatorSpace}
-        indented={indented}
+        inSubgroup={inSubgroup}
       />
       <AdaptiveRenameModal
         visible={isRenameOpen}
@@ -1460,7 +1460,7 @@ interface WorkspaceRowItemProps {
   drag?: () => void;
   isDragging?: boolean;
   dragHandleProps?: DraggableListDragHandleProps;
-  indented?: boolean;
+  inSubgroup?: boolean;
 }
 
 function WorkspaceRowItem({
@@ -1482,7 +1482,7 @@ function WorkspaceRowItem({
   drag,
   isDragging = false,
   dragHandleProps,
-  indented = false,
+  inSubgroup = false,
 }: WorkspaceRowItemProps) {
   const handlePress = useCallback(() => {
     if (!workspace.serverId) {
@@ -1515,7 +1515,7 @@ function WorkspaceRowItem({
       drag={drag ?? noop}
       isDragging={isDragging}
       dragHandleProps={dragHandleProps}
-      indented={indented}
+      inSubgroup={inSubgroup}
     />
   );
 }
@@ -1553,7 +1553,7 @@ function areWorkspaceRowItemPropsEqual(
     previous.drag === next.drag &&
     previous.isDragging === next.isDragging &&
     previous.dragHandleProps === next.dragHandleProps &&
-    previous.indented === next.indented &&
+    previous.inSubgroup === next.inSubgroup &&
     previousSelected === nextSelected
   );
 }
@@ -1577,7 +1577,7 @@ function WorkspaceRow({
   reserveIdleStatusIndicatorSpace = true,
   isCreating = false,
   selected,
-  indented = false,
+  inSubgroup = false,
 }: {
   workspaceEntry: SidebarWorkspaceEntry | null;
   hostBadge?: HostBadgeModel | null;
@@ -1595,7 +1595,7 @@ function WorkspaceRow({
   reserveIdleStatusIndicatorSpace?: boolean;
   isCreating?: boolean;
   selected: boolean;
-  indented?: boolean;
+  inSubgroup?: boolean;
 }) {
   if (!workspaceEntry) {
     return null;
@@ -1619,7 +1619,7 @@ function WorkspaceRow({
       onToggleWorkspacePin={onToggleWorkspacePin}
       reserveIdleStatusIndicatorSpace={reserveIdleStatusIndicatorSpace}
       isCreating={isCreating}
-      indented={indented}
+      inSubgroup={inSubgroup}
     />
   );
 }
@@ -1745,7 +1745,7 @@ function WorktreeGroupSection({
             <SidebarGroupToggleRow
               expanded={expanded}
               onPress={toggleExpanded}
-              indented
+              indent="subgroup"
               testID={`sidebar-worktree-group-show-more-${group.key}`}
             />
           ) : null}
@@ -1857,7 +1857,7 @@ function ProjectBlock({
         drag?: () => void;
         isDragging?: boolean;
         dragHandleProps?: DraggableListDragHandleProps;
-        indented?: boolean;
+        inSubgroup?: boolean;
       },
     ) => {
       return (
@@ -1877,7 +1877,7 @@ function ProjectBlock({
           drag={input?.drag}
           isDragging={input?.isDragging}
           dragHandleProps={input?.dragHandleProps}
-          indented={input?.indented}
+          inSubgroup={input?.inSubgroup}
         />
       );
     },
@@ -1923,7 +1923,7 @@ function ProjectBlock({
         drag: workspaceDrag,
         isDragging: isActive,
         dragHandleProps: workspaceDragHandleProps,
-        indented: true,
+        inSubgroup: true,
       });
     },
     [renderWorkspaceRow],
@@ -3112,7 +3112,11 @@ const styles = StyleSheet.create((theme) => ({
   worktreeGroupRow: {
     minHeight: 36,
     paddingVertical: theme.spacing[2],
-    paddingHorizontal: theme.spacing[2],
+    // One step inside the project row above it — `rowIndented`'s step, the same distance a
+    // workspace row keeps from its header. Flush with the project it reads as a sibling project
+    // rather than as a group inside it, which is the confusion this step exists to break.
+    paddingLeft: theme.spacing[2] + theme.spacing[2],
+    paddingRight: theme.spacing[2],
     borderRadius: theme.borderRadius.lg,
     marginBottom: theme.spacing[2],
     flexDirection: "row",
