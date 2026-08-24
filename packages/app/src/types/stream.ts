@@ -1310,14 +1310,15 @@ function reduceTimelineToolCall(
     .trim()
     .replace(/[.\s-]+/g, "_")
     .toLowerCase();
-  if (event.provider === "claude" && normalizedToolName === "exitplanmode") {
+  // The Claude runtime emits canonical task snapshots for its own task tools, so the tool calls
+  // themselves never render. Match by tool name, not by provider id: a custom provider extending
+  // claude reports its own id (e.g. "glm") on fetched timeline entries, and gating on "claude"
+  // would double-render those calls as todo rows plus raw tool calls.
+  if (normalizedToolName === "exitplanmode") {
     return state;
   }
 
-  if (
-    event.provider === "claude" &&
-    (normalizedToolName === "todowrite" || normalizedToolName === "todo_write")
-  ) {
+  if (normalizedToolName === "todowrite" || normalizedToolName === "todo_write") {
     const tasks = extractTaskEntriesFromToolCall(item.name, inputFromUnknownDetail(item.detail));
     if (!tasks) {
       return state;
@@ -1332,10 +1333,9 @@ function reduceTimelineToolCall(
   }
 
   if (
-    event.provider === "claude" &&
-    (normalizedToolName === "taskcreate" ||
-      normalizedToolName === "taskupdate" ||
-      normalizedToolName === "tasklist")
+    normalizedToolName === "taskcreate" ||
+    normalizedToolName === "taskupdate" ||
+    normalizedToolName === "tasklist"
   ) {
     return state;
   }

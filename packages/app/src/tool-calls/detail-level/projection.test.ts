@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ToolCallDetail } from "@getpaseo/protocol/agent-types";
-import type { StreamItem, ThoughtItem, ToolCallItem } from "@/types/stream";
+import type { StreamItem, ThoughtItem, TodoListItem, ToolCallItem } from "@/types/stream";
 import {
   prepareToolCallHistory,
   projectToolCallDetailLevel,
@@ -52,6 +52,17 @@ function assistant(id: string): AssistantMessageItem {
     id,
     text: id,
     timestamp: new Date("2026-01-01T00:01:00.000Z"),
+  };
+}
+
+function todoRow(id: string, task: string): TodoListItem {
+  return {
+    kind: "todo_list",
+    id,
+    timestamp: new Date(`2026-01-01T00:00:${id.padStart(2, "0")}.000Z`),
+    provider: "claude",
+    items: [{ text: task, completed: false }],
+    activity: { type: "added", task },
   };
 }
 
@@ -556,5 +567,77 @@ describe("tool call detail-level projection", () => {
     ]);
     expect(result.groupsByHostId.get("1")?.run.calls).toEqual([thinking]);
     expect(result.groupsByHostId.size).toBe(1);
+  });
+
+  it("keeps one drawer digest across interleaved todo rows in history", () => {
+    const command = toolCall("1", { type: "shell", command: "seed" });
+    const thinking = thought("2");
+    const write = toolCall("3", { type: "write", filePath: "/repo/seed.ts" });
+    const tail = [
+      assistant("intro"),
+      command,
+      thinking,
+      todoRow("4", "Set up the visual test env"),
+      todoRow("5", "Run the visual test cases"),
+      write,
+      todoRow("6", "Set up the visual test env"),
+      assistant("closing"),
+    ];
+
+    const result = project({ level: "drawer", tail });
+
+    expect(result.tail).toEqual([
+      tail[0],
+      tail[3],
+      tail[4],
+      tail[6],
+      expect.objectContaining({ id: "1" }),
+      tail[7],
+    ]);
+    expect(result.groupsByHostId.size).toBe(1);
+    expect(result.groupsByHostId.get("1")?.run).toMatchObject({
+      calls: [command, thinking, write],
+      latest: write,
+      isSealed: true,
+    });
+  });
+
+  it("keeps an active drawer digest growing across todo rows in the live head", () => {
+    const first = toolCall("1", { type: "shell", command: "seed" });
+    const added = todoRow("2", "Set up the visual test env");
+    const second = toolCall("3", { type: "write", filePath: "/repo/seed.ts" });
+    const prepared = prepareToolCallHistory("drawer", []);
+
+    const result = project({
+      level: "drawer",
+      head: [first, added, second],
+      isTurnActive: true,
+      preparedHistory: prepared,
+    });
+
+    expect(result.head).toEqual([added, expect.objectContaining({ id: "1" })]);
+    expect(result.groupsByHostId.get("1")?.run).toMatchObject({
+      calls: [first, second],
+      latest: second,
+      isSealed: false,
+    });
+  });
+
+  it("keeps todo rows from splitting an overview digest", () => {
+    const command = toolCall("1", { type: "shell", command: "seed" });
+    const edit = toolCall("2", { type: "edit", filePath: "/repo/seed.ts" });
+    const result = project({
+      level: "overview",
+      head: [command, todoRow("3", "Set up the visual test env"), edit],
+    });
+
+    expect(result.head).toEqual([
+      todoRow("3", "Set up the visual test env"),
+      expect.objectContaining({ id: "1" }),
+    ]);
+    expect(result.groupsByHostId.get("1")?.run).toMatchObject({
+      calls: [command, edit],
+      isSealed: true,
+    });
   });
 });

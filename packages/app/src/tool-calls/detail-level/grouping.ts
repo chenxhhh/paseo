@@ -84,6 +84,16 @@ export function isDrawerGroupableItem(item: StreamItem): item is GroupableStream
   return item.kind === "thought" || isGroupableToolCall(item);
 }
 
+/**
+ * Todo rows annotate the task tool calls a run already counts, so they never seal
+ * one: a run accumulates across them and one stretch of work between assistant
+ * messages keeps folding into a single summary line instead of one digest per
+ * task status change.
+ */
+export function isRunTransparentItem(item: StreamItem): boolean {
+  return item.kind === "todo_list";
+}
+
 function createRun(calls: readonly GroupableStreamItem[], isSealed: boolean): ToolCallRun {
   const first = calls[0];
   const latest = calls.at(-1);
@@ -166,6 +176,10 @@ export function prepareGroupedHistory<TGroup>(input: {
       pending.push(item);
       continue;
     }
+    if (isRunTransparentItem(item)) {
+      output.push(item);
+      continue;
+    }
     appendRun({
       calls: pending,
       isSealed: true,
@@ -229,6 +243,10 @@ export function groupLiveToolCalls<TGroup>(input: {
       }
       pending.push(item);
       pendingIncludesHead = true;
+      continue;
+    }
+    if (isRunTransparentItem(item)) {
+      head.push(item);
       continue;
     }
     flush(true);

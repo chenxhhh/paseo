@@ -1204,6 +1204,30 @@ describe("stream reducer canonical tool calls", () => {
     },
   );
 
+  // Fetched timeline entries carry the configured provider id, so a custom provider
+  // extending claude (e.g. "glm") reports that id instead of "claude". The task-tool
+  // suppression must still apply there, or every task call renders twice: once as a
+  // raw tool call and once as the canonical todo snapshot.
+  it.each(["TaskCreate", "TaskUpdate", "TaskList"])(
+    "suppresses %s bookkeeping tool calls from a claude-derived provider",
+    (name) => {
+      const state = hydrateStreamState([
+        {
+          event: canonicalToolTimeline({
+            provider: "glm",
+            callId: name,
+            name,
+            status: "completed",
+            input: { taskId: "1", status: "completed" },
+          }),
+          timestamp: new Date("2025-01-01T11:00:00Z"),
+        },
+      ]);
+
+      expect(state.filter(isAgentToolCallItem)).toEqual([]);
+    },
+  );
+
   it("preserves submitted user message images when authoritative user message arrives", () => {
     const messageId = "msg-user-images";
     const submittedTimestamp = new Date("2025-01-01T11:10:00Z");
