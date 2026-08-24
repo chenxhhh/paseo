@@ -130,6 +130,7 @@ import type { RequestedSpeechProviders } from "./speech/speech-types.js";
 import { createSpeechService } from "./speech/speech-runtime.js";
 import { AgentManager } from "./agent/agent-manager.js";
 import { AgentStorage } from "./agent/agent-storage.js";
+import { AttentionDecayService } from "./agent/attention-decay-service.js";
 import { attachAgentStoragePersistence } from "./persistence-hooks.js";
 import { createAgentMcpServer } from "./agent/mcp-server.js";
 import {
@@ -1313,6 +1314,15 @@ export async function createPaseoDaemon(
     agentStorage,
   });
   logger.info({ elapsed: elapsed() }, "Task service initialized");
+  const attentionDecayService = new AttentionDecayService({
+    agentManager,
+    agentStorage,
+    logger,
+    registeredProviderIds: () => providerSnapshotManager.listRegisteredProviderIds(),
+    broadcast: (message) => wsServer?.broadcast(wrapSessionMessage(message)),
+    emitWorkspaceUpdates: emitWorkspaceUpdatesExternal,
+  });
+  attentionDecayService.start();
   logger.info({ elapsed: elapsed() }, "Loading persisted agent registry");
   const persistedRecords = await agentStorage.list();
   logger.info(
@@ -1729,6 +1739,7 @@ export async function createPaseoDaemon(
     await hubRelationships.stop();
     workspaceReconciliation.dispose();
     scriptHealthMonitor.stop();
+    attentionDecayService.stop();
     // Freeze both ingress and registration before taking the agent closure snapshot.
     wsServer?.prepareForShutdown();
     agentManager.prepareForShutdown();

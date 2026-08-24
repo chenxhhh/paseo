@@ -12,6 +12,8 @@ initializing → idle → running → idle (or error → closed)
 
 Each live agent in `AgentManager` carries a `lastStatus` of `initializing`, `idle`, `running`, or `error`. `closed` is the persisted, resumable state for an agent record that has no live provider runtime. State transitions persist to disk and stream to subscribed clients via WebSocket.
 
+Attention is the "finished and unreviewed" flag on the agent record: `running → idle` sets it with reason `finished`, entering `error` sets it with reason `error`, and opening the agent's pane clears it. `finished` attention also decays server-side after two hours (`packages/server/src/server/agent/attention-decay-service.ts`), for live and closed agents alike, silently — no notification fires. `error` and permission attention never decay.
+
 ## Runtime residency
 
 An unarchived agent may be `closed` without being deleted or archived. Closing releases its provider
@@ -161,6 +163,8 @@ parentAgentId === thisAgent.id  AND  !archivedAt
 - **Provider subagents** are child executions owned by Claude, Codex, or OpenCode. They are not inserted into `AgentManager` as managed agents. Providers emit a separate descriptor and timeline stream through `agent.provider_subagents.*`; the client keeps that state outside the normal agent store and merges only the presentation rows into the track.
 
 Clicking either kind opens a workspace tab. A Paseo subagent tab is a normal interactive agent pane. A provider subagent tab is a read-only timeline pane with no composer, archive, detach, rewind, or fork actions. Both panes use `AgentStreamView`, so message, reasoning, tool-call, and layout rendering stay identical.
+
+Track rows carry the same status marks as agent tabs. A finished managed subagent reports its attention in the track — the ready-to-review dot on the row and a "ready to review" pill segment — until its pane is opened, which clears it. A completed provider child shows the done check; a canceled one finished without succeeding and stays unmarked, distinct from `failed`.
 
 Provider timelines use the same structural timeline item format but deliberately have a separate lifecycle and transport. A provider thread/session identifier is not a Paseo agent identifier, and closing its tab is always layout-only.
 
