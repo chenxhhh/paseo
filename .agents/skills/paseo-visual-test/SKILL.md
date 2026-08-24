@@ -70,3 +70,5 @@ powershell -NoProfile -Command 'Get-CimInstance Win32_Process | Where-Object { $
 4. **root `package.json` 的 `dev:app` 用 cross-env 硬编码 `EXPO_PORT=8081`**，环境变量 `EXPO_PORT=8083` 会被覆盖——换端口必须直接 `bash scripts/dev-app.sh`。
 5. **8081 常年被主仓的 Expo dev server 占用**（用户自己的进程，绝不能杀），worktree 实例固定用 8083+。
 6. **`browser_wait` 的 `timeoutMs` 上限 30000**——长等待分多次调用。
+7. **种子 workspace 的 `cwd` 必须真实存在于磁盘**——daemon 启动时 workspace reconciliation 会把 `directory_missing` 的 workspace 自动归档（daemon.log 里 `workspace_archived`），侧边栏直接看不到、agent 也挂不上。种子脚本在 worktree `.dev/` 下 mkdir 该目录并 `git init -b main`（保住 `kind:"git"` 与 branch 显示）。
+8. **内置浏览器同源残留上个会话的 localStorage**——旧 server id + workspace 路由 + 缓存的侧边栏数据（症状：侧边栏显示旧种子、直接 navigate 到新 server URL 报 ERR_ABORTED 被路由重定向到 /open-project）。解法：`browser_evaluate` 跑 `localStorage.clear()`，再 navigate 到根路径，应用会自动连 `EXPO_PUBLIC_LOCAL_DAEMON` 并显示新种子。
