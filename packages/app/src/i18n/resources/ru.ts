@@ -377,6 +377,23 @@ export const ru: TranslationResources = {
         started: "Начата",
         completed: "Завершена",
         reopened: "Возобновлена",
+        addedTasks: {
+          one: "Добавлена {{count}} задача",
+          other: "Добавлено задач: {{count}}",
+        },
+        startedTasks: {
+          one: "Начата {{count}} задача",
+          other: "Начато задач: {{count}}",
+        },
+        completedTasks: {
+          one: "Завершена {{count}} задача",
+          other: "Завершено задач: {{count}}",
+        },
+        reopenedTasks: {
+          one: "Возобновлена {{count}} задача",
+          other: "Возобновлено задач: {{count}}",
+        },
+        batchSeparator: " · ",
       },
     },
     compaction: {

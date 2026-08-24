@@ -374,6 +374,23 @@ export const ar: TranslationResources = {
         started: "بدأت",
         completed: "اكتملت",
         reopened: "أُعيد فتحها",
+        addedTasks: {
+          one: "تمت إضافة {{count}} مهمة",
+          other: "تمت إضافة {{count}} مهام",
+        },
+        startedTasks: {
+          one: "بدأت {{count}} مهمة",
+          other: "بدأت {{count}} مهام",
+        },
+        completedTasks: {
+          one: "اكتملت {{count}} مهمة",
+          other: "اكتملت {{count}} مهام",
+        },
+        reopenedTasks: {
+          one: "أُعيد فتح {{count}} مهمة",
+          other: "أُعيد فتح {{count}} مهام",
+        },
+        batchSeparator: " · ",
       },
     },
     compaction: {

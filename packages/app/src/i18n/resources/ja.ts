@@ -378,6 +378,23 @@ export const ja: TranslationResources = {
         started: "開始",
         completed: "完了",
         reopened: "再開",
+        addedTasks: {
+          one: "{{count}}件のタスクを追加",
+          other: "{{count}}件のタスクを追加",
+        },
+        startedTasks: {
+          one: "{{count}}件のタスクを開始",
+          other: "{{count}}件のタスクを開始",
+        },
+        completedTasks: {
+          one: "{{count}}件のタスクを完了",
+          other: "{{count}}件のタスクを完了",
+        },
+        reopenedTasks: {
+          one: "{{count}}件のタスクを再開",
+          other: "{{count}}件のタスクを再開",
+        },
+        batchSeparator: "・",
       },
     },
     compaction: {

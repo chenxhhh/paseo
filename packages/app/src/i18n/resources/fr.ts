@@ -379,6 +379,23 @@ export const fr: TranslationResources = {
         started: "Commencée",
         completed: "Terminée",
         reopened: "Rouverte",
+        addedTasks: {
+          one: "{{count}} tâche ajoutée",
+          other: "{{count}} tâches ajoutées",
+        },
+        startedTasks: {
+          one: "{{count}} tâche commencée",
+          other: "{{count}} tâches commencées",
+        },
+        completedTasks: {
+          one: "{{count}} tâche terminée",
+          other: "{{count}} tâches terminées",
+        },
+        reopenedTasks: {
+          one: "{{count}} tâche rouverte",
+          other: "{{count}} tâches rouvertes",
+        },
+        batchSeparator: " · ",
       },
     },
     compaction: {

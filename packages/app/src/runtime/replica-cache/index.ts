@@ -55,6 +55,13 @@ const TaskActivitySchema = z.discriminatedUnion("type", [
     type: z.enum(["added", "started", "completed", "reopened"]),
     task: z.string(),
   }),
+  z.strictObject({
+    type: z.literal("batch"),
+    added: z.number().int().nonnegative(),
+    started: z.number().int().nonnegative(),
+    completed: z.number().int().nonnegative(),
+    reopened: z.number().int().nonnegative(),
+  }),
 ]);
 
 const StoredTimelineItemSchema = z.discriminatedUnion("kind", [

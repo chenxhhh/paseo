@@ -376,6 +376,23 @@ export const ko: TranslationResources = {
         started: "시작됨",
         completed: "완료됨",
         reopened: "다시 열림",
+        addedTasks: {
+          one: "작업 {{count}}개 추가됨",
+          other: "작업 {{count}}개 추가됨",
+        },
+        startedTasks: {
+          one: "작업 {{count}}개 시작됨",
+          other: "작업 {{count}}개 시작됨",
+        },
+        completedTasks: {
+          one: "작업 {{count}}개 완료됨",
+          other: "작업 {{count}}개 완료됨",
+        },
+        reopenedTasks: {
+          one: "작업 {{count}}개 다시 열림",
+          other: "작업 {{count}}개 다시 열림",
+        },
+        batchSeparator: " · ",
       },
     },
     compaction: {

@@ -374,6 +374,23 @@ export const zhCN: TranslationResources = {
         started: "已开始",
         completed: "已完成",
         reopened: "已重新打开",
+        addedTasks: {
+          one: "已添加 {{count}} 项任务",
+          other: "已添加 {{count}} 项任务",
+        },
+        startedTasks: {
+          one: "已开始 {{count}} 项任务",
+          other: "已开始 {{count}} 项任务",
+        },
+        completedTasks: {
+          one: "已完成 {{count}} 项任务",
+          other: "已完成 {{count}} 项任务",
+        },
+        reopenedTasks: {
+          one: "已重新打开 {{count}} 项任务",
+          other: "已重新打开 {{count}} 项任务",
+        },
+        batchSeparator: " · ",
       },
     },
     compaction: {

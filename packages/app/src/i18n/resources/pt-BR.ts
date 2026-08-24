@@ -378,6 +378,23 @@ export const ptBR: TranslationResources = {
         started: "Iniciada",
         completed: "Concluída",
         reopened: "Reaberta",
+        addedTasks: {
+          one: "{{count}} tarefa adicionada",
+          other: "{{count}} tarefas adicionadas",
+        },
+        startedTasks: {
+          one: "{{count}} tarefa iniciada",
+          other: "{{count}} tarefas iniciadas",
+        },
+        completedTasks: {
+          one: "{{count}} tarefa concluída",
+          other: "{{count}} tarefas concluídas",
+        },
+        reopenedTasks: {
+          one: "{{count}} tarefa reaberta",
+          other: "{{count}} tarefas reabertas",
+        },
+        batchSeparator: " · ",
       },
     },
     compaction: {

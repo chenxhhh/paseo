@@ -372,6 +372,23 @@ export const en = {
         started: "Started",
         completed: "Completed",
         reopened: "Reopened",
+        addedTasks: {
+          one: "Added {{count}} task",
+          other: "Added {{count}} tasks",
+        },
+        startedTasks: {
+          one: "Started {{count}} task",
+          other: "Started {{count}} tasks",
+        },
+        completedTasks: {
+          one: "Completed {{count}} task",
+          other: "Completed {{count}} tasks",
+        },
+        reopenedTasks: {
+          one: "Reopened {{count}} task",
+          other: "Reopened {{count}} tasks",
+        },
+        batchSeparator: " · ",
       },
     },
     compaction: {

@@ -11,6 +11,7 @@ import {
   ViewStyle,
   type TextStyle,
 } from "react-native";
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { MarkdownParagraphView, MarkdownTextSpan } from "@/components/markdown-text";
 import { MarkdownTableCellText } from "@/components/markdown-text-selection";
@@ -2251,9 +2252,34 @@ function taskActivityIcon(activity: TaskActivity) {
       return Check;
     case "reopened":
       return RotateCcw;
+    case "batch":
+      // The row summarizes a run of task ops; lead with the most current state.
+      if (activity.started > 0) return CircleDot;
+      if (activity.completed > 0) return Check;
+      if (activity.added > 0) return Plus;
+      return RotateCcw;
     default:
       return CheckSquare;
   }
+}
+
+function formatTaskActivityBatchLabel(
+  activity: Extract<TaskActivity, { type: "batch" }>,
+  t: TFunction,
+): string {
+  const parts: string[] = [];
+  const entries = [
+    [activity.added, "message.todo.activity.addedTasks"],
+    [activity.started, "message.todo.activity.startedTasks"],
+    [activity.completed, "message.todo.activity.completedTasks"],
+    [activity.reopened, "message.todo.activity.reopenedTasks"],
+  ] as const;
+  for (const [count, key] of entries) {
+    if (count > 0) {
+      parts.push(t(`${key}.${count === 1 ? "one" : "other"}`, { count }));
+    }
+  }
+  return parts.join(t("message.todo.activity.batchSeparator"));
 }
 
 const todoListCardStylesheet = StyleSheet.create((theme) => ({
@@ -2280,6 +2306,12 @@ export const TodoListCard = memo(function TodoListCard({
     if (activity.type === "created") {
       return {
         label: t("message.todo.activity.created", { count: activity.count }),
+        secondaryLabel: undefined,
+      };
+    }
+    if (activity.type === "batch") {
+      return {
+        label: formatTaskActivityBatchLabel(activity, t),
         secondaryLabel: undefined,
       };
     }
