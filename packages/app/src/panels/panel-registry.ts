@@ -7,6 +7,13 @@ export interface PanelIconProps {
   color: string;
 }
 
+/**
+ * How a provider-owned child ended, when it has ended. A completed child wears the done check; a
+ * canceled one finished without succeeding and stays unmarked. Undefined for managed agents and
+ * panels that have no terminal outcome of their own.
+ */
+export type PanelTerminalStatus = "completed" | "canceled";
+
 export interface PanelDescriptor {
   label: string;
   subtitle: string;
@@ -14,6 +21,7 @@ export interface PanelDescriptor {
   titleState: "ready" | "loading";
   icon: ComponentType<PanelIconProps>;
   statusBucket: SidebarStateBucket | null;
+  terminalStatus?: PanelTerminalStatus;
 }
 
 export interface PanelDescriptorContext {
