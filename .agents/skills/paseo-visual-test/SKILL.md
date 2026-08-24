@@ -27,6 +27,13 @@ netstat -ano | grep -E ":6768 |:8083 " | grep -i listen
 - provider 用 `"mock"`（protocol manifest 内置、同版本客户端可见、加载零依赖）
 - 种子 schema 约束见坑 2、ID 约束见坑 3
 
+**要种会话时间线（消息/工具/任务行）时**，mock provider 不够——它没有历史装载。改用 claude provider + 隔离 config dir：
+
+- agent 记录 `provider: "claude"`、`persistence.sessionId` 指向合成会话
+- 启动 daemon 时加 `CLAUDE_CONFIG_DIR=<worktree>/.dev/claude-config`
+- 合成转录放 `.dev/claude-config/projects/<编码目录>/<sessionId>.jsonl`；编码规则 = `realpathSync.native` 后非字母数字全替换 `-`（`project-dir.ts` 的 `encode`，种子脚本里有移植）
+- 转录行内 JSONL 结构照抄真实 `~/.claude/projects` 转录：assistant 条目 blocks（`thinking`/`text`/`tool_use`），user 条目带 `tool_result` block + 顶层 `toolUseResult`；任务快照由 `task-state.ts` 从 `TaskCreate/TaskUpdate` 的 use+result 对推导（result 条目 `toolUseResult.task.{id,subject}` 提供 id）
+
 ## 2. 启动 daemon（6768，独立 home）
 
 ```bash
@@ -72,3 +79,6 @@ powershell -NoProfile -Command 'Get-CimInstance Win32_Process | Where-Object { $
 6. **`browser_wait` 的 `timeoutMs` 上限 30000**——长等待分多次调用。
 7. **种子 workspace 的 `cwd` 必须真实存在于磁盘**——daemon 启动时 workspace reconciliation 会把 `directory_missing` 的 workspace 自动归档（daemon.log 里 `workspace_archived`），侧边栏直接看不到、agent 也挂不上。种子脚本在 worktree `.dev/` 下 mkdir 该目录并 `git init -b main`（保住 `kind:"git"` 与 branch 显示）。
 8. **内置浏览器同源残留上个会话的 localStorage**——旧 server id + workspace 路由 + 缓存的侧边栏数据（症状：侧边栏显示旧种子、直接 navigate 到新 server URL 报 ERR_ABORTED 被路由重定向到 /open-project）。解法：`browser_evaluate` 跑 `localStorage.clear()`，再 navigate 到根路径，应用会自动连 `EXPO_PUBLIC_LOCAL_DAEMON` 并显示新种子。
+9. **改非默认显示设置要先写 localStorage 再加载页面**——如验证 drawer 折叠要 `localStorage.setItem("@paseo:app-settings", JSON.stringify({toolCallDetailLevel:"drawer"}))`（默认 detailed 不折叠），然后 navigate。键名见 `use-settings/keys.ts` 的 `APP_SETTINGS_KEY`。
+10. **`npm run cli --` 在 git-bash 下跑不起来**（`'.' 不是内部或外部命令`，dev-home shim 是 cmd 语法）。要看 daemon 时间线时改用：`cd packages/cli && PASEO_HOME=<dev home> PASEO_LISTEN=127.0.0.1:6768 npx tsx src/index.js logs <agentId>`；注意 `logs` 只有人类可读输出，`-o json` 不生效。
+11. **app 收到的时间线可能被 live 重放 + fetch 双份投递**——验证 reducer 语义时别以浏览器最终渲染为准：同一事件序列会先走订阅重放（overlay）再走 fetch baseline 归并，重复应用可吞掉个别行（例：紧跟 created 行的 started 单行）。reducer 层用 `hydrateStreamState` 单测直接断言，浏览器只验视觉。
