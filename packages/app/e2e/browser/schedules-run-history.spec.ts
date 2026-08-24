@@ -187,4 +187,47 @@ test.describe("Schedules run history", () => {
     await expect(runsSheet.getByText("No runs yet")).toBeVisible({ timeout: 10_000 });
     await expect(page.getByTestId("schedule-runs-empty-run-now")).toBeVisible();
   });
+
+  test("keeps the filter control when a status filter matches no runs", async ({ page }) => {
+    const scheduleId = "fake-host-schedule-no-failed";
+    const succeededRunId = "fake-host-run-succeeded";
+    const now = Date.now();
+    const runs: ScheduleRun[] = [
+      {
+        id: succeededRunId,
+        scheduledFor: new Date(now - 40_000).toISOString(),
+        startedAt: new Date(now - 30_000).toISOString(),
+        endedAt: new Date(now - 25_000).toISOString(),
+        status: "succeeded",
+        agentId: null,
+        workspaceId: null,
+        output: "Hello from the scheduled agent.",
+        error: null,
+      },
+    ];
+
+    await setupScheduleHost({ page, scheduleId, runs });
+
+    await page.getByTestId(`schedule-kebab-${scheduleId}`).click();
+    const runsMenuItem = page.getByTestId(`schedule-menu-runs-${scheduleId}`);
+    await expect(runsMenuItem).toBeVisible({ timeout: 10_000 });
+    await expectSettled(runsMenuItem);
+    await runsMenuItem.click();
+
+    const runsSheet = page.getByTestId("schedule-runs-sheet");
+    await expect(runsSheet).toBeVisible({ timeout: 10_000 });
+    const filterControl = page.getByTestId("schedule-runs-filter");
+    await expect(filterControl).toBeVisible({ timeout: 10_000 });
+
+    // The failed filter matches nothing: the empty label replaces the list,
+    // but the control itself stays reachable so the user can switch back.
+    await filterControl.getByTestId("schedule-runs-filter-failed").click();
+    await expect(runsSheet.getByText("No failed runs")).toBeVisible();
+    await expect(filterControl).toBeVisible();
+
+    await filterControl.getByTestId("schedule-runs-filter-all").click();
+    await expect(page.getByTestId(`schedule-run-${succeededRunId}`)).toBeVisible({
+      timeout: 10_000,
+    });
+  });
 });

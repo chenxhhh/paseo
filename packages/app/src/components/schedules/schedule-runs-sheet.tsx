@@ -364,14 +364,9 @@ function ScheduleRunsList({
   const filtered = useMemo(() => filterScheduleRuns(runs, statusFilter), [runs, statusFilter]);
   const groups = useMemo(() => groupScheduleRunsByDay(filtered, now), [filtered, now]);
 
-  if (filtered.length === 0) {
-    return (
-      <View style={styles.centered}>
-        <Text style={styles.emptyText}>{resolveFilteredEmptyLabel(statusFilter)}</Text>
-      </View>
-    );
-  }
-
+  // The filter control always renders in the list view: an empty filtered
+  // result swaps the body below it, never the control itself — otherwise a
+  // filter with no matches strands the user on the empty state.
   return (
     <View style={styles.list}>
       <SegmentedControl
@@ -381,23 +376,29 @@ function ScheduleRunsList({
         options={RUN_STATUS_FILTER_OPTIONS}
         testID="schedule-runs-filter"
       />
-      {groups.map((group) => (
-        <View key={group.label} style={styles.group}>
-          <Text style={styles.groupLabel}>{group.label}</Text>
-          <View style={settingsStyles.card}>
-            {group.runs.map((run, index) => (
-              <ScheduleRunRow
-                key={run.id}
-                run={run}
-                serverId={serverId}
-                now={now}
-                isFirst={index === 0}
-                onOpenRun={onOpenRun}
-              />
-            ))}
-          </View>
+      {filtered.length === 0 ? (
+        <View style={styles.filteredEmpty}>
+          <Text style={styles.emptyText}>{resolveFilteredEmptyLabel(statusFilter)}</Text>
         </View>
-      ))}
+      ) : (
+        groups.map((group) => (
+          <View key={group.label} style={styles.group}>
+            <Text style={styles.groupLabel}>{group.label}</Text>
+            <View style={settingsStyles.card}>
+              {group.runs.map((run, index) => (
+                <ScheduleRunRow
+                  key={run.id}
+                  run={run}
+                  serverId={serverId}
+                  now={now}
+                  isFirst={index === 0}
+                  onOpenRun={onOpenRun}
+                />
+              ))}
+            </View>
+          </View>
+        ))
+      )}
     </View>
   );
 }
@@ -638,6 +639,14 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
     alignItems: "center",
     gap: theme.spacing[3],
+    paddingVertical: theme.spacing[8],
+  },
+  // Filtered-out body: sits under the filter control, sized like `centered`
+  // so switching filters never resizes the sheet body (docs/design.md §11).
+  filteredEmpty: {
+    minHeight: 200,
+    justifyContent: "center",
+    alignItems: "center",
     paddingVertical: theme.spacing[8],
   },
   spinner: {
