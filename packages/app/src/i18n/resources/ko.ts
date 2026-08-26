@@ -1220,6 +1220,8 @@ export const ko: TranslationResources = {
         pin: "상단에 고정",
         unpin: "고정 해제",
         archive: "보관",
+        archiveConfirm: "보관",
+        archiveCancel: "취소",
         archiveWorkspace: "워크스페이스 보관",
         hideFromSidebar: "사이드바에서 숨기기",
         archiving: "보관하는 중...",

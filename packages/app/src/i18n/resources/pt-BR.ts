@@ -1238,6 +1238,8 @@ export const ptBR: TranslationResources = {
         pin: "Fixar no topo",
         unpin: "Desafixar",
         archive: "Arquivar",
+        archiveConfirm: "Arquivar",
+        archiveCancel: "Cancelar",
         archiveWorkspace: "Arquivar workspace",
         hideFromSidebar: "Ocultar da barra lateral",
         archiving: "Arquivando...",

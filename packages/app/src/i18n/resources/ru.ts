@@ -1229,6 +1229,8 @@ export const ru: TranslationResources = {
         pin: "Закрепить вверху",
         unpin: "Открепить",
         archive: "Архивировать",
+        archiveConfirm: "Архивировать",
+        archiveCancel: "Отмена",
         archiveWorkspace: "Архивировать рабочее пространство",
         hideFromSidebar: "Скрыть на боковой панели",
         archiving: "Архивирование...",

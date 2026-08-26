@@ -1202,6 +1202,8 @@ export const zhCN: TranslationResources = {
         pin: "置顶",
         unpin: "取消置顶",
         archive: "归档",
+        archiveConfirm: "归档",
+        archiveCancel: "取消",
         archiveWorkspace: "归档工作区",
         hideFromSidebar: "从侧边栏隐藏",
         archiving: "正在归档...",

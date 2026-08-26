@@ -1247,6 +1247,8 @@ export const es: TranslationResources = {
         pin: "Anclar arriba",
         unpin: "Desanclar",
         archive: "Archivo",
+        archiveConfirm: "Archivar",
+        archiveCancel: "Cancelar",
         archiveWorkspace: "Archivar espacio de trabajo",
         hideFromSidebar: "Ocultar de la barra lateral",
         archiving: "Archivando...",

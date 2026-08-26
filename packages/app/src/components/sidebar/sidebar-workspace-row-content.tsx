@@ -317,6 +317,12 @@ export const sidebarWorkspaceRowStyles = StyleSheet.create((theme) => ({
     lineHeight: 14,
   },
   hidden: { opacity: 0 },
+  // The archive action and the kebab share one right-anchored row inside the overlay, so the
+  // kebab keeps its trailing rail while the archive confirm swaps in beside it.
+  trailingActionsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
   // Stays position:relative at zero width so the absolutely-positioned kebab keeps
   // anchoring to the same right edge whether or not the slot holds anything.
   trailingActionSlot: {
@@ -326,9 +332,11 @@ export const sidebarWorkspaceRowStyles = StyleSheet.create((theme) => ({
     alignItems: "flex-end",
     justifyContent: "flex-start",
   },
+  // 31 = archive trigger (14 icon + 4 padding) + kebab trigger (its 20px box less the 7px
+  // optical margin that pulls its dots onto the rail). On touch both sit here permanently.
   trailingActionSlotReserved: {
     position: "relative",
-    minWidth: 18,
+    minWidth: 31,
     minHeight: 20,
     flexShrink: 0,
     alignItems: "flex-end",

@@ -1212,6 +1212,8 @@ export const ar: TranslationResources = {
         pin: "تثبيت في الأعلى",
         unpin: "إلغاء التثبيت",
         archive: "أرشيف",
+        archiveConfirm: "أرشفة",
+        archiveCancel: "يلغي",
         archiveWorkspace: "أرشفة مساحة العمل",
         hideFromSidebar: "إخفاء من الشريط الجانبي",
         archiving: "أرشفة...",

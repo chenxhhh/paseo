@@ -1225,6 +1225,8 @@ export const ja: TranslationResources = {
         pin: "上部に固定",
         unpin: "固定解除",
         archive: "アーカイブ",
+        archiveConfirm: "アーカイブ",
+        archiveCancel: "キャンセル",
         archiveWorkspace: "ワークスペースをアーカイブ",
         hideFromSidebar: "サイドバーから非表示",
         archiving: "アーカイブ中...",

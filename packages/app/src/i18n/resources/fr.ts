@@ -1248,6 +1248,8 @@ export const fr: TranslationResources = {
         pin: "Épingler en haut",
         unpin: "Désépingler",
         archive: "Archive",
+        archiveConfirm: "Archiver",
+        archiveCancel: "Annuler",
         archiveWorkspace: "Archiver l’espace de travail",
         hideFromSidebar: "Masquer de la barre latérale",
         archiving: "Archivage...",

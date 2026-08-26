@@ -1221,6 +1221,8 @@ export const en = {
         pin: "Pin to top",
         unpin: "Unpin",
         archive: "Archive",
+        archiveConfirm: "Archive",
+        archiveCancel: "Cancel",
         archiveWorkspace: "Archive workspace",
         hideFromSidebar: "Hide from sidebar",
         archiving: "Archiving...",
