@@ -1,6 +1,6 @@
 ---
 title: Plugin reference
-description: Local plugin files, contributions, Paseo SDK access, RPCs, attachments, logs, lifecycle, hosts, and CLI commands.
+description: Local plugin files, client and server runtimes, platform limits, contributions, RPCs, lifecycle, hosts, and CLI commands.
 nav: Reference
 order: 46
 category: Plugins
@@ -34,13 +34,13 @@ my-plugin/
   tsconfig.json
 ```
 
-The manifest contains the default plugin ID:
+The required root manifest is `paseo-plugin.json`. It contains the default plugin ID:
 
 ```json
 { "id": "my-plugin" }
 ```
 
-Plugin, surface, sidebar-item, workspace-panel, Command Center item, and attachment-source IDs start with a lowercase letter and contain lowercase letters, numbers, or hyphens.
+The entry point is `index.ts` at the plugin root. Plugin, surface, sidebar-item, workspace-panel, Command Center item, and attachment-source IDs start with a lowercase letter and contain lowercase letters, numbers, or hyphens.
 
 The generated declaration file supplies `@getpaseo/plugin` and `@getpaseo/plugin/server` types for local typechecking. Paseo supplies the runtime modules. Regenerate a fresh project with the matching CLI when the plugin contract changes.
 
@@ -59,14 +59,35 @@ my-plugin/
 | `*.server.ts`  | Node APIs, local resources, credentials, and RPC handlers.           |
 | `*.shared.ts`  | Zod RPC contracts and plain values imported by both runtimes.        |
 
-## SDK modules
+## Runtime modules
 
-| Module                    | Use it for                                               |
-| ------------------------- | -------------------------------------------------------- |
-| `@getpaseo/plugin`        | hooks and UI types                                       |
-| `@getpaseo/plugin/server` | `defineRpc`, `defineAttachmentSource`, and handler types |
+Paseo builds separate client and server bundles from `index.ts`. It rejects imports from `*.server` files into client modules and imports from `*.client` files into server modules. Keep shared modules free of Node and React Native runtime code.
 
-Paseo rejects imports from `*.server` files into client modules and imports from `*.client` files into server modules. Keep shared modules free of Node and React Native runtime code.
+### Client runtime
+
+Paseo provides these modules to client code:
+
+| Module                    | Use it for                          |
+| ------------------------- | ----------------------------------- |
+| `@getpaseo/plugin`        | Hooks and UI types                  |
+| `@getpaseo/plugin/server` | Shared RPC and attachment contracts |
+| `@tanstack/react-query`   | Request state and caching           |
+| `react`                   | Components and hooks                |
+| `react/jsx-runtime`       | Compiled JSX                        |
+| `react-native`            | Cross-platform UI                   |
+| `zod`                     | Shared schemas                      |
+
+These exact module specifiers use the host's runtime instances. A client bundle that requests another host module fails with `Module "<name>" is not available in plugin client code`.
+
+Do not import `lucide-react-native`, `react-native-svg`, or DOM libraries. Set contribution `icon` fields to a [Lucide icon name](https://lucide.dev/icons/); Paseo validates the name and renders the icon.
+
+Client components are React Native components rendered by Paseo. Web clients render them through React Native Web. Browser globals such as `localStorage` and `location` exist only when `layout.platform === "web"`; iOS and Android have no equivalent. Gate any use on that field.
+
+There is no plugin storage API. Browser storage does not persist settings across Paseo clients. There is also no general host navigation API: plugin code cannot open native Paseo routes. Command Center callbacks can only open surfaces and panels registered by the same plugin.
+
+### Server runtime
+
+Paseo provides `@getpaseo/plugin`, `@getpaseo/plugin/server`, and `zod` to server code. Backend contributions run in a daemon subprocess with Node access to the host machine. Keep filesystem, process, credential, and other machine-local work in `*.server.ts` files.
 
 ## Entry point and cleanup
 
@@ -143,11 +164,11 @@ export default function contribute(plugin: PluginContext) {
 | `host`   | Selected host `id` and display `label`.                      |
 | `layout` | `compact` and the `ios`, `android`, or `web` platform.       |
 
-Paseo owns the route, header, close action, host picker, error boundary, and query client. The plugin owns the surface body. Icons use [Lucide](https://lucide.dev/icons/) names.
+Paseo owns the route, header, close action, host picker, error boundary, and query client. The plugin owns the surface body.
 
 ## Theme and layout
 
-Plugin UI runs on desktop, browser, iOS, and Android, across every Paseo theme. `theme` is a typed `PluginTheme`. Color and spacing must come from those props. Unstyled `Text` is black and fails in dark themes.
+Plugin UI runs on desktop, browser, iOS, and Android, across every Paseo theme. `theme` is a typed `PluginTheme` mapped from the active host theme. Color and spacing must come from those props. Hardcoded colors and unstyled `Text` break when the host theme changes.
 
 Recreate styles when `theme` or `layout.compact` changes.
 
@@ -165,8 +186,6 @@ Recreate styles when `theme` or `layout.compact` changes.
 Do not hardcode `#000`, `#fff`, or React Native's default text color. Primary copy uses `foreground`. Labels use `foregroundMuted`. Tighten padding when `layout.compact` is true.
 
 Workspace and agent panels receive the same `theme` and `layout` fields.
-
-Client code can import `react`, `react-native`, `@tanstack/react-query`, `zod`, `@getpaseo/plugin`, and `@getpaseo/plugin/server`. Install them locally for typechecking; Paseo provides the client runtime instances.
 
 ## Contribute a theme
 
@@ -426,7 +445,7 @@ function PullRequestAction() {
 }
 ```
 
-The returned API covers workspaces, agents, providers, and daemon config. See the [SDK API reference](/docs/sdk/reference) for its methods. Connection lifecycle methods are intentionally absent because Paseo owns the connection.
+The returned API covers projects, workspaces, agents, providers, and daemon config. See the [SDK API reference](/docs/sdk/reference) for its methods. Connection lifecycle methods are intentionally absent because Paseo owns the connection.
 
 ## Add plugin-specific backend behavior
 
@@ -610,6 +629,12 @@ failures stay inside the plugin error boundary.
 paseo plugin init /absolute/path/to/plugin
 paseo plugin install /absolute/path/to/plugin
 paseo plugin install /absolute/path/to/plugin --id another-runtime-id
+paseo plugin add owner/repository
+paseo plugin add https://git.example.com/owner/repository.git --ref main
+paseo plugin add owner/monorepo --path plugins/review
+paseo plugin status [id]
+paseo plugin update <id>
+paseo plugin update --all
 paseo plugin ls
 paseo plugin reload my-plugin
 paseo plugin logs my-plugin
@@ -618,7 +643,14 @@ paseo plugin enable my-plugin
 paseo plugin remove my-plugin
 ```
 
-Pass `--host <url>` to management commands when the target is not the CLI's default daemon. `remove` deletes only the daemon configuration; it never deletes the source directory. The install-time `--id` is the runtime ID and allows the same directory to be installed more than once.
+Pass `--host <url>` to management commands when the target is not the CLI's default daemon. `remove`
+never deletes a directory source; it deletes the managed checkout for a Git source. The install-time
+`--id` is the runtime ID and allows the same directory or repository to be installed more than once.
+
+An existing directory wins over `owner/repository` GitHub shorthand. Omit `--ref` to track the
+default branch. Explicit branches track updates; tags and commits stay pinned. Git installation
+runs no package manager and no install scripts. `update` validates and compiles the candidate before
+activation, then restores the installed commit if startup fails.
 
 Run `npm run typecheck` before install or reload. Never edit the daemon config directly.
 
