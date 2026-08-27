@@ -94,6 +94,8 @@ import {
   type ProviderCatalog,
   type ResolveAgentCreateConfigInput,
   type ResolveAgentCreateConfigResult,
+  type SteerActiveTurnOptions,
+  type SteerResult,
   type ToolCallDetail,
   type ToolCallTimelineItem,
 } from "../agent-sdk-types.js";
@@ -1461,6 +1463,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   private readonly extensionCommandsParser?: ACPExtensionCommandsParser;
   private currentTurnUsage: AgentUsage | undefined;
   private activeForegroundTurnId: string | null = null;
+  private steeringSupported = false;
   private lastTimelineItem: AgentTimelineItem | null = null;
   private planYieldContinues = 0;
   private fallbackAssistantMessageId: string | null = null;
@@ -1513,6 +1516,8 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       this.child = spawned.child;
       this.connection = spawned.connection;
       this.agentCapabilities = spawned.initialize.agentCapabilities ?? null;
+      this.steeringSupported =
+        readRecord(readRecord(spawned.initialize._meta)?.steering)?.supported === true;
 
       const response = await this.runACPRequest(() =>
         this.connection!.newSession({
@@ -1547,6 +1552,8 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       this.child = spawned.child;
       this.connection = spawned.connection;
       this.agentCapabilities = spawned.initialize.agentCapabilities ?? null;
+      this.steeringSupported =
+        readRecord(readRecord(spawned.initialize._meta)?.steering)?.supported === true;
       this.sessionId = handle.sessionId;
       this.bootstrapThreadEventPending = true;
 
@@ -1640,6 +1647,45 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     this.dispatchPrompt(turnId, prompt, messageId);
 
     return { turnId };
+  }
+
+  async steerActiveTurn(
+    prompt: AgentPromptInput,
+    options: SteerActiveTurnOptions,
+  ): Promise<SteerResult> {
+    if (
+      !this.connection ||
+      !this.sessionId ||
+      !this.steeringSupported ||
+      this.activeForegroundTurnId !== options.expectedTurnId
+    ) {
+      return { status: "unavailable" };
+    }
+    const response = await this.runACPRequest(() =>
+      this.connection!.extMethod("_session/steering", {
+        sessionId: this.sessionId,
+        prompt: toACPContentBlocks(prompt),
+        _meta: { steering: { idleBehavior: "promptRequired" } },
+      }),
+    );
+    if (response.outcome !== "injected") {
+      return { status: "unavailable" };
+    }
+    if (options.clearPendingPermissions) {
+      await this.clearPendingPermissionsForSteer();
+    }
+    return { status: "accepted" };
+  }
+
+  private async clearPendingPermissionsForSteer(): Promise<void> {
+    const requestIds = Array.from(this.pendingPermissions.keys());
+    for (const requestId of requestIds) {
+      if (!this.pendingPermissions.has(requestId)) continue;
+      await this.respondToPermission(requestId, {
+        behavior: "deny",
+        message: "The user answered with a message instead of approving. Their message follows.",
+      });
+    }
   }
 
   subscribe(callback: (event: AgentStreamEvent) => void): () => void {
