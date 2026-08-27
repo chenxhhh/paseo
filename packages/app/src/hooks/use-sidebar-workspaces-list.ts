@@ -2,10 +2,7 @@ import { useCallback, useEffect, useMemo } from "react";
 import { useStoreWithEqualityFn } from "zustand/traditional";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
 import { useSessionStore } from "@/stores/session-store";
-import {
-  useHydratedWorkspaceServerIds,
-  useWorkspaceDirectoryServerIds,
-} from "@/stores/session-store-hooks";
+import { useWorkspaceDirectoryServerIds } from "@/stores/session-store-hooks";
 import { workspaceEqualityFns } from "@/stores/session-store-hooks/selectors";
 import { useHostProjects } from "@/projects/host-projects";
 import { getHostRuntimeStore, useHostRegistryLoaded, useHosts } from "@/runtime/host-runtime";
@@ -131,6 +128,11 @@ export function useSidebarWorkspacesList(options?: {
     }
     return matched;
   }, [allServerIds, hostFilters, hostRegistryLoaded]);
+  useEffect(() => {
+    if (!isActive) return;
+    const releases = serverIds.map((serverId) => runtime.acquireDirectoryDemand(serverId));
+    return () => releases.forEach((release) => release());
+  }, [isActive, runtime, serverIds]);
 
   useEffect(() => {
     if (!hostRegistryLoaded) {
@@ -141,7 +143,6 @@ export function useSidebarWorkspacesList(options?: {
 
   const persistedProjectOrder = useSidebarOrderStore((state) => state.projectOrder ?? EMPTY_ORDER);
 
-  const hydratedServerIds = useHydratedWorkspaceServerIds(serverIds);
   const directoryServerIds = useWorkspaceDirectoryServerIds(serverIds);
 
   const hostProjects = useHostProjects(directoryServerIds);
@@ -182,8 +183,6 @@ export function useSidebarWorkspacesList(options?: {
   const refreshAll = useCallback(() => {
     if (!isActive) return;
     for (const serverId of serverIds) {
-      const snapshot = runtime.getSnapshot(serverId);
-      if (snapshot?.connectionStatus !== "online") continue;
       void runtime.refreshDirectories(serverId).catch((error) => {
         console.error("[WorkspaceFetch][sidebar-refresh] failed", {
           serverId,
@@ -196,7 +195,7 @@ export function useSidebarWorkspacesList(options?: {
   const loadingState = deriveSidebarLoadingState({
     isActive,
     serverIds,
-    hydratedServerIds,
+    hydratedServerIds: directoryServerIds,
     hasProjects: projects.length > 0,
   });
 

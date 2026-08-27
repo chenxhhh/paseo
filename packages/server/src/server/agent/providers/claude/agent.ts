@@ -2232,7 +2232,7 @@ class ClaudeAgentSession implements AgentSession {
       if (this.cancelCurrentTurn === requestCancel) {
         this.cancelCurrentTurn = null;
       }
-      this.rejectAllPendingPermissions(new Error("Permission request aborted"));
+      this.rejectAllPendingPermissions(new Error("Permission request canceled"));
       this.finishForegroundTurn({
         type: "turn_canceled",
         provider: "claude",
@@ -4571,23 +4571,9 @@ class ClaudeAgentSession implements AgentSession {
     input,
     options,
   ): Promise<PermissionResult> => {
+    const requestId = `permission-${randomUUID()}`;
     const kind = resolvePermissionKind(toolName, input);
     const requestInput = normalizeClaudeAskUserQuestionRequestInput(toolName, input);
-
-    // Supplying canUseTool gives Paseo a host UI for interactive modes, but the SDK can
-    // still call it for ordinary tools while bypassPermissions is active. Honor the mode
-    // contract here so a Bypass session never turns Write/Bash into a blocking UI card.
-    // A human steer keeps precedence: tools from the superseded turn must be denied until
-    // Claude consumes the steer instead of being allowed to race it.
-    if (
-      kind === "tool" &&
-      this.currentMode === "bypassPermissions" &&
-      this.permissionClearingSteerUuids.size === 0
-    ) {
-      return { behavior: "allow", updatedInput: input };
-    }
-
-    const requestId = `permission-${randomUUID()}`;
     const metadata: AgentMetadata = {};
     if (options.toolUseID) {
       metadata.toolUseId = options.toolUseID;
@@ -4649,6 +4635,12 @@ class ClaudeAgentSession implements AgentSession {
       const abortHandler = () => {
         this.pendingPermissions.delete(requestId);
         cleanup();
+        this.pushEvent({
+          type: "permission_resolved",
+          provider: "claude",
+          requestId,
+          resolution: { behavior: "deny", message: "Permission request canceled" },
+        });
         reject(new Error("Permission request aborted"));
       };
 
@@ -4789,6 +4781,12 @@ class ClaudeAgentSession implements AgentSession {
       pending.cleanup?.();
       pending.reject(error);
       this.pendingPermissions.delete(id);
+      this.pushEvent({
+        type: "permission_resolved",
+        provider: "claude",
+        requestId: id,
+        resolution: { behavior: "deny", message: error.message },
+      });
     }
   }
 

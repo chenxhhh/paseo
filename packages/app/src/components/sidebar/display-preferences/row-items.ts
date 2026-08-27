@@ -7,9 +7,9 @@
  * CI is not here: it has three answers rather than two, so it is its own setting in
  * `checks-display.ts`.
  *
- * Pure on purpose: `hooks/use-settings/storage.ts` validates the persisted value through
- * `parseSidebarRowItems` rather than growing its own checks, so this module stays the one place
- * that knows what an item is.
+ * Pure on purpose: `hooks/use-settings/storage.ts` mirrors this item list in its persisted-value
+ * schema rather than growing its own checks, so this module stays the one place that knows what an
+ * item is. `parseSidebarRowItems` remains for direct callers and tests.
  */
 
 export const SIDEBAR_ROW_ITEMS = [

@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { once } from "node:events";
+import { killProcessTree } from "./helpers/spawn-node";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import net from "node:net";
@@ -150,28 +150,11 @@ export async function warmMetro(port: number): Promise<void> {
   }
 }
 
-async function stopProcess(child: ChildProcess | null): Promise<void> {
-  if (!child || child.exitCode !== null || child.signalCode !== null) return;
-  child.kill("SIGTERM");
-  let timeout: ReturnType<typeof setTimeout> | undefined;
-  try {
-    await Promise.race([
-      once(child, "exit"),
-      new Promise<void>((resolve) => {
-        timeout = setTimeout(() => {
-          if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
-          resolve();
-        }, 5_000);
-      }),
-    ]);
-  } finally {
-    if (timeout) clearTimeout(timeout);
-  }
-}
-
 function startMetro(port: number, buffer: ReturnType<typeof createLineBuffer>): ChildProcess {
   const appDir = path.resolve(__dirname, "../..");
-  const child = spawn("npx", ["expo", "start", "--web", "--port", String(port)], {
+  const expoCli = require.resolve("expo/bin/cli");
+  // Spawns Node directly to bypass Windows .cmd shim execution restrictions without shell: true.
+  const child = spawn(process.execPath, [expoCli, "start", "--web", "--port", String(port)], {
     cwd: appDir,
     // Windows resolves npx to npx.cmd, which Node only spawns through a shell.
     shell: process.platform === "win32",
@@ -200,6 +183,12 @@ async function loadHarnessEnvironment(repoRoot: string): Promise<void> {
 }
 
 export default async function globalSetup() {
+  if (process.env.PASEO_REPLICA_CACHE_MEASUREMENT === "1") {
+    if (!process.env.PASEO_REPLICA_CACHE_MEASUREMENT_URL) {
+      throw new Error("PASEO_REPLICA_CACHE_MEASUREMENT_URL must be set for live measurement");
+    }
+    return;
+  }
   const repoRoot = path.resolve(__dirname, "../../../..");
   await loadHarnessEnvironment(repoRoot);
 
@@ -228,15 +217,11 @@ export default async function globalSetup() {
     console.log(`[e2e] Metro warmed on port ${metroPort}`);
 
     return async () => {
-      if (metroProcess) {
-        await stopProcess(metroProcess);
-        console.log("[e2e] Metro stopped");
-      }
+      await killProcessTree(metroProcess);
+      console.log("[e2e] Metro stopped");
     };
   } catch (error) {
-    if (metroProcess) {
-      await stopProcess(metroProcess);
-    }
+    await killProcessTree(metroProcess);
     throw error;
   }
 }
