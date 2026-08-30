@@ -377,7 +377,6 @@ export const es: TranslationResources = {
         added: "Añadida",
         started: "Iniciada",
         completed: "Completada",
-        reopened: "Reabierta",
         addedTasks: {
           one: "{{count}} tarea añadida",
           other: "{{count}} tareas añadidas",
@@ -389,10 +388,6 @@ export const es: TranslationResources = {
         completedTasks: {
           one: "{{count}} tarea completada",
           other: "{{count}} tareas completadas",
-        },
-        reopenedTasks: {
-          one: "{{count}} tarea reabierta",
-          other: "{{count}} tareas reabiertas",
         },
         batchSeparator: " · ",
       },
@@ -1689,6 +1684,10 @@ export const es: TranslationResources = {
         title: "Conexión directa",
         description: "Red local o VPN.",
       },
+      remoteSsh: {
+        title: "SSH remoto",
+        description: "Conéctate mediante el cliente SSH de escritorio.",
+      },
       scanQr: {
         title: "Escanea el códigoQR",
         description: "Conexión de retransmisión cifrada.",
@@ -1739,6 +1738,23 @@ export const es: TranslationResources = {
         unableToConnect:
           "No se puede conectar. Verifique el host/porty que se pueda acceder al demonio.",
         details: "Detalles:{{detail}}",
+      },
+    },
+    remoteSsh: {
+      title: "SSH remoto",
+      helper: "Conéctate a un daemon de Paseo en el host remoto.",
+      fields: {
+        target: "Host SSH",
+      },
+      actions: {
+        cancel: "Cancelar",
+        connect: "Conectar",
+        connecting: "Conectando...",
+      },
+      errors: {
+        targetRequired: "El host SSH es obligatorio",
+        invalidTarget: "Introduce un host ssh:// válido",
+        failedToConnect: "No se pudo conectar por SSH. {{detail}}",
       },
     },
     link: {
@@ -2387,6 +2403,7 @@ export const es: TranslationResources = {
       badges: {
         relay: "Relé",
         local: "Local",
+        remoteSsh: "SSH remoto",
       },
       connections: {
         title: "Conexiones",

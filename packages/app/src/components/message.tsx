@@ -43,7 +43,6 @@ import {
   CircleDot,
   Copy,
   Plus,
-  RotateCcw,
   TriangleAlertIcon,
   Scissors,
   MicVocal,
@@ -104,7 +103,7 @@ import {
   AttachmentLabel,
   AttachmentThumbnail,
 } from "@/components/attachment-pill";
-import { AttachmentLightbox } from "@/components/attachment-lightbox";
+import { AttachmentLightbox, type ImageLightboxSource } from "@/components/attachment-lightbox";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { isWeb, isNative } from "@/constants/platform";
 import type { AgentCapabilityFlags } from "@getpaseo/protocol/agent-types";
@@ -442,6 +441,10 @@ export const UserMessage = memo(function UserMessage({
   const [isHovered, setIsHovered] = useState(false);
   const [lightboxMetadata, setLightboxMetadata] = useState<UserMessageImageAttachment | null>(null);
   const handleLightboxClose = useCallback(() => setLightboxMetadata(null), []);
+  const lightboxSource = useMemo<ImageLightboxSource | null>(
+    () => (lightboxMetadata ? { type: "attachment", metadata: lightboxMetadata } : null),
+    [lightboxMetadata],
+  );
   const resolvedDisableOuterSpacing = useDisableOuterSpacing(disableOuterSpacing);
   const hasText = message.trim().length > 0;
   const hasImages = images.length > 0;
@@ -567,7 +570,7 @@ export const UserMessage = memo(function UserMessage({
           </View>
         ) : null}
       </View>
-      <AttachmentLightbox metadata={lightboxMetadata} onClose={handleLightboxClose} />
+      <AttachmentLightbox source={lightboxSource} onClose={handleLightboxClose} />
     </View>
   );
 });
@@ -817,6 +820,10 @@ function AssistantMarkdownImage({
   workspaceRoot?: string;
   serverId?: string;
 }) {
+  const { t } = useTranslation();
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const openViewer = useCallback(() => setViewerOpen(true), []);
+  const closeViewer = useCallback(() => setViewerOpen(false), []);
   const containerStyle = useMemo<StyleProp<ViewStyle>>(
     () => ({
       marginTop: hasLeadingContent ? 16 : 0,
@@ -849,6 +856,14 @@ function AssistantMarkdownImage({
     () => [assistantMessageStylesheet.imageSurface, imageSizeStyle],
     [imageSizeStyle],
   );
+  const lightboxSource = useMemo<ImageLightboxSource | null>(() => {
+    if (!viewerOpen || !imageUri) return null;
+    return {
+      type: "uri",
+      uri: imageUri,
+      contentSize: aspectRatio ? { width: aspectRatio, height: 1 } : undefined,
+    };
+  }, [aspectRatio, imageUri, viewerOpen]);
 
   const stateFrameStyle = useMemo<StyleProp<ViewStyle>>(
     () => [
@@ -878,21 +893,34 @@ function AssistantMarkdownImage({
 
   return (
     <View style={frameStyle}>
-      <View style={surfaceStyle} accessibilityRole="image" accessibilityLabel={alt}>
-        <Image
-          ref={binding.onRef}
-          source={imageSource}
+      <Pressable
+        accessibilityLabel={t("composer.attachments.openImage")}
+        accessibilityRole="button"
+        disabled={image.status !== "loaded"}
+        onPress={openViewer}
+        style={surfaceStyle}
+      >
+        <View
           style={assistantMessageStylesheet.image}
-          resizeMode="contain"
-          onLoad={binding.onLoad}
-          onError={binding.onError}
-        />
-        {image.status === "loading" ? (
-          <View pointerEvents="none" style={assistantMessageStylesheet.imageLoadingOverlay}>
-            <ThemedLoadingSpinner size="small" uniProps={foregroundMutedColorMapping} />
-          </View>
-        ) : null}
-      </View>
+          accessibilityRole="image"
+          accessibilityLabel={alt}
+        >
+          <Image
+            ref={binding.onRef}
+            source={imageSource}
+            style={assistantMessageStylesheet.image}
+            resizeMode="contain"
+            onLoad={binding.onLoad}
+            onError={binding.onError}
+          />
+          {image.status === "loading" ? (
+            <View pointerEvents="none" style={assistantMessageStylesheet.imageLoadingOverlay}>
+              <ThemedLoadingSpinner size="small" uniProps={foregroundMutedColorMapping} />
+            </View>
+          ) : null}
+        </View>
+      </Pressable>
+      <AttachmentLightbox source={lightboxSource} onClose={closeViewer} />
     </View>
   );
 }
@@ -2262,14 +2290,11 @@ function taskActivityIcon(activity: TaskActivity) {
       return CircleDot;
     case "completed":
       return Check;
-    case "reopened":
-      return RotateCcw;
     case "batch":
       // The row summarizes a run of task ops; lead with the most current state.
       if (activity.started > 0) return CircleDot;
       if (activity.completed > 0) return Check;
-      if (activity.added > 0) return Plus;
-      return RotateCcw;
+      return Plus;
     default:
       return CheckSquare;
   }
@@ -2284,7 +2309,6 @@ function formatTaskActivityBatchLabel(
     [activity.added, "message.todo.activity.addedTasks"],
     [activity.started, "message.todo.activity.startedTasks"],
     [activity.completed, "message.todo.activity.completedTasks"],
-    [activity.reopened, "message.todo.activity.reopenedTasks"],
   ] as const;
   for (const [count, key] of entries) {
     if (count > 0) {
@@ -3152,6 +3176,7 @@ export const ToolCall = memo(function ToolCall({
   const handleToggle = useCallback(() => {
     if (!shouldRenderInline) {
       openToolCall({
+        toolName,
         displayName: presentation.displayName,
         summary: presentation.summary,
         detail: effectiveDetail,
@@ -3165,6 +3190,7 @@ export const ToolCall = memo(function ToolCall({
   }, [
     shouldRenderInline,
     openToolCall,
+    toolName,
     presentation.displayName,
     presentation.summary,
     presentation.errorText,
@@ -3205,6 +3231,7 @@ export const ToolCall = memo(function ToolCall({
     if (!shouldRenderInline) return null;
     return (
       <ToolCallDetailsContent
+        toolName={toolName}
         detail={effectiveDetail}
         errorText={presentation.errorText}
         maxHeight={maxDetailHeight}
@@ -3213,6 +3240,7 @@ export const ToolCall = memo(function ToolCall({
     );
   }, [
     shouldRenderInline,
+    toolName,
     effectiveDetail,
     presentation.errorText,
     presentation.isLoadingDetails,

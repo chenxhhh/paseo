@@ -155,6 +155,11 @@ describe("translation resources", () => {
     expect(es.settings.project.scripts.title).toBe("Scripts");
   });
 
+  it("uses the Russian term for continuing a session in copied commands", () => {
+    expect(ru.workspace.tabs.menu.copyResumeCommand).toBe("Копировать команду продолжения");
+    expect(ru.workspace.tabs.toasts.resumeCommandCopiedLabel).toBe("команда продолжения");
+  });
+
   it("keeps model count labels spaced around the count", () => {
     expect(ar.modelSelector.modelCountPlural).toBe("{{count}} نماذج");
     expect(es.modelSelector.modelCountPlural).toBe("{{count}} modelos");
@@ -417,11 +422,9 @@ describe("translation resources", () => {
       added: "Added",
       started: "Started",
       completed: "Completed",
-      reopened: "Reopened",
       addedTasks: { one: "Added {{count}} task", other: "Added {{count}} tasks" },
       startedTasks: { one: "Started {{count}} task", other: "Started {{count}} tasks" },
       completedTasks: { one: "Completed {{count}} task", other: "Completed {{count}} tasks" },
-      reopenedTasks: { one: "Reopened {{count}} task", other: "Reopened {{count}} tasks" },
       batchSeparator: " · ",
     });
   });

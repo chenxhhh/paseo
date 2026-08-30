@@ -799,13 +799,12 @@ export interface TodoEntry {
 
 export type TaskActivity =
   | { type: "created"; count: number }
-  | { type: "added" | "started" | "completed" | "reopened"; task: string }
+  | { type: "added" | "started" | "completed"; task: string }
   | {
       type: "batch";
       added: number;
       started: number;
       completed: number;
-      reopened: number;
     };
 
 export interface TodoListItem {
@@ -1344,15 +1343,13 @@ function summarizeTaskActivities(activities: readonly TaskActivity[]): {
   added: number;
   started: number;
   completed: number;
-  reopened: number;
 } {
-  const counts = { added: 0, started: 0, completed: 0, reopened: 0 };
+  const counts = { added: 0, started: 0, completed: 0 };
   for (const activity of activities) {
     if (activity.type === "batch") {
       counts.added += activity.added;
       counts.started += activity.started;
       counts.completed += activity.completed;
-      counts.reopened += activity.reopened;
     } else if (activity.type !== "created") {
       counts[activity.type] += 1;
     }
@@ -1392,8 +1389,6 @@ function deriveTaskActivities(
     if (before === after) continue;
     if (after === "completed") {
       activities.push({ type: "completed", task: task.text });
-    } else if (before === "completed") {
-      activities.push({ type: "reopened", task: task.text });
     } else if (after === "in_progress") {
       activities.push({ type: "started", task: task.text });
     }

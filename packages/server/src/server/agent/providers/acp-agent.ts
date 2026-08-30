@@ -94,8 +94,6 @@ import {
   type ProviderCatalog,
   type ResolveAgentCreateConfigInput,
   type ResolveAgentCreateConfigResult,
-  type SteerActiveTurnOptions,
-  type SteerResult,
   type ToolCallDetail,
   type ToolCallTimelineItem,
 } from "../agent-sdk-types.js";
@@ -232,9 +230,6 @@ function pushACPStderrRow(rows: DiagnosticEntry[], stderrChunks: string[]): void
 export const DEFAULT_ACP_CAPABILITIES: AgentCapabilityFlags = {
   supportsStreaming: true,
   supportsSessionPersistence: true,
-  // ACP agents can list prior sessions via `session/list`. The runtime probe in
-  // listImportableSessions returns nothing for agents that don't advertise the
-  // capability, so enabling this here only makes the daemon query them.
   supportsSessionListing: true,
   supportsDynamicModes: true,
   supportsMcpServers: true,
@@ -244,6 +239,13 @@ export const DEFAULT_ACP_CAPABILITIES: AgentCapabilityFlags = {
   supportsRewindFiles: false,
   supportsRewindBoth: false,
 };
+
+function acpSessionListRequest(cursor: string | null | undefined, cwd: string | undefined) {
+  return {
+    ...(cursor ? { cursor } : {}),
+    ...(cwd ? { cwd } : {}),
+  };
+}
 
 const BASE_ACP_CLIENT_CAPABILITIES: ACPClientCapabilities = {
   fs: {
@@ -1063,13 +1065,7 @@ export class ACPAgentClient implements AgentClient {
       let cursor: string | null | undefined;
       for (;;) {
         const page: ListSessionsResponse = await this.runACPRequest(() =>
-          probe.connection.listSessions({
-            ...(cursor ? { cursor } : {}),
-            // Filter by working directory at the source. Without this the agent
-            // returns globally-recent sessions, which the `limit` below can
-            // truncate before the current directory's sessions are reached.
-            ...(options?.cwd ? { cwd: options.cwd } : {}),
-          }),
+          probe.connection.listSessions(acpSessionListRequest(cursor, options?.cwd)),
         );
         for (const session of page.sessions) {
           sessions.push({
@@ -1463,7 +1459,6 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   private readonly extensionCommandsParser?: ACPExtensionCommandsParser;
   private currentTurnUsage: AgentUsage | undefined;
   private activeForegroundTurnId: string | null = null;
-  private steeringSupported = false;
   private lastTimelineItem: AgentTimelineItem | null = null;
   private planYieldContinues = 0;
   private fallbackAssistantMessageId: string | null = null;
@@ -1516,8 +1511,6 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       this.child = spawned.child;
       this.connection = spawned.connection;
       this.agentCapabilities = spawned.initialize.agentCapabilities ?? null;
-      this.steeringSupported =
-        readRecord(readRecord(spawned.initialize._meta)?.steering)?.supported === true;
 
       const response = await this.runACPRequest(() =>
         this.connection!.newSession({
@@ -1552,8 +1545,6 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       this.child = spawned.child;
       this.connection = spawned.connection;
       this.agentCapabilities = spawned.initialize.agentCapabilities ?? null;
-      this.steeringSupported =
-        readRecord(readRecord(spawned.initialize._meta)?.steering)?.supported === true;
       this.sessionId = handle.sessionId;
       this.bootstrapThreadEventPending = true;
 
@@ -1647,45 +1638,6 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     this.dispatchPrompt(turnId, prompt, messageId);
 
     return { turnId };
-  }
-
-  async steerActiveTurn(
-    prompt: AgentPromptInput,
-    options: SteerActiveTurnOptions,
-  ): Promise<SteerResult> {
-    if (
-      !this.connection ||
-      !this.sessionId ||
-      !this.steeringSupported ||
-      this.activeForegroundTurnId !== options.expectedTurnId
-    ) {
-      return { status: "unavailable" };
-    }
-    const response = await this.runACPRequest(() =>
-      this.connection!.extMethod("_session/steering", {
-        sessionId: this.sessionId,
-        prompt: toACPContentBlocks(prompt),
-        _meta: { steering: { idleBehavior: "promptRequired" } },
-      }),
-    );
-    if (response.outcome !== "injected") {
-      return { status: "unavailable" };
-    }
-    if (options.clearPendingPermissions) {
-      await this.clearPendingPermissionsForSteer();
-    }
-    return { status: "accepted" };
-  }
-
-  private async clearPendingPermissionsForSteer(): Promise<void> {
-    const requestIds = Array.from(this.pendingPermissions.keys());
-    for (const requestId of requestIds) {
-      if (!this.pendingPermissions.has(requestId)) continue;
-      await this.respondToPermission(requestId, {
-        behavior: "deny",
-        message: "The user answered with a message instead of approving. Their message follows.",
-      });
-    }
   }
 
   subscribe(callback: (event: AgentStreamEvent) => void): () => void {

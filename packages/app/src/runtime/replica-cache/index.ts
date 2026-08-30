@@ -69,7 +69,7 @@ const TodoEntrySchema = z.strictObject({
 const TaskActivitySchema = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("created"), count: z.number().int().nonnegative() }),
   z.strictObject({
-    type: z.enum(["added", "started", "completed", "reopened"]),
+    type: z.enum(["added", "started", "completed"]),
     task: z.string(),
   }),
   z.strictObject({
@@ -77,7 +77,6 @@ const TaskActivitySchema = z.discriminatedUnion("type", [
     added: z.number().int().nonnegative(),
     started: z.number().int().nonnegative(),
     completed: z.number().int().nonnegative(),
-    reopened: z.number().int().nonnegative(),
   }),
 ]);
 
@@ -794,6 +793,7 @@ function directoryEntityForRow(row: ReplicaRow): keyof DirectoryCheckpoint | und
 
 export class ReplicaCache {
   private readonly activeServerIds = new Set<string>();
+  private readonly hostRevisions = new Map<string, number>();
   private readonly storedRows = new Map<string, Map<string, ReplicaRow>>();
   private readonly hostBytes = new Map<string, number>();
   private readonly hostWriteOrder = new Map<string, true>();
@@ -909,7 +909,13 @@ export class ReplicaCache {
     if (!this.activeServerIds.has(serverId)) return [];
     try {
       await this.prepareStore();
-      return await this.rowStore.read(serverId, kinds, ids);
+      while (this.activeServerIds.has(serverId)) {
+        await this.flush();
+        const revision = this.hostRevisions.get(serverId) ?? 0;
+        const rows = await this.rowStore.read(serverId, kinds, ids);
+        if (this.canReadHostRevision(serverId, revision)) return rows;
+      }
+      return [];
     } catch {
       return [];
     }
@@ -995,6 +1001,7 @@ export class ReplicaCache {
     },
   ): void {
     if (!this.activeServerIds.has(serverId)) return;
+    this.advanceHostRevision(serverId);
     this.clearPendingDirectoryChanges(serverId);
     const desiredRows: ReplicaRow[] = [];
     for (const agent of directory.agents.values()) {
@@ -1023,6 +1030,7 @@ export class ReplicaCache {
   commitTimeline(serverId: string, agentId: string, timeline: CachedTimeline): void {
     if (!this.activeServerIds.has(serverId)) return;
     if (timeline.agentId !== agentId) throw new Error("Timeline cache key does not match payload");
+    this.advanceHostRevision(serverId);
     const stored = serializeTimeline(timeline);
     if (stored) this.queueEntityUpsert(serverId, "timeline", agentId, stored);
     else this.queueEntityDelete(serverId, "timeline", agentId);
@@ -1032,6 +1040,8 @@ export class ReplicaCache {
   setHosts(serverIds: Iterable<string>): void {
     const next = new Set(serverIds);
     const removed = [...this.activeServerIds].filter((serverId) => !next.has(serverId));
+    const added = [...next].filter((serverId) => !this.activeServerIds.has(serverId));
+    for (const serverId of [...removed, ...added]) this.advanceHostRevision(serverId);
     this.activeServerIds.clear();
     for (const serverId of next) this.activeServerIds.add(serverId);
     for (const serverId of removed) {
@@ -1042,6 +1052,8 @@ export class ReplicaCache {
   }
 
   reconcileServerId(oldServerId: string, newServerId: string): void {
+    this.advanceHostRevision(oldServerId);
+    this.advanceHostRevision(newServerId);
     const rows = this.storedRows.get(oldServerId);
     if (rows) {
       const newRows = this.storedRows.get(newServerId) ?? new Map<string, ReplicaRow>();
@@ -1150,6 +1162,29 @@ export class ReplicaCache {
       this.pendingDeletes.size > 0 ||
       this.pendingDirectoryReplacements.size > 0
     );
+  }
+
+  private canReadHostRevision(serverId: string, revision: number): boolean {
+    return (
+      this.activeServerIds.has(serverId) &&
+      (this.hostRevisions.get(serverId) ?? 0) === revision &&
+      !this.hasPendingHostChanges(serverId)
+    );
+  }
+
+  private hasPendingHostChanges(serverId: string): boolean {
+    if (this.pendingDirectoryReplacements.has(serverId)) return true;
+    for (const row of this.pendingUpserts.values()) {
+      if (row.serverId === serverId) return true;
+    }
+    for (const row of this.pendingDeletes.values()) {
+      if (row.serverId === serverId) return true;
+    }
+    return false;
+  }
+
+  private advanceHostRevision(serverId: string): void {
+    this.hostRevisions.set(serverId, (this.hostRevisions.get(serverId) ?? 0) + 1);
   }
 
   private drainPendingChanges(): PendingReplicaChanges {

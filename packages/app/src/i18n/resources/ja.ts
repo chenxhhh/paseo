@@ -377,7 +377,6 @@ export const ja: TranslationResources = {
         added: "追加",
         started: "開始",
         completed: "完了",
-        reopened: "再開",
         addedTasks: {
           one: "{{count}}件のタスクを追加",
           other: "{{count}}件のタスクを追加",
@@ -389,10 +388,6 @@ export const ja: TranslationResources = {
         completedTasks: {
           one: "{{count}}件のタスクを完了",
           other: "{{count}}件のタスクを完了",
-        },
-        reopenedTasks: {
-          one: "{{count}}件のタスクを再開",
-          other: "{{count}}件のタスクを再開",
         },
         batchSeparator: "・",
       },
@@ -1660,6 +1655,10 @@ export const ja: TranslationResources = {
         title: "直接接続",
         description: "ローカルネットワークまたはVPN。",
       },
+      remoteSsh: {
+        title: "リモート SSH",
+        description: "デスクトップの SSH クライアント経由で接続します。",
+      },
       scanQr: {
         title: "QRコードをスキャン",
         description: "暗号化されたリレー接続。",
@@ -1709,6 +1708,23 @@ export const ja: TranslationResources = {
         tlsError: "TLSエラー。直接接続は、デーモンの前にTLS終端がある場合のみSSLを使用します。",
         unableToConnect: "接続できません。ホスト/ポートとデーモンが到達可能かを確認してください。",
         details: "詳細: {{detail}}",
+      },
+    },
+    remoteSsh: {
+      title: "リモート SSH",
+      helper: "リモートホストで動作する Paseo デーモンに接続します。",
+      fields: {
+        target: "SSH ホスト",
+      },
+      actions: {
+        cancel: "キャンセル",
+        connect: "接続",
+        connecting: "接続中...",
+      },
+      errors: {
+        targetRequired: "SSH ホストは必須です",
+        invalidTarget: "有効な ssh:// ホストを入力してください",
+        failedToConnect: "SSH で接続できません。{{detail}}",
       },
     },
     link: {
@@ -2355,6 +2371,7 @@ export const ja: TranslationResources = {
       badges: {
         relay: "リレー",
         local: "ローカル",
+        remoteSsh: "リモート SSH",
       },
       connections: {
         title: "接続",

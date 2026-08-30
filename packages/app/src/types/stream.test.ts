@@ -924,7 +924,7 @@ describe("stream reducer canonical tool calls", () => {
       detail: tool.payload.data.detail,
     });
     assert.strictEqual(display.summary, undefined);
-    assert.strictEqual(display.displayName, "Exec Command");
+    assert.strictEqual(display.displayName, "Exec command");
   });
 
   it("preserves early input when later updates contain null input", () => {
@@ -1088,6 +1088,30 @@ describe("stream reducer canonical tool calls", () => {
     expect(state.flatMap((item) => (item.kind === "todo_list" ? [item.activity] : []))).toEqual([
       { type: "created", count: 2 },
       { type: "batch", added: 0, started: 2, completed: 2, reopened: 0 },
+    ]);
+  });
+
+  it("reports new work after completed tasks without reopening anything", () => {
+    const state = hydrateStreamState([
+      {
+        event: todoTimeline([
+          { id: "0", text: "Finish old work", completed: true, status: "completed" },
+          { id: "1", text: "Verify old work", completed: true, status: "completed" },
+        ]),
+        timestamp: new Date("2025-01-01T10:50:00Z"),
+      },
+      {
+        event: todoTimeline([
+          { id: "0", text: "Investigate unrelated bug", completed: false, status: "in_progress" },
+          { id: "1", text: "Write unrelated test", completed: false, status: "pending" },
+        ]),
+        timestamp: new Date("2025-01-01T10:51:00Z"),
+      },
+    ]);
+
+    expect(state.flatMap((item) => (item.kind === "todo_list" ? [item.activity] : []))).toEqual([
+      { type: "created", count: 2 },
+      { type: "started", task: "Investigate unrelated bug" },
     ]);
   });
 

@@ -373,7 +373,6 @@ export const ar: TranslationResources = {
         added: "أُضيفت",
         started: "بدأت",
         completed: "اكتملت",
-        reopened: "أُعيد فتحها",
         addedTasks: {
           one: "تمت إضافة {{count}} مهمة",
           other: "تمت إضافة {{count}} مهام",
@@ -385,10 +384,6 @@ export const ar: TranslationResources = {
         completedTasks: {
           one: "اكتملت {{count}} مهمة",
           other: "اكتملت {{count}} مهام",
-        },
-        reopenedTasks: {
-          one: "أُعيد فتح {{count}} مهمة",
-          other: "أُعيد فتح {{count}} مهام",
         },
         batchSeparator: " · ",
       },
@@ -1644,6 +1639,10 @@ export const ar: TranslationResources = {
         title: "اتصال مباشر",
         description: "الشبكة المحلية أو VPN.",
       },
+      remoteSsh: {
+        title: "SSH عن بُعد",
+        description: "الاتصال عبر عميل SSH لسطح المكتب.",
+      },
       scanQr: {
         title: "مسح رمز QR",
         description: "اتصال التتابع المشفر.",
@@ -1694,6 +1693,23 @@ export const ar: TranslationResources = {
         unableToConnect:
           "غير قادر على الاتصال. تحقق من المضيف /port ومن إمكانية الوصول إلى البرنامج الخفي.",
         details: "التفاصيل:{{detail}}",
+      },
+    },
+    remoteSsh: {
+      title: "SSH عن بُعد",
+      helper: "الاتصال بخادم Paseo يعمل على المضيف البعيد.",
+      fields: {
+        target: "مضيف SSH",
+      },
+      actions: {
+        cancel: "إلغاء",
+        connect: "اتصال",
+        connecting: "جارٍ الاتصال...",
+      },
+      errors: {
+        targetRequired: "مضيف SSH مطلوب",
+        invalidTarget: "أدخل مضيف ssh:// صالحًا",
+        failedToConnect: "تعذر الاتصال عبر SSH. {{detail}}",
       },
     },
     link: {
@@ -2335,6 +2351,7 @@ export const ar: TranslationResources = {
       badges: {
         relay: "تتابع",
         local: "محلي",
+        remoteSsh: "SSH عن بُعد",
       },
       connections: {
         title: "اتصالات",

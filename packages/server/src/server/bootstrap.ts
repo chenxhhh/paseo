@@ -138,7 +138,7 @@ import {
   type PaseoToolHostDependencies,
 } from "./agent/tools/paseo-tools.js";
 import type { PaseoToolRuntimeContext } from "./agent/tools/types.js";
-import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
+import { createAgentProviderRuntime } from "./agent/provider-runtime.js";
 import { bootstrapWorkspaceRegistries } from "./workspace-registry-bootstrap.js";
 import { WorkspaceReconciliationService } from "./workspace-reconciliation-service.js";
 import {
@@ -230,8 +230,8 @@ import { DaemonExecutions } from "./hub/daemon-executions.js";
 import { PluginService } from "./plugins/index.js";
 import { ManagedPluginSources } from "./plugins/managed-source.js";
 
-const MAX_MCP_DEBUG_BATCH_ITEMS = 10;
-const REDACTED_LOG_VALUE = "[redacted]";
+const MCP_DEBUG_BATCH_LIMIT = 10;
+const MCP_DEBUG_SECRET = "[redacted]";
 const DOWNLOAD_OPEN_FLAGS =
   process.platform === "win32" ? constants.O_RDONLY : constants.O_RDONLY | constants.O_NOFOLLOW;
 
@@ -329,35 +329,28 @@ export function createTerminalActivityRouteHandler(
   };
 }
 
-function summarizeAgentMcpDebugMessage(body: unknown): Record<string, unknown> {
-  if (!body || typeof body !== "object" || Array.isArray(body)) {
-    return {
-      type: body === null ? "null" : typeof body,
-    };
+function describeMcpRequest(value: unknown): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return { shape: value === null ? "null" : typeof value };
   }
-
-  const record = body as Record<string, unknown>;
-  const method = typeof record.method === "string" ? record.method : undefined;
+  const request = value as Record<string, unknown>;
   return {
-    type: "object",
-    ...(typeof record.jsonrpc === "string" ? { jsonrpc: record.jsonrpc } : {}),
-    ...(method ? { method } : {}),
-    hasId: Object.prototype.hasOwnProperty.call(record, "id"),
-    hasParams: Object.prototype.hasOwnProperty.call(record, "params"),
+    shape: "request",
+    ...(typeof request.jsonrpc === "string" ? { jsonrpc: request.jsonrpc } : {}),
+    ...(typeof request.method === "string" ? { method: request.method } : {}),
+    hasId: "id" in request,
+    hasParams: "params" in request,
   };
 }
 
-function summarizeAgentMcpDebugBody(body: unknown): Record<string, unknown> {
-  if (!Array.isArray(body)) {
-    return summarizeAgentMcpDebugMessage(body);
-  }
-
-  const messages = body.slice(0, MAX_MCP_DEBUG_BATCH_ITEMS).map(summarizeAgentMcpDebugMessage);
+function describeMcpDebugPayload(value: unknown): Record<string, unknown> {
+  if (!Array.isArray(value)) return describeMcpRequest(value);
+  const sampled = value.slice(0, MCP_DEBUG_BATCH_LIMIT).map(describeMcpRequest);
   return {
-    type: "batch",
-    count: body.length,
-    messages,
-    ...(body.length > messages.length ? { omitted: body.length - messages.length } : {}),
+    shape: "batch",
+    count: value.length,
+    sampled,
+    ...(sampled.length < value.length ? { skipped: value.length - sampled.length } : {}),
   };
 }
 
@@ -893,17 +886,20 @@ export async function createPaseoDaemon(
     workspaceGitService,
     logger,
   });
-  const providerSnapshotLogger = logger.child({ module: "provider-snapshot-manager" });
-  const providerSnapshotManager = new ProviderSnapshotManager({
-    logger: providerSnapshotLogger,
-    refreshTimeoutMs: config.providerCatalogRefreshTimeoutMs,
-    runtimeSettings: config.agentProviderSettings,
-    providerOverrides: config.providerOverrides,
-    workspaceGitService,
-    managedProcesses,
-    isDev: config.isDev === true,
-    extraClients: config.agentClients,
+  const agentProviderRuntime = await createAgentProviderRuntime({
+    paseoHome: config.paseoHome,
+    logger,
+    snapshotManager: {
+      refreshTimeoutMs: config.providerCatalogRefreshTimeoutMs,
+      runtimeSettings: config.agentProviderSettings,
+      providerOverrides: config.providerOverrides,
+      workspaceGitService,
+      managedProcesses,
+      isDev: config.isDev === true,
+      extraClients: config.agentClients,
+    },
   });
+  const providerSnapshotManager = agentProviderRuntime.snapshotManager;
   daemonConfigStore.onFieldChange("catalogRefreshTimeoutMs", (value) => {
     providerSnapshotManager.setRefreshTimeoutMs(typeof value === "number" ? value : undefined);
   });
@@ -1400,8 +1396,12 @@ export async function createPaseoDaemon(
   });
   const createAgentToolCatalog = (runtime: PaseoToolRuntimeContext) =>
     createPaseoToolCatalog(createAgentToolHostDependencies(runtime));
+  const setAgentProviderToolsEnabled = (enabled: boolean) => {
+    agentProviderRuntime.setPaseoToolCatalog(enabled ? createAgentToolCatalog({}) : null);
+  };
   agentManager.setPaseoToolCatalogFactory(createAgentToolCatalog);
   agentManager.setPaseoToolsEnabled(config.mcpInjectIntoAgents !== false);
+  setAgentProviderToolsEnabled(config.mcpEnabled !== false && config.mcpInjectIntoAgents !== false);
 
   let mcpEnabled = config.mcpEnabled ?? true;
   let agentMcpBaseUrl: string | null = null;
@@ -1462,8 +1462,8 @@ export async function createPaseoDaemon(
             method: req.method,
             url: req.originalUrl,
             sessionId: req.header("mcp-session-id"),
-            authorization: req.header("authorization") ? REDACTED_LOG_VALUE : undefined,
-            body: summarizeAgentMcpDebugBody(req.body),
+            authorization: req.header("authorization") ? MCP_DEBUG_SECRET : undefined,
+            body: describeMcpDebugPayload(req.body),
           },
           "Agent MCP request",
         );
@@ -1574,10 +1574,12 @@ export async function createPaseoDaemon(
               const inject = daemonConfigStore.get().mcp.injectIntoAgents !== false;
               agentManager.setMcpBaseUrl(mcpEnabled && inject ? mcpBaseUrl : null);
               agentManager.setPaseoToolsEnabled(mcpEnabled && inject);
+              setAgentProviderToolsEnabled(mcpEnabled && inject);
             });
             daemonConfigStore.onFieldChange("mcp.injectIntoAgents", (value) => {
               agentManager.setMcpBaseUrl(mcpEnabled && value ? mcpBaseUrl : null);
               agentManager.setPaseoToolsEnabled(mcpEnabled && value !== false);
+              setAgentProviderToolsEnabled(mcpEnabled && value !== false);
             });
             daemonConfigStore.onFieldChange("appendSystemPrompt", (value) => {
               agentManager.setAppendSystemPrompt(typeof value === "string" ? value : "");
@@ -1729,6 +1731,7 @@ export async function createPaseoDaemon(
     } catch (error) {
       await pluginRuntime.stopAllPlugins().catch(() => undefined);
       await serviceProxy.stopStandalone().catch(() => undefined);
+      await agentProviderRuntime.shutdown().catch(() => undefined);
       if (mainStarted) {
         httpServer.closeAllConnections();
         await new Promise<void>((resolve) => httpServer.close(() => resolve()));
@@ -1750,7 +1753,7 @@ export async function createPaseoDaemon(
     await agentManager.flushForShutdown().catch(() => undefined);
     detachAgentStoragePersistence();
     await agentStorage.flush().catch(() => undefined);
-    await providerSnapshotManager.shutdown();
+    await agentProviderRuntime.shutdown();
     terminalManager.killAll();
     await speechService.stop();
     await scheduleService.stop().catch(() => undefined);
