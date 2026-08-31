@@ -2796,6 +2796,63 @@ describe("ACPAgentSession", () => {
     expect(asInternals<ACPSessionInternals>(session).activeForegroundTurnId).toBeNull();
   });
 
+  test("keeps the turn open when ACP end_turn arrives after an incomplete task list", async () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    const resolvers: Array<(value: PromptResponse) => void> = [];
+    const prompt = vi.fn(
+      () =>
+        new Promise<PromptResponse>((resolve) => {
+          resolvers.push(resolve);
+        }),
+    );
+
+    asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+    asInternals<ACPSessionInternals>(session).connection = { prompt };
+
+    session.subscribe((event) => {
+      events.push(event);
+    });
+
+    const { turnId } = await session.startTurn("plan the work");
+    await session.sessionUpdate({
+      sessionId: "session-1",
+      update: {
+        sessionUpdate: "plan",
+        entries: [
+          { content: "Compare the two plans", status: "pending", priority: "medium" },
+          { content: "Write the canvas", status: "pending", priority: "medium" },
+        ],
+      },
+    });
+
+    resolvers[0]!({ stopReason: "end_turn" });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(prompt).toHaveBeenCalledTimes(2);
+    expect(prompt).toHaveBeenLastCalledWith({
+      sessionId: "session-1",
+      messageId: expect.any(String),
+      prompt: [{ type: "text", text: "Continue." }],
+    });
+    expect(events.find((event) => event.type === "turn_completed")).toBeUndefined();
+    expect(asInternals<ACPSessionInternals>(session).activeForegroundTurnId).toBe(turnId);
+    expect(
+      events.filter((event) => event.type === "timeline" && event.item.type === "user_message"),
+    ).toHaveLength(1);
+
+    resolvers[1]!({ stopReason: "end_turn" });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(events.find((event) => event.type === "turn_completed")).toMatchObject({
+      type: "turn_completed",
+      turnId,
+    });
+    expect(asInternals<ACPSessionInternals>(session).activeForegroundTurnId).toBeNull();
+  });
+
   test("startTurn emits the submitted user message even when ACP does not echo it", async () => {
     const session = createSession();
     const events: AgentStreamEvent[] = [];

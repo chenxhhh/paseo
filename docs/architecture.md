@@ -79,6 +79,7 @@ not retain non-Git directories.
 | `server/orchestration-skills/`  | Bundled catalog, host selection, convergence, and skill-directory transactions |
 | `server/relay-transport.ts`     | Outbound relay connection with E2E encryption                                  |
 | `server/schedule/`              | Cron-based scheduled agents                                                    |
+| `server/tasks/`                 | Durable coordination tasks, gates, and agent questions                         |
 
 ### `packages/protocol` — Wire schemas and shared protocol types
 
@@ -149,6 +150,7 @@ Commander.js CLI with Docker-style commands. Common agent operations are also ex
 - `paseo script ls/start/stop`
 - `paseo schedule create/ls/inspect/update/pause/resume/run-once/logs/delete`
 - `paseo heartbeat create/update/delete`
+- `paseo task ls/inspect/gate/answer/questions`
 - `paseo project create/ls/rename/delete`
 - `paseo workspace create/ls/rename/archive`
 - `paseo permit allow/deny/ls`

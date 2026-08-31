@@ -120,9 +120,20 @@ function makeCanonicalEntries(rows: readonly AgentTimelineRow[]): WorkingEntry[]
   }));
 }
 
+/**
+ * A single tool call can span turns: an auto-continue after an abnormal turn
+ * end moves the agent into a new turn while a subagent's Task parent card keeps
+ * streaming updates. Lifecycle rows are grouped per (callId, turnId); keying
+ * the index map by callId alone would keep comparing later rows against the
+ * first turn's entry and emit one projected entry per row.
+ */
+function toolLifecycleKey(callId: string, turnId: string | undefined): string {
+  return `${callId}\u0000${turnId ?? ""}`;
+}
+
 function collapseToolLifecycle(entries: readonly WorkingEntry[]): WorkingEntry[] {
   const output: WorkingEntry[] = [];
-  const toolIndexByCallId = new Map<string, number>();
+  const toolIndexByCallAndTurn = new Map<string, number>();
 
   for (const entry of entries) {
     if (entry.item.type !== "tool_call") {
@@ -130,15 +141,17 @@ function collapseToolLifecycle(entries: readonly WorkingEntry[]): WorkingEntry[]
       continue;
     }
 
-    const existingIndex = toolIndexByCallId.get(entry.item.callId);
+    const key = toolLifecycleKey(entry.item.callId, entry.turnId);
+    const existingIndex = toolIndexByCallAndTurn.get(key);
     if (existingIndex === undefined) {
-      toolIndexByCallId.set(entry.item.callId, output.length);
+      toolIndexByCallAndTurn.set(key, output.length);
       output.push(entry);
       continue;
     }
 
     const existing = output[existingIndex];
-    if (!existing || existing.item.type !== "tool_call" || existing.turnId !== entry.turnId) {
+    if (!existing || existing.item.type !== "tool_call") {
+      toolIndexByCallAndTurn.set(key, output.length);
       output.push(entry);
       continue;
     }

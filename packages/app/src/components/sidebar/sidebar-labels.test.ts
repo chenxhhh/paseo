@@ -23,6 +23,8 @@ function workspace(
     title: null,
     pinnedAt,
     labels,
+    userStatus: null,
+    activeAgents: [],
     currentBranch: "main",
     statusBucket: "done",
     statusEnteredAt: null,

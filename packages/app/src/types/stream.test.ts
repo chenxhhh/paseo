@@ -1087,10 +1087,7 @@ describe("stream reducer canonical tool calls", () => {
 
     expect(state.flatMap((item) => (item.kind === "todo_list" ? [item.activity] : []))).toEqual([
       { type: "created", count: 2 },
-      { type: "started", task: "Inspect provider" },
-      { type: "completed", task: "Inspect provider" },
-      { type: "started", task: "Ship fix" },
-      { type: "completed", task: "Ship fix" },
+      { type: "batch", added: 0, started: 2, completed: 2, reopened: 0 },
     ]);
   });
 
@@ -1147,6 +1144,113 @@ describe("stream reducer canonical tool calls", () => {
           expect.objectContaining({ text: "Ship fix" }),
         ]),
       }),
+    ]);
+  });
+
+  it("folds consecutive task creates on a non-empty plan into one batch row", () => {
+    const finished = {
+      id: "old",
+      text: "Yesterday's task",
+      completed: true,
+      status: "completed" as const,
+    };
+    const state = hydrateStreamState([
+      {
+        event: todoTimeline([finished], "glm"),
+        timestamp: new Date("2026-08-20T15:46:00Z"),
+      },
+      {
+        event: assistantTimeline("端点齐了，建任务：", "glm"),
+        timestamp: new Date("2026-08-24T10:37:53Z"),
+      },
+      {
+        event: todoTimeline(
+          [finished, { id: "13", text: "批跑A", completed: false, status: "pending" }],
+          "glm",
+        ),
+        timestamp: new Date("2026-08-24T10:37:55.1Z"),
+      },
+      {
+        event: todoTimeline(
+          [
+            finished,
+            { id: "13", text: "批跑A", completed: false, status: "pending" },
+            { id: "14", text: "批跑B", completed: false, status: "pending" },
+          ],
+          "glm",
+        ),
+        timestamp: new Date("2026-08-24T10:37:55.9Z"),
+      },
+      {
+        event: todoTimeline(
+          [
+            finished,
+            { id: "13", text: "批跑A", completed: false, status: "pending" },
+            { id: "14", text: "批跑B", completed: false, status: "pending" },
+            { id: "15", text: "批跑C", completed: false, status: "pending" },
+          ],
+          "glm",
+        ),
+        timestamp: new Date("2026-08-24T10:37:56.0Z"),
+      },
+      {
+        event: todoTimeline(
+          [
+            finished,
+            { id: "13", text: "批跑A", completed: false, status: "in_progress" },
+            { id: "14", text: "批跑B", completed: false, status: "pending" },
+            { id: "15", text: "批跑C", completed: false, status: "pending" },
+          ],
+          "glm",
+        ),
+        timestamp: new Date("2026-08-24T10:38:00Z"),
+      },
+    ]);
+
+    const todoRows = state.filter(
+      (item): item is Extract<StreamItem, { kind: "todo_list" }> => item.kind === "todo_list",
+    );
+    expect(todoRows.map((row) => row.activity)).toEqual([
+      { type: "created", count: 1 },
+      { type: "batch", added: 3, started: 1, completed: 0, reopened: 0 },
+    ]);
+    expect(todoRows[1]?.items).toHaveLength(4);
+  });
+
+  it("keeps task rows separate when other stream items arrive between snapshots", () => {
+    const state = hydrateStreamState([
+      {
+        event: todoTimeline(
+          [
+            { id: "a", text: "Smoke batch", completed: false, status: "in_progress" },
+            { id: "b", text: "Full run", completed: false, status: "pending" },
+          ],
+          "glm",
+        ),
+        timestamp: new Date("2026-08-24T10:39:47Z"),
+      },
+      {
+        event: assistantTimeline("Smoke 3 条：", "glm"),
+        timestamp: new Date("2026-08-24T10:39:47.5Z"),
+      },
+      {
+        event: todoTimeline(
+          [
+            { id: "a", text: "Smoke batch", completed: true, status: "completed" },
+            { id: "b", text: "Full run", completed: false, status: "in_progress" },
+          ],
+          "glm",
+        ),
+        timestamp: new Date("2026-08-24T10:41:48Z"),
+      },
+    ]);
+
+    const todoRows = state.filter(
+      (item): item is Extract<StreamItem, { kind: "todo_list" }> => item.kind === "todo_list",
+    );
+    expect(todoRows.map((row) => row.activity)).toEqual([
+      { type: "created", count: 2 },
+      { type: "batch", added: 0, started: 1, completed: 1, reopened: 0 },
     ]);
   });
 
@@ -1215,6 +1319,30 @@ describe("stream reducer canonical tool calls", () => {
         {
           event: canonicalToolTimeline({
             provider: "claude",
+            callId: name,
+            name,
+            status: "completed",
+            input: { taskId: "1", status: "completed" },
+          }),
+          timestamp: new Date("2025-01-01T11:00:00Z"),
+        },
+      ]);
+
+      expect(state.filter(isAgentToolCallItem)).toEqual([]);
+    },
+  );
+
+  // Fetched timeline entries carry the configured provider id, so a custom provider
+  // extending claude (e.g. "glm") reports that id instead of "claude". The task-tool
+  // suppression must still apply there, or every task call renders twice: once as a
+  // raw tool call and once as the canonical todo snapshot.
+  it.each(["TaskCreate", "TaskUpdate", "TaskList"])(
+    "suppresses %s bookkeeping tool calls from a claude-derived provider",
+    (name) => {
+      const state = hydrateStreamState([
+        {
+          event: canonicalToolTimeline({
+            provider: "glm",
             callId: name,
             name,
             status: "completed",

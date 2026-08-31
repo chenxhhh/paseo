@@ -37,6 +37,7 @@ function useOverviewSummary(summary: OverviewSummary): string {
   return useMemo(() => {
     const parts: string[] = [];
     const entries = [
+      [summary.thinkingCount, "toolCallGroup.thinking"],
       [summary.editedFileCount, "toolCallGroup.editedFiles"],
       [summary.commandCount, "toolCallGroup.commands"],
       [summary.readFileCount, "toolCallGroup.readFiles"],

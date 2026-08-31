@@ -398,6 +398,62 @@ One file per schedule. ID is 8 hex characters.
 
 ---
 
+## 3a. Coordination Tasks
+
+**Path:** `$PASEO_HOME/tasks/{taskId}.json` and `$PASEO_HOME/task-questions/{questionId}.json`
+
+One file per task and per question (8 hex IDs, atomic writes, per-id serialized mutations — same contract as schedules). This is the durable state layer for agent-orchestrated work; nothing dispatches automatically. See `docs/refactors/agent-coordination-layer.md` for the design rationale.
+
+### StoredTask
+
+| Field             | Type                                                    | Description                                               |
+| ----------------- | ------------------------------------------------------- | --------------------------------------------------------- |
+| `id`              | `string`                                                | 8-char hex ID                                             |
+| `ownerAgentId`    | `string`                                                | Creating agent (the coordinator); task sets are per-owner |
+| `title`           | `string`                                                | One-line summary                                          |
+| `spec`            | `string?`                                               | Full description / acceptance criteria                    |
+| `deps`            | `string[]`                                              | Task IDs that must complete first (same owner)            |
+| `assigneeAgentId` | `string?`                                               | Worker agent allowed to start/complete/fail               |
+| `status`          | `"pending" \| "in_progress" \| "completed" \| "failed"` | Explicit lifecycle state                                  |
+| `result`          | `string?`                                               | Result recorded on completion                             |
+| `failureReason`   | `string?`                                               | Reason recorded on failure                                |
+| `gate`            | `TaskGate?`                                             | Workflow-level decision gate (see below)                  |
+| `createdAt`       | `string` (ISO 8601)                                     |                                                           |
+| `updatedAt`       | `string` (ISO 8601)                                     |                                                           |
+| `startedAt`       | `string?` (ISO 8601)                                    |                                                           |
+| `completedAt`     | `string?` (ISO 8601)                                    |                                                           |
+
+Derived at read time (never persisted): `ready` = pending, gate resolved, all deps completed; `blocked` = any dependency in the transitive closure failed or is blocked.
+
+### Nested: TaskGate
+
+| Field        | Type                      | Description                             |
+| ------------ | ------------------------- | --------------------------------------- |
+| `question`   | `string`                  | The decision to make                    |
+| `options`    | `string[]?`               | Enumerated allowed resolutions (max 8)  |
+| `status`     | `"pending" \| "resolved"` | A pending gate keeps the task not ready |
+| `resolution` | `string?`                 | Chosen resolution                       |
+| `resolvedAt` | `string?` (ISO 8601)      |                                         |
+| `resolvedBy` | `string?`                 | Agent ID or `"human"`                   |
+
+### StoredTaskQuestion
+
+Durable child→parent question (see the `ask_parent`/`answer_question` tools).
+
+| Field           | Type                                  | Description                      |
+| --------------- | ------------------------------------- | -------------------------------- |
+| `id`            | `string`                              | 8-char hex ID                    |
+| `askerAgentId`  | `string`                              | Asking child agent               |
+| `parentAgentId` | `string`                              | Addressee parent agent           |
+| `taskId`        | `string?`                             | Optional related task            |
+| `question`      | `string`                              | Question text                    |
+| `status`        | `"pending" \| "answered" \| "closed"` | `answered`/`closed` are terminal |
+| `answer`        | `string?`                             | Answer text (write-once)         |
+| `createdAt`     | `string` (ISO 8601)                   |                                  |
+| `answeredAt`    | `string?` (ISO 8601)                  |                                  |
+
+---
+
 ## 4. Project Registry
 
 **Path:** `$PASEO_HOME/projects/projects.json`

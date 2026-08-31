@@ -93,6 +93,13 @@ const PersistedWorkspaceRecordSchema = z.object({
     .optional()
     .transform((value) => value ?? null),
   labels: z.array(z.string()).optional(),
+  // COMPAT(workspaceUserStatus): added in v0.5.x, remove optional parsing after 2027-08-14.
+  // User-assigned workflow status (board column); the catalog itself is client-side.
+  userStatus: z
+    .string()
+    .nullable()
+    .optional()
+    .transform((value) => value ?? null),
 });
 
 export type PersistedProjectRecord = z.infer<typeof PersistedProjectRecordSchema>;
@@ -674,6 +681,7 @@ export function createPersistedWorkspaceRecord(input: {
   autoArchivedChangeRequestUrl?: string | null;
   pinnedAt?: string | null;
   labels?: string[];
+  userStatus?: string | null;
 }): PersistedWorkspaceRecord {
   return PersistedWorkspaceRecordSchema.parse({
     ...input,
@@ -686,6 +694,7 @@ export function createPersistedWorkspaceRecord(input: {
     archivedAt: input.archivedAt ?? null,
     autoArchivedChangeRequestUrl: input.autoArchivedChangeRequestUrl ?? null,
     pinnedAt: input.pinnedAt ?? null,
+    userStatus: input.userStatus ?? null,
   });
 }
 

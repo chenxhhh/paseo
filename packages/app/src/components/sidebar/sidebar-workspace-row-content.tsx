@@ -169,6 +169,7 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
             hostBadge={hostBadge ?? null}
             prHint={workspace.prHint}
             serviceSummary={serviceSummary}
+            userStatusId={workspace.userStatus}
             labels={labels}
           />
         </View>
@@ -276,15 +277,20 @@ function getStatusDotColorStyle(bucket: SidebarStateBucket) {
 
 export const sidebarWorkspaceRowStyles = StyleSheet.create((theme) => ({
   // How far a workspace row sits inside the group header above it — a project row or a
-  // status group header. Both groupings share this one indent, so every grouped workspace row
-  // in the sidebar sits on the same rail regardless of how the list is grouped. Pinned rows
-  // are not grouped and stay flush.
+  // status group header. One step per header above the row, so a row whose header is itself
+  // indented takes `rowIndentedNested` instead. Pinned rows are not grouped and stay flush.
   //
   // It is row padding rather than a margin on the list, because the row's hover and selected
   // backgrounds have to keep spanning the group's full width. Indenting the container instead
   // pulls the highlight in with the content and the row stops lining up with its header.
   rowIndented: {
     paddingLeft: theme.spacing[2] + theme.spacing[2],
+  },
+  // One step further than `rowIndented`: a row inside a worktree or branch group, whose header
+  // is itself a step inside the project row (see `worktreeGroupRow`). Two headers above the
+  // row, two steps.
+  rowIndentedNested: {
+    paddingLeft: theme.spacing[2] + theme.spacing[2] + theme.spacing[2],
   },
   rowRight: {
     flexDirection: "row",
@@ -311,6 +317,12 @@ export const sidebarWorkspaceRowStyles = StyleSheet.create((theme) => ({
     lineHeight: 14,
   },
   hidden: { opacity: 0 },
+  // The archive action and the kebab share one right-anchored row inside the overlay, so the
+  // kebab keeps its trailing rail while the archive confirm swaps in beside it.
+  trailingActionsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
   // Stays position:relative at zero width so the absolutely-positioned kebab keeps
   // anchoring to the same right edge whether or not the slot holds anything.
   trailingActionSlot: {
@@ -320,9 +332,11 @@ export const sidebarWorkspaceRowStyles = StyleSheet.create((theme) => ({
     alignItems: "flex-end",
     justifyContent: "flex-start",
   },
+  // 31 = archive trigger (14 icon + 4 padding) + kebab trigger (its 20px box less the 7px
+  // optical margin that pulls its dots onto the rail). On touch both sit here permanently.
   trailingActionSlotReserved: {
     position: "relative",
-    minWidth: 18,
+    minWidth: 31,
     minHeight: 20,
     flexShrink: 0,
     alignItems: "flex-end",

@@ -158,6 +158,35 @@ export const ru: TranslationResources = {
       archiveAgent: "Архивировать текущего агента",
       freshDraft: "Архивировать этого агента и создать новый черновик",
     },
+    quickCommands: {
+      trigger: "Быстрые команды",
+      empty: "Быстрых команд пока нет",
+      sectionProject: "Этот проект",
+      sectionGlobal: "Глобальные",
+      newCommand: "Новая быстрая команда",
+      manage: "Управление быстрыми командами",
+      sheetTitle: "Быстрые команды",
+      editCommand: "Изменить быструю команду",
+      add: "Добавить команду",
+      save: "Сохранить",
+      delete: "Удалить",
+      deleteTitle: "Удалить быструю команду",
+      deleteMessage: '"{{label}}" будет удалена навсегда.',
+      emptyManage:
+        "Быстрых команд пока нет. Добавьте команду, чтобы вставлять заготовленный промпт одним щелчком.",
+      labelLabel: "Название",
+      labelPlaceholder: "Отображается в меню быстрых команд",
+      promptLabel: "Промпт",
+      promptPlaceholder: "Текст, вставляемый в поле сообщения",
+      scopeLabel: "Область действия",
+      scopeProject: "Этот проект",
+      scopeGlobal: "Все проекты",
+      scopeProjectHint: "Доступно только в {{project}}",
+      scopeProjectFallback: "этом проекте",
+      scopeGlobalHint: "Доступно во всех проектах",
+      labelRequired: "Укажите название",
+      promptRequired: "Укажите промпт",
+    },
     github: {
       searching: "Идет поиск...",
       noResults: "Результаты не найдены.",
@@ -347,6 +376,19 @@ export const ru: TranslationResources = {
         added: "Добавлена",
         started: "Начата",
         completed: "Завершена",
+        addedTasks: {
+          one: "Добавлена {{count}} задача",
+          other: "Добавлено задач: {{count}}",
+        },
+        startedTasks: {
+          one: "Начата {{count}} задача",
+          other: "Начато задач: {{count}}",
+        },
+        completedTasks: {
+          one: "Завершена {{count}} задача",
+          other: "Завершено задач: {{count}}",
+        },
+        batchSeparator: " · ",
       },
     },
     compaction: {
@@ -355,6 +397,11 @@ export const ru: TranslationResources = {
       manual: "Контекст сжат вручную",
       withTokens: "Контекст сжат ({{tokens}} тыс. токенов)",
       completed: "Контекст сжат",
+    },
+    turn: {
+      openArtifact: "Открыть {{name}}",
+      filesChanged_one: "Изменён {{count}} файл",
+      filesChanged_other: "Изменено файлов: {{count}}",
     },
   },
   importSession: {
@@ -996,6 +1043,27 @@ export const ru: TranslationResources = {
       },
     },
   },
+  workspaceStatus: {
+    moveTitle: "Переместить в статус",
+    clear: "Сбросить статус",
+    updateHost: "Обновите этот хост, чтобы назначать статусы.",
+    board: {
+      title: "Доска рабочих пространств",
+      empty: "Рабочих пространств пока нет. Создайте одно и перетащите в колонку.",
+      emptyLane: "Пока пусто",
+    },
+    manage: {
+      title: "Управление колонками",
+      add: "Добавить колонку",
+      addTitle: "Новая колонка",
+      namePlaceholder: "Название колонки",
+      renameTitle: "Переименовать колонку",
+      moveLeft: "Сдвинуть влево",
+      moveRight: "Сдвинуть вправо",
+      remove: "Удалить колонку",
+      done: "Готово",
+    },
+  },
   workspaceLabels: {
     title: "Метки",
     unlabelled: "Без метки",
@@ -1047,6 +1115,7 @@ export const ru: TranslationResources = {
         project: "Проект",
         status: "Статус",
         labels: "Метки",
+        userStatus: "Статус доски",
       },
       titleSource: {
         label: "Заголовок",
@@ -1062,6 +1131,7 @@ export const ru: TranslationResources = {
         checks: "Проверки",
         services: "Сервисы",
         labels: "Метки",
+        status: "Статус",
         diff: "Статистика изменений",
         timestamp: "Последняя активность",
       },
@@ -1115,6 +1185,7 @@ export const ru: TranslationResources = {
     sections: {
       sessions: "История",
       schedules: "Расписания",
+      board: "Доска",
     },
     worktreeSetup: {
       title: "Настроить скрипты worktree",
@@ -1176,6 +1247,8 @@ export const ru: TranslationResources = {
         pin: "Закрепить вверху",
         unpin: "Открепить",
         archive: "Архивировать",
+        archiveConfirm: "Архивировать",
+        archiveCancel: "Отмена",
         archiveWorkspace: "Архивировать рабочее пространство",
         hideFromSidebar: "Скрыть на боковой панели",
         archiving: "Архивирование...",
@@ -1209,6 +1282,7 @@ export const ru: TranslationResources = {
     isolation: {
       local: "Локально",
       worktree: "Новый worktree",
+      existingWorktree: "Существующий worktree",
       label: "Изоляция",
     },
     fields: {
@@ -1222,11 +1296,13 @@ export const ru: TranslationResources = {
       createWorktreeFailed: "Не удалось создать worktree.",
       composerStateRequired: "Редактор сообщения ещё не готов.",
       selectModel: "Выберите модель",
+      chooseWorktree: "Выберите worktree",
     },
     tooltips: {
       project: "Выберите проект",
       host: "Выберите хост",
       isolation: "Выберите уровень изоляции",
+      existingWorktree: "Выберите существующий worktree",
       startingRef: "Выберите, с чего начать",
       launch: "Выберите, что запустить",
     },
@@ -1237,6 +1313,13 @@ export const ru: TranslationResources = {
       noMatchingRefs: "Нет подходящих веток или PR.",
       searchPlaceholder: "Поиск веток и PR",
       title: "Начать с",
+    },
+    worktreePicker: {
+      title: "Worktree",
+      searchPlaceholder: "Поиск worktree",
+      noWorktrees: "Нет доступных worktree.",
+      inUse: "используется",
+      chooseWorktree: "Выбрать worktree",
     },
     launch: {
       title: "Что запустить",
@@ -1843,6 +1926,10 @@ export const ru: TranslationResources = {
     output: "Выходные данные",
   },
   toolCallGroup: {
+    thinking: {
+      one: "выполнено размышлений: {{count}}",
+      other: "выполнено размышлений: {{count}}",
+    },
     editedFiles: {
       one: "изменён {{count}} файл",
       other: "изменены файлы ({{count}})",
@@ -2027,11 +2114,12 @@ export const ru: TranslationResources = {
       },
       toolCallDetail: {
         label: "Отображение вызовов инструментов",
-        description: "Как вызовы инструментов отображаются на временной шкале",
+        description: "Как вызовы инструментов и размышления отображаются на временной шкале",
         accessibilityLabel: "Выбрать отображение вызовов инструментов ({{value}})",
         options: {
           overview: "Сводка",
           detailed: "Все подробности",
+          drawer: "Сворачивание",
         },
       },
       language: {

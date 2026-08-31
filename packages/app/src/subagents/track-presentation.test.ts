@@ -71,6 +71,29 @@ describe("buildSubagentPillPresentation", () => {
     });
   });
 
+  it("reports a finished managed child as ready to review until its pane is viewed", () => {
+    expect(pill([row({ id: "a", requiresAttention: true })])).toEqual({
+      segments: [{ bucket: "attention", text: "1 ready to review" }],
+      accessibilityLabel: "1 ready to review",
+    });
+  });
+
+  it("counts finished children separately from the ones still working", () => {
+    expect(
+      pill([
+        row({ id: "a", requiresAttention: true }),
+        row({ id: "b", requiresAttention: true }),
+        row({ id: "c", status: "running" }),
+      ]),
+    ).toEqual({
+      segments: [
+        { bucket: "attention", text: "2 ready to review" },
+        { bucket: "running", text: "1 working" },
+      ],
+      accessibilityLabel: "2 ready to review, 1 working",
+    });
+  });
+
   it("names what it opens once every child is done", () => {
     expect(pill([row({ id: "a" }), row({ id: "b" })])).toEqual({
       segments: [{ bucket: null, text: "2 subagents" }],
@@ -193,11 +216,15 @@ describe("buildSubagentRowPresentationData", () => {
     );
   });
 
-  it("ignores requiresAttention on the source row when computing the bucket", () => {
+  it("maps a finished managed row to the attention bucket so callers render the review dot", () => {
     expect(
       buildSubagentRowPresentationData(row({ id: "a", status: "idle", requiresAttention: true }))
         .statusBucket,
-    ).toBe("done");
+    ).toBe("attention");
+  });
+
+  it("leaves managed rows without a provider terminal status", () => {
+    expect(buildSubagentRowPresentationData(row({ id: "a" })).terminalStatus).toBeUndefined();
   });
 });
 
@@ -212,7 +239,7 @@ describe("buildSubagentRowPresentationData for provider rows", () => {
       description: overrides.description ?? null,
       subtitle: overrides.subtitle ?? null,
       status: overrides.status ?? "running",
-      requiresAttention: false,
+      requiresAttention: overrides.requiresAttention ?? false,
       createdAt: overrides.createdAt ?? new Date("2026-07-26T00:00:00.000Z"),
     };
   }
@@ -248,6 +275,36 @@ describe("buildSubagentRowPresentationData for provider rows", () => {
       providerRow({ title: null, description: null }),
     );
     expect(presentation.titleState).toBe("loading");
+  });
+
+  it("maps a completed provider row to done with a completed terminal status", () => {
+    const presentation = buildSubagentRowPresentationData(providerRow({ status: "completed" }));
+    expect(presentation.statusBucket).toBe("done");
+    expect(presentation.terminalStatus).toBe("completed");
+  });
+
+  it("marks a canceled provider row as canceled so callers keep it unmarked", () => {
+    const presentation = buildSubagentRowPresentationData(providerRow({ status: "canceled" }));
+    expect(presentation.statusBucket).toBe("done");
+    expect(presentation.terminalStatus).toBe("canceled");
+  });
+
+  it("maps a failed provider row to the failed bucket with no terminal status", () => {
+    const presentation = buildSubagentRowPresentationData(
+      providerRow({ status: "failed", requiresAttention: true }),
+    );
+    expect(presentation.statusBucket).toBe("failed");
+    expect(presentation.terminalStatus).toBeUndefined();
+  });
+
+  it("keeps a failed provider row in the failed bucket regardless of attention", () => {
+    expect(buildSubagentRowPresentationData(providerRow({ status: "failed" })).statusBucket).toBe(
+      "failed",
+    );
+  });
+
+  it("leaves a running provider row without a terminal status", () => {
+    expect(buildSubagentRowPresentationData(providerRow()).terminalStatus).toBeUndefined();
   });
 
   it("leaves managed subagent rows with no subtitle", () => {

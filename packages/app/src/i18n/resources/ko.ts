@@ -158,6 +158,35 @@ export const ko: TranslationResources = {
       archiveAgent: "현재 에이전트 보관",
       freshDraft: "이 에이전트를 보관하고 새 초안을 시작합니다",
     },
+    quickCommands: {
+      trigger: "빠른 명령",
+      empty: "아직 빠른 명령이 없습니다",
+      sectionProject: "이 프로젝트",
+      sectionGlobal: "전역",
+      newCommand: "새 빠른 명령",
+      manage: "빠른 명령 관리",
+      sheetTitle: "빠른 명령",
+      editCommand: "빠른 명령 편집",
+      add: "명령 추가",
+      save: "저장",
+      delete: "삭제",
+      deleteTitle: "빠른 명령 삭제",
+      deleteMessage: '"{{label}}"이(가) 영구적으로 삭제됩니다.',
+      emptyManage:
+        "아직 빠른 명령이 없습니다. 추가하면 프리셋 프롬프트를 한 번의 클릭으로 삽입할 수 있습니다.",
+      labelLabel: "라벨",
+      labelPlaceholder: "빠른 명령 메뉴에 표시됩니다",
+      promptLabel: "프롬프트",
+      promptPlaceholder: "입력창에 삽입될 텍스트",
+      scopeLabel: "사용 범위",
+      scopeProject: "이 프로젝트",
+      scopeGlobal: "모든 프로젝트",
+      scopeProjectHint: "{{project}}에서만 사용할 수 있습니다",
+      scopeProjectFallback: "이 프로젝트",
+      scopeGlobalHint: "모든 프로젝트에서 사용할 수 있습니다",
+      labelRequired: "라벨을 입력하세요",
+      promptRequired: "프롬프트를 입력하세요",
+    },
     github: {
       searching: "검색 중...",
       noResults: "결과가 없습니다.",
@@ -346,6 +375,19 @@ export const ko: TranslationResources = {
         added: "추가됨",
         started: "시작됨",
         completed: "완료됨",
+        addedTasks: {
+          one: "작업 {{count}}개 추가됨",
+          other: "작업 {{count}}개 추가됨",
+        },
+        startedTasks: {
+          one: "작업 {{count}}개 시작됨",
+          other: "작업 {{count}}개 시작됨",
+        },
+        completedTasks: {
+          one: "작업 {{count}}개 완료됨",
+          other: "작업 {{count}}개 완료됨",
+        },
+        batchSeparator: " · ",
       },
     },
     compaction: {
@@ -354,6 +396,11 @@ export const ko: TranslationResources = {
       manual: "컨텍스트가 수동으로 압축되었습니다",
       withTokens: "컨텍스트가 압축되었습니다 ({{tokens}}K 토큰)",
       completed: "컨텍스트가 압축되었습니다",
+    },
+    turn: {
+      openArtifact: "{{name}} 열기",
+      filesChanged_one: "{{count}}개 파일 변경됨",
+      filesChanged_other: "{{count}}개 파일 변경됨",
     },
   },
   importSession: {
@@ -988,6 +1035,27 @@ export const ko: TranslationResources = {
       },
     },
   },
+  workspaceStatus: {
+    moveTitle: "상태로 이동",
+    clear: "상태 지우기",
+    updateHost: "상태를 할당하려면 이 호스트를 업데이트하세요.",
+    board: {
+      title: "워크스페이스 보드",
+      empty: "아직 워크스페이스가 없습니다. 하나 만든 후 레인으로 드래그하세요.",
+      emptyLane: "아직 없음",
+    },
+    manage: {
+      title: "열 관리",
+      add: "열 추가",
+      addTitle: "새 열",
+      namePlaceholder: "열 이름",
+      renameTitle: "열 이름 바꾸기",
+      moveLeft: "왼쪽으로 이동",
+      moveRight: "오른쪽으로 이동",
+      remove: "열 삭제",
+      done: "완료",
+    },
+  },
   workspaceLabels: {
     title: "레이블",
     unlabelled: "레이블 없음",
@@ -1039,6 +1107,7 @@ export const ko: TranslationResources = {
         project: "프로젝트",
         status: "상태",
         labels: "레이블",
+        userStatus: "보드 상태",
       },
       titleSource: {
         label: "제목",
@@ -1054,6 +1123,7 @@ export const ko: TranslationResources = {
         checks: "검사",
         services: "서비스",
         labels: "레이블",
+        status: "상태",
         diff: "Diff 통계",
         timestamp: "마지막 활동",
       },
@@ -1106,6 +1176,7 @@ export const ko: TranslationResources = {
     sections: {
       sessions: "기록",
       schedules: "일정",
+      board: "보드",
     },
     worktreeSetup: {
       title: "워크트리 스크립트 설정",
@@ -1167,6 +1238,8 @@ export const ko: TranslationResources = {
         pin: "상단에 고정",
         unpin: "고정 해제",
         archive: "보관",
+        archiveConfirm: "보관",
+        archiveCancel: "취소",
         archiveWorkspace: "워크스페이스 보관",
         hideFromSidebar: "사이드바에서 숨기기",
         archiving: "보관하는 중...",
@@ -1200,6 +1273,7 @@ export const ko: TranslationResources = {
     isolation: {
       local: "로컬",
       worktree: "새 워크트리",
+      existingWorktree: "기존 워크트리",
       label: "격리",
     },
     fields: {
@@ -1213,11 +1287,13 @@ export const ko: TranslationResources = {
       createWorktreeFailed: "워크트리를 생성하지 못했습니다",
       composerStateRequired: "작성기 상태가 필요합니다",
       selectModel: "모델을 선택하세요",
+      chooseWorktree: "워크트리를 선택하세요",
     },
     tooltips: {
       project: "Choose the project",
       host: "Choose the host",
       isolation: "Choose the isolation level",
+      existingWorktree: "기존 워크트리를 선택하세요",
       startingRef: "시작 위치를 선택하세요",
       launch: "Choose what to launch",
     },
@@ -1228,6 +1304,13 @@ export const ko: TranslationResources = {
       noMatchingRefs: "일치하는 ref가 없습니다.",
       searchPlaceholder: "브랜치와 PR 검색",
       title: "시작 위치",
+    },
+    worktreePicker: {
+      title: "워크트리",
+      searchPlaceholder: "워크트리 검색",
+      noWorktrees: "사용 가능한 워크트리가 없습니다.",
+      inUse: "사용 중",
+      chooseWorktree: "워크트리 선택",
     },
     launch: {
       title: "What to launch",
@@ -1822,6 +1905,10 @@ export const ko: TranslationResources = {
     output: "출력",
   },
   toolCallGroup: {
+    thinking: {
+      one: "생각 {{count}}회",
+      other: "생각 {{count}}회",
+    },
     editedFiles: {
       one: "{{count}} 파일을 편집했습니다.",
       other: "{{count}} 파일을 편집했습니다.",
@@ -2004,11 +2091,12 @@ export const ko: TranslationResources = {
       },
       toolCallDetail: {
         label: "도구 호출 표시",
-        description: "타임라인에 도구 호출이 표시되는 방식",
+        description: "타임라인에 도구 호출과 생각이 표시되는 방식",
         accessibilityLabel: "도구 호출 표시 선택({{value}})",
         options: {
           overview: "요약",
           detailed: "전체 세부정보",
+          drawer: "서랍",
         },
       },
       language: {

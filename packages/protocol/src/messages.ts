@@ -43,6 +43,18 @@ import {
   ScheduleUpdateResponseSchema,
 } from "./schedule/rpc-schemas.js";
 import {
+  TaskListRequestSchema,
+  TaskInspectRequestSchema,
+  TaskResolveGateRequestSchema,
+  TaskAnswerQuestionRequestSchema,
+  TaskQuestionsRequestSchema,
+  TaskListResponseSchema,
+  TaskInspectResponseSchema,
+  TaskResolveGateResponseSchema,
+  TaskAnswerQuestionResponseSchema,
+  TaskQuestionsResponseSchema,
+} from "./tasks/rpc-schemas.js";
+import {
   LoopRunRequestSchema,
   LoopListRequestSchema,
   LoopInspectRequestSchema,
@@ -996,6 +1008,15 @@ export const WorkspacePinSetRequestSchema = z.object({
   type: z.literal("workspace.pin.set.request"),
   workspaceId: z.string(),
   pinned: z.boolean(),
+  requestId: z.string(),
+});
+
+export const WorkspaceUserStatusSetRequestSchema = z.object({
+  type: z.literal("workspace.user-status.set.request"),
+  workspaceId: z.string(),
+  // The status id from the user's status catalog. Null clears the assignment;
+  // an id the catalog no longer defines resolves to the default status at read time.
+  userStatus: z.string().nullable(),
   requestId: z.string(),
 });
 
@@ -1992,6 +2013,19 @@ export const WorkspacePinSetResponsePayloadSchema = z.object({
 export const WorkspacePinSetResponseSchema = z.object({
   type: z.literal("workspace.pin.set.response"),
   payload: WorkspacePinSetResponsePayloadSchema,
+});
+
+export const WorkspaceUserStatusSetResponsePayloadSchema = z.object({
+  requestId: z.string(),
+  workspaceId: z.string(),
+  accepted: z.boolean(),
+  userStatus: z.string().nullable(),
+  error: z.string().nullable(),
+});
+
+export const WorkspaceUserStatusSetResponseSchema = z.object({
+  type: z.literal("workspace.user-status.set.response"),
+  payload: WorkspaceUserStatusSetResponsePayloadSchema,
 });
 
 export const WorkspaceRecoveryStateSchema = z.discriminatedUnion("kind", [
@@ -3016,6 +3050,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   ProjectRemoveRequestSchema,
   WorkspaceTitleSetRequestSchema,
   WorkspacePinSetRequestSchema,
+  WorkspaceUserStatusSetRequestSchema,
   WorkspaceLabelListRequestSchema,
   WorkspaceLabelAssignmentSetRequestSchema,
   WorkspaceLabelUpdateRequestSchema,
@@ -3182,6 +3217,11 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   ScheduleDeleteRequestSchema,
   ScheduleRunOnceRequestSchema,
   ScheduleUpdateRequestSchema,
+  TaskListRequestSchema,
+  TaskInspectRequestSchema,
+  TaskResolveGateRequestSchema,
+  TaskAnswerQuestionRequestSchema,
+  TaskQuestionsRequestSchema,
   LoopRunRequestSchema,
   LoopListRequestSchema,
   LoopInspectRequestSchema,
@@ -3362,6 +3402,8 @@ export const ServerInfoStatusPayloadSchema = z
         directorySync: z.boolean().optional(),
         // COMPAT(workspaceLabels): added in v0.5.0, remove after 2027-08-14.
         workspaceLabels: z.boolean().optional(),
+        // COMPAT(workspaceUserStatus): added in v0.5.x, remove after 2027-08-14.
+        workspaceUserStatus: z.boolean().optional(),
         // COMPAT(checkoutForgeSetAutoMerge): added in v0.2.0-beta.1. Remove the
         // feature gate and checkoutGithubSetAutoMerge fallback after 2027-01-17
         // once the supported daemon floor is >= v0.2.0.
@@ -3792,6 +3834,11 @@ export const WorkspaceDescriptorPayloadSchema = z
     pinnedAt: z.string().nullable().optional(),
     // COMPAT(workspaceLabels): added in v0.5.0, remove optional after 2027-08-14.
     labels: z.array(z.string()).optional(),
+    // COMPAT(workspaceUserStatus): added in v0.5.x, remove optional after 2027-08-14.
+    // The user-assigned workflow status (board column). Orthogonal to the derived
+    // `status` bucket below: that one reflects live agent activity, this one is a
+    // label the user placed. Null/absent means unassigned.
+    userStatus: z.string().nullable().optional(),
     archivingAt: z.string().nullable().optional().default(null),
     status: WorkspaceStateBucketSchema,
     // Best-effort workspace status entry timestamp. Old daemons omit the
@@ -6409,6 +6456,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ProjectRemoveResponseSchema,
   WorkspaceTitleSetResponseSchema,
   WorkspacePinSetResponseSchema,
+  WorkspaceUserStatusSetResponseSchema,
   WorkspaceRecoveryInspectResponseSchema,
   WorkspaceRecoveryRestoreResponseSchema,
   WaitForFinishResponseMessageSchema,
@@ -6499,6 +6547,11 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ScheduleDeleteResponseSchema,
   ScheduleRunOnceResponseSchema,
   ScheduleUpdateResponseSchema,
+  TaskListResponseSchema,
+  TaskInspectResponseSchema,
+  TaskResolveGateResponseSchema,
+  TaskAnswerQuestionResponseSchema,
+  TaskQuestionsResponseSchema,
   LoopRunResponseSchema,
   LoopListResponseSchema,
   LoopInspectResponseSchema,
@@ -6608,6 +6661,10 @@ export type WorkspaceTitleSetResponsePayload = z.infer<
 >;
 export type WorkspacePinSetResponse = z.infer<typeof WorkspacePinSetResponseSchema>;
 export type WorkspacePinSetResponsePayload = z.infer<typeof WorkspacePinSetResponsePayloadSchema>;
+export type WorkspaceUserStatusSetResponse = z.infer<typeof WorkspaceUserStatusSetResponseSchema>;
+export type WorkspaceUserStatusSetResponsePayload = z.infer<
+  typeof WorkspaceUserStatusSetResponsePayloadSchema
+>;
 export type WorkspaceRecoveryState = z.infer<typeof WorkspaceRecoveryStateSchema>;
 export type WorkspaceRecoveryInspectResponse = z.infer<
   typeof WorkspaceRecoveryInspectResponseSchema
@@ -6672,6 +6729,11 @@ export type ScheduleResumeResponse = z.infer<typeof ScheduleResumeResponseSchema
 export type ScheduleDeleteResponse = z.infer<typeof ScheduleDeleteResponseSchema>;
 export type ScheduleRunOnceResponse = z.infer<typeof ScheduleRunOnceResponseSchema>;
 export type ScheduleUpdateResponse = z.infer<typeof ScheduleUpdateResponseSchema>;
+export type TaskListResponse = z.infer<typeof TaskListResponseSchema>;
+export type TaskInspectResponse = z.infer<typeof TaskInspectResponseSchema>;
+export type TaskResolveGateResponse = z.infer<typeof TaskResolveGateResponseSchema>;
+export type TaskAnswerQuestionResponse = z.infer<typeof TaskAnswerQuestionResponseSchema>;
+export type TaskQuestionsResponse = z.infer<typeof TaskQuestionsResponseSchema>;
 export type LoopRunResponse = z.infer<typeof LoopRunResponseSchema>;
 export type LoopListResponse = z.infer<typeof LoopListResponseSchema>;
 export type LoopInspectResponse = z.infer<typeof LoopInspectResponseSchema>;
@@ -6754,6 +6816,7 @@ export type ProjectIconSetRequest = z.infer<typeof ProjectIconSetRequestSchema>;
 export type ProjectRemoveRequest = z.infer<typeof ProjectRemoveRequestSchema>;
 export type WorkspaceTitleSetRequest = z.infer<typeof WorkspaceTitleSetRequestSchema>;
 export type WorkspacePinSetRequest = z.infer<typeof WorkspacePinSetRequestSchema>;
+export type WorkspaceUserStatusSetRequest = z.infer<typeof WorkspaceUserStatusSetRequestSchema>;
 export type WorkspaceRecoveryInspectRequest = z.infer<typeof WorkspaceRecoveryInspectRequestSchema>;
 export type WorkspaceRecoveryRestoreRequest = z.infer<typeof WorkspaceRecoveryRestoreRequestSchema>;
 export type SetAgentModeRequestMessage = z.infer<typeof SetAgentModeRequestMessageSchema>;

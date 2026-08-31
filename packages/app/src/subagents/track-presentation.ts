@@ -1,5 +1,6 @@
 import type { TFunction } from "i18next";
 import type { ComposerTrackPillSegment } from "@/composer/tracks";
+import type { PanelTerminalStatus } from "@/panels/panel-registry";
 import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
 import { deriveSidebarStateBucket, STATUS_BUCKET_ORDER } from "@/utils/sidebar-agent-state";
 import type { SubagentRow } from "./select";
@@ -11,6 +12,11 @@ function presentationStatus(row: SubagentRow) {
   return providerSubagentLifecycleStatus(row.status);
 }
 
+function presentationTerminalStatus(row: SubagentRow): PanelTerminalStatus | undefined {
+  if (row.kind !== "provider") return undefined;
+  return row.status === "completed" || row.status === "canceled" ? row.status : undefined;
+}
+
 export interface SubagentRowPresentationData {
   key: string;
   kind: "agent";
@@ -18,6 +24,7 @@ export interface SubagentRowPresentationData {
   subtitle: string;
   titleState: "ready" | "loading";
   statusBucket: SidebarStateBucket | null;
+  terminalStatus: PanelTerminalStatus | undefined;
 }
 
 export function buildSubagentRowPresentationData(row: SubagentRow): SubagentRowPresentationData {
@@ -35,10 +42,15 @@ export function buildSubagentRowPresentationData(row: SubagentRow): SubagentRowP
     label: label ?? "",
     subtitle: subtitle ?? "",
     titleState: label ? "ready" : "loading",
+    // A managed subagent that finished carries server-side attention until its pane is viewed, so
+    // the row reports it here and the pill counts it as ready to review. Provider rows derive
+    // requiresAttention from failure alone, which the error-status branch above already decides,
+    // so passing it through changes nothing for them.
     statusBucket: deriveSidebarStateBucket({
       status,
-      requiresAttention: false,
+      requiresAttention: row.requiresAttention,
     }),
+    terminalStatus: presentationTerminalStatus(row),
   };
 }
 
@@ -69,9 +81,10 @@ export interface SubagentPillPresentation {
  * "1 failed" over a child that is still working says the fan-out has stopped. Every state present
  * gets its own mark and its own count, in the order the sidebar's status groups list them.
  *
- * It stays one line because subagent rows only ever reach three states — see
- * `buildSubagentRowPresentationData`, which reports no attention of its own — so the pill is two
- * segments at worst, and falls back to naming what it opens once nothing is happening.
+ * It stays one line because subagent rows only ever reach failed, ready-to-review, and working —
+ * see `buildSubagentRowPresentationData`, which reports no pending permissions of its own — so
+ * the pill is three segments at worst, and falls back to naming what it opens once nothing is
+ * happening.
  */
 export function buildSubagentPillPresentation(
   t: TFunction,

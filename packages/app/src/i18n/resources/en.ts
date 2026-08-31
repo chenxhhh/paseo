@@ -155,6 +155,34 @@ export const en = {
       archiveAgent: "Archive the current agent",
       freshDraft: "Archive this agent and start a fresh draft",
     },
+    quickCommands: {
+      trigger: "Quick commands",
+      empty: "No quick commands yet",
+      sectionProject: "This project",
+      sectionGlobal: "Global",
+      newCommand: "New quick command",
+      manage: "Manage quick commands",
+      sheetTitle: "Quick commands",
+      editCommand: "Edit quick command",
+      add: "Add command",
+      save: "Save",
+      delete: "Delete",
+      deleteTitle: "Delete quick command",
+      deleteMessage: '"{{label}}" will be removed permanently.',
+      emptyManage: "No quick commands yet. Add one to insert a preset prompt with one click.",
+      labelLabel: "Label",
+      labelPlaceholder: "Shown in the quick commands menu",
+      promptLabel: "Prompt",
+      promptPlaceholder: "Text inserted into the message box",
+      scopeLabel: "Availability",
+      scopeProject: "This project",
+      scopeGlobal: "All projects",
+      scopeProjectHint: "Only available in {{project}}",
+      scopeProjectFallback: "this project",
+      scopeGlobalHint: "Available in every project",
+      labelRequired: "Label is required",
+      promptRequired: "Prompt is required",
+    },
     github: {
       searching: "Searching...",
       noResults: "No results found.",
@@ -343,6 +371,19 @@ export const en = {
         added: "Added",
         started: "Started",
         completed: "Completed",
+        addedTasks: {
+          one: "Added {{count}} task",
+          other: "Added {{count}} tasks",
+        },
+        startedTasks: {
+          one: "Started {{count}} task",
+          other: "Started {{count}} tasks",
+        },
+        completedTasks: {
+          one: "Completed {{count}} task",
+          other: "Completed {{count}} tasks",
+        },
+        batchSeparator: " · ",
       },
     },
     compaction: {
@@ -351,6 +392,11 @@ export const en = {
       manual: "Context manually compacted",
       withTokens: "Context compacted ({{tokens}}K tokens)",
       completed: "Context compacted",
+    },
+    turn: {
+      openArtifact: "Open {{name}}",
+      filesChanged_one: "{{count}} file changed",
+      filesChanged_other: "{{count}} files changed",
     },
   },
   importSession: {
@@ -990,6 +1036,27 @@ export const en = {
       },
     },
   },
+  workspaceStatus: {
+    moveTitle: "Move to status",
+    clear: "Clear status",
+    updateHost: "Update this host to assign statuses.",
+    board: {
+      title: "Workspace board",
+      empty: "No workspaces yet. Create one, then drag it into a lane.",
+      emptyLane: "Nothing here yet",
+    },
+    manage: {
+      title: "Manage columns",
+      add: "Add column",
+      addTitle: "New column",
+      namePlaceholder: "Column name",
+      renameTitle: "Rename column",
+      moveLeft: "Move left",
+      moveRight: "Move right",
+      remove: "Remove column",
+      done: "Done",
+    },
+  },
   workspaceLabels: {
     title: "Labels",
     unlabelled: "Unlabelled",
@@ -1041,6 +1108,7 @@ export const en = {
         project: "Project",
         status: "Status",
         labels: "Labels",
+        userStatus: "Board status",
       },
       titleSource: {
         label: "Title",
@@ -1056,6 +1124,7 @@ export const en = {
         checks: "Checks",
         services: "Services",
         labels: "Labels",
+        status: "Status",
         diff: "Diff stats",
         timestamp: "Last activity",
       },
@@ -1108,6 +1177,7 @@ export const en = {
     sections: {
       sessions: "History",
       schedules: "Schedules",
+      board: "Board",
     },
     worktreeSetup: {
       title: "Set up worktree scripts",
@@ -1169,6 +1239,8 @@ export const en = {
         pin: "Pin to top",
         unpin: "Unpin",
         archive: "Archive",
+        archiveConfirm: "Archive",
+        archiveCancel: "Cancel",
         archiveWorkspace: "Archive workspace",
         hideFromSidebar: "Hide from sidebar",
         archiving: "Archiving...",
@@ -1202,6 +1274,7 @@ export const en = {
     isolation: {
       local: "Local",
       worktree: "New worktree",
+      existingWorktree: "Existing worktree",
       label: "Isolation",
     },
     fields: {
@@ -1215,11 +1288,13 @@ export const en = {
       createWorktreeFailed: "Failed to create worktree",
       composerStateRequired: "Composer state is required",
       selectModel: "Select a model",
+      chooseWorktree: "Choose a worktree",
     },
     tooltips: {
       project: "Choose the project",
       host: "Choose the host",
       isolation: "Choose the isolation level",
+      existingWorktree: "Choose an existing worktree",
       startingRef: "Choose where to start from",
       launch: "Choose what to launch",
     },
@@ -1230,6 +1305,13 @@ export const en = {
       noMatchingRefs: "No matching refs.",
       searchPlaceholder: "Search branches and PRs",
       title: "Start from",
+    },
+    worktreePicker: {
+      title: "Worktree",
+      searchPlaceholder: "Search worktrees",
+      noWorktrees: "No worktrees available.",
+      inUse: "in use",
+      chooseWorktree: "Choose worktree",
     },
     launch: {
       title: "What to launch",
@@ -1822,6 +1904,10 @@ export const en = {
     output: "Output",
   },
   toolCallGroup: {
+    thinking: {
+      one: "thought {{count}} time",
+      other: "thought {{count}} times",
+    },
     editedFiles: {
       one: "edited {{count}} file",
       other: "edited {{count}} files",
@@ -2092,11 +2178,12 @@ export const en = {
       },
       toolCallDetail: {
         label: "Tool call display",
-        description: "How tool calls appear in the timeline",
+        description: "How tool calls and thinking appear in the timeline",
         accessibilityLabel: "Select tool call display ({{value}})",
         options: {
           overview: "Summary",
           detailed: "Full detail",
+          drawer: "Drawer",
         },
       },
       language: {

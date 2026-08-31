@@ -28,6 +28,8 @@ interface SchedulesTableProps {
    * upward rather than mounting a second sheet here.
    */
   onEditSchedule: (schedule: AggregatedSchedule) => void;
+  /** The run-history sheet is owned by the screen, so the table delegates too. */
+  onViewRuns: (schedule: AggregatedSchedule) => void;
 }
 
 /**
@@ -36,7 +38,11 @@ interface SchedulesTableProps {
  * their host-scoped mutations (pause/resume/run/delete via the mutations hook +
  * a destructive confirm) and delegate editing upward.
  */
-export function SchedulesTable({ rows, onEditSchedule }: SchedulesTableProps): ReactElement {
+export function SchedulesTable({
+  rows,
+  onEditSchedule,
+  onViewRuns,
+}: SchedulesTableProps): ReactElement {
   return (
     <View style={styles.listContent} testID="schedules-table">
       <View style={settingsStyles.card}>
@@ -46,6 +52,7 @@ export function SchedulesTable({ rows, onEditSchedule }: SchedulesTableProps): R
             row={row}
             isFirst={index === 0}
             onEditSchedule={onEditSchedule}
+            onViewRuns={onViewRuns}
           />
         ))}
       </View>
@@ -66,10 +73,12 @@ function SchedulesTableRow({
   row,
   isFirst,
   onEditSchedule,
+  onViewRuns,
 }: {
   row: ScheduleRowView;
   isFirst: boolean;
   onEditSchedule: (schedule: AggregatedSchedule) => void;
+  onViewRuns: (schedule: AggregatedSchedule) => void;
 }): ReactElement {
   const { schedule } = row;
   const { id, serverId } = schedule;
@@ -98,6 +107,10 @@ function SchedulesTableRow({
   const handleEdit = useCallback(() => {
     onEditSchedule(schedule);
   }, [onEditSchedule, schedule]);
+
+  const handleViewRuns = useCallback(() => {
+    onViewRuns(schedule);
+  }, [onViewRuns, schedule]);
 
   const handlePause = useCallback(() => {
     void runAction("pause", () => mutations.pauseSchedule(id));
@@ -141,6 +154,7 @@ function SchedulesTableRow({
       onPause={handlePause}
       onResume={handleResume}
       onRunNow={handleRunNow}
+      onViewRuns={handleViewRuns}
       onDelete={handleDelete}
     />
   );

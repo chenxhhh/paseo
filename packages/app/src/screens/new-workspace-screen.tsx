@@ -9,7 +9,14 @@ import { StyleSheet, useUnistyles, withUnistyles } from "react-native-unistyles"
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { createNameId } from "mnemonic-id";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, Folder, FolderPlus, GitBranch, GitPullRequest } from "lucide-react-native";
+import {
+  ChevronDown,
+  Folder,
+  FolderGit2,
+  FolderPlus,
+  GitBranch,
+  GitPullRequest,
+} from "lucide-react-native";
 import { Composer } from "@/composer";
 import { FileDropZone } from "@/components/file-drop/file-drop-zone";
 import {
@@ -118,6 +125,7 @@ import {
 } from "./new-workspace-initial-context";
 import { buildNewWorkspaceProjectIconTargets } from "./new-workspace/project-icon-targets";
 import { useNewWorkspaceProjectPicker } from "./new-workspace/project-picker";
+import { useExistingWorktreePicker } from "./new-workspace/use-existing-worktree-picker";
 
 const ThemedFolderPlus = withUnistyles(FolderPlus);
 const foregroundMutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
@@ -188,6 +196,32 @@ function noopClearDraft() {}
 const PROJECT_ICON_FALLBACK_FONT_SIZE = 10;
 const ThemedChevronDown = withUnistyles(ChevronDown);
 const chevronExtraMutedMapping = (theme: Theme) => ({ color: theme.colors.foregroundExtraMuted });
+
+type IsolationMode = "local" | "worktree" | "existing-worktree";
+type PersistedIsolation = "local" | "worktree";
+
+function isolationFromOptionId(optionId: string): IsolationMode {
+  if (optionId === "worktree" || optionId === "existing-worktree") return optionId;
+  return "local";
+}
+
+function IsolationModeIcon({
+  isolation,
+  iconColor,
+  iconSize,
+}: {
+  isolation: IsolationMode;
+  iconColor: string;
+  iconSize: number;
+}): ReactElement {
+  if (isolation === "worktree") {
+    return <GitBranch size={iconSize} color={iconColor} />;
+  }
+  if (isolation === "existing-worktree") {
+    return <FolderGit2 size={iconSize} color={iconColor} />;
+  }
+  return <Folder size={iconSize} color={iconColor} />;
+}
 
 // Every picker chip on this screen shares one chevron so they stay a single
 // visual family. Extra-muted: the chevron is an affordance, not information,
@@ -431,11 +465,11 @@ function IsolationOptionItem({
   const leadingSlot = useMemo(
     () => (
       <View style={styles.rowIconBox}>
-        {optionId === "worktree" ? (
-          <GitBranch size={iconSize} color={iconColor} />
-        ) : (
-          <Folder size={iconSize} color={iconColor} />
-        )}
+        <IsolationModeIcon
+          isolation={isolationFromOptionId(optionId)}
+          iconColor={iconColor}
+          iconSize={iconSize}
+        />
       </View>
     ),
     [optionId, iconSize, iconColor],
@@ -449,6 +483,57 @@ function IsolationOptionItem({
       disabled={disabled}
       onPress={onPress}
       leadingSlot={leadingSlot}
+    />
+  );
+}
+
+function WorktreeOptionItem({
+  optionId,
+  label,
+  description,
+  selected,
+  active,
+  disabled,
+  onPress,
+  trailingLabel,
+  iconColor,
+  iconSize,
+}: {
+  optionId: string;
+  label: string;
+  description: string;
+  selected: boolean;
+  active: boolean;
+  disabled: boolean;
+  onPress: () => void;
+  trailingLabel: string | undefined;
+  iconColor: string;
+  iconSize: number;
+}) {
+  const leadingSlot = useMemo(
+    () => (
+      <View style={styles.rowIconBox}>
+        <GitBranch size={iconSize} color={iconColor} />
+      </View>
+    ),
+    [iconSize, iconColor],
+  );
+  const trailingSlot = useMemo(
+    () =>
+      trailingLabel ? <Text style={styles.refDivergenceLabel}>{trailingLabel}</Text> : undefined,
+    [trailingLabel],
+  );
+  return (
+    <ComboboxItem
+      testID={`new-workspace-worktree-picker-${optionId}`}
+      label={label}
+      description={description}
+      selected={selected}
+      active={active}
+      disabled={disabled}
+      onPress={onPress}
+      leadingSlot={leadingSlot}
+      trailingSlot={trailingSlot}
     />
   );
 }
@@ -635,7 +720,7 @@ function IsolationPickerTrigger({
   onPress: () => void;
   disabled: boolean;
   badgePressableStyle: React.ComponentProps<typeof Pressable>["style"];
-  isolation: "local" | "worktree";
+  isolation: IsolationMode;
   label: string;
   tooltipLabel: string;
   iconColor: string;
@@ -655,11 +740,54 @@ function IsolationPickerTrigger({
           accessibilityLabel="Workspace isolation"
         >
           <View style={styles.badgeIconBox}>
-            {isolation === "worktree" ? (
-              <GitBranch size={iconSize} color={iconColor} />
-            ) : (
-              <Folder size={iconSize} color={iconColor} />
-            )}
+            <IsolationModeIcon isolation={isolation} iconColor={iconColor} iconSize={iconSize} />
+          </View>
+          <Text style={styles.badgeText} numberOfLines={1}>
+            {label}
+          </Text>
+        </ComboboxTrigger>
+      </TooltipTrigger>
+      <TooltipContent side="top" align="center" offset={8}>
+        <Text style={styles.tooltipText}>{tooltipLabel}</Text>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+function WorktreePickerTrigger({
+  pickerAnchorRef,
+  onPress,
+  disabled,
+  badgePressableStyle,
+  label,
+  tooltipLabel,
+  iconColor,
+  iconSize,
+}: {
+  pickerAnchorRef: React.RefObject<View | null>;
+  onPress: () => void;
+  disabled: boolean;
+  badgePressableStyle: React.ComponentProps<typeof Pressable>["style"];
+  label: string;
+  tooltipLabel: string;
+  iconColor: string;
+  iconSize: number;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild triggerRefProp="ref">
+        <ComboboxTrigger
+          chevron={metaChevron}
+          ref={pickerAnchorRef}
+          testID="new-workspace-worktree-picker-trigger"
+          onPress={onPress}
+          disabled={disabled}
+          style={badgePressableStyle}
+          accessibilityRole="button"
+          accessibilityLabel={label}
+        >
+          <View style={styles.badgeIconBox}>
+            <GitBranch size={iconSize} color={iconColor} />
           </View>
           <Text style={styles.badgeText} numberOfLines={1}>
             {label}
@@ -680,11 +808,24 @@ function FormRow({ children }: { children: React.ReactNode }) {
 }
 
 interface WorkspaceIsolationState {
-  isolation: "local" | "worktree";
-  setIsolation: (value: "local" | "worktree") => void;
-  effectiveIsolation: "local" | "worktree";
+  isolation: IsolationMode;
+  setIsolation: (value: IsolationMode) => void;
+  effectiveIsolation: IsolationMode;
   canCreateWorktree: boolean;
   showRefPicker: boolean;
+}
+
+function resolveEffectiveIsolation(input: {
+  isolation: IsolationMode;
+  canCreateWorktree: boolean;
+}): IsolationMode {
+  if (!input.canCreateWorktree) return "local";
+  return input.isolation;
+}
+
+function persistIsolationPreference(value: IsolationMode): PersistedIsolation | null {
+  if (value === "existing-worktree") return null;
+  return value;
 }
 
 // Preserve the user's worktree choice while route metadata is provisional. Once
@@ -697,16 +838,23 @@ function useWorkspaceIsolation(input: {
   // The last isolation choice is remembered alongside the other New Workspace
   // form preferences (provider, model, mode). A manual in-screen pick overrides
   // the remembered default until the screen remounts.
+  // Existing-worktree is screen-local only: FormPreferences.isolation is a
+  // two-value enum shared with the schedule form, so persisting a third value
+  // would wipe stored preferences on parse.
   const { preferences, updatePreferences } = useFormPreferences();
-  const [manualIsolation, setManualIsolation] = useState<"local" | "worktree" | null>(null);
+  const [manualIsolation, setManualIsolation] = useState<IsolationMode | null>(null);
   const isolation = manualIsolation ?? preferences.isolation ?? "local";
   const canCreateWorktree = supportsMultiplicity && worktreeSupport !== "unsupported";
-  const isWorktree = isolation === "worktree" && canCreateWorktree;
+  const effectiveIsolation = resolveEffectiveIsolation({ isolation, canCreateWorktree });
+  const isWorktree = effectiveIsolation === "worktree";
 
   const setIsolation = useCallback(
-    (value: "local" | "worktree") => {
+    (value: IsolationMode) => {
       setManualIsolation(value);
-      void updatePreferences({ isolation: value });
+      const persisted = persistIsolationPreference(value);
+      if (persisted) {
+        void updatePreferences({ isolation: persisted });
+      }
     },
     [updatePreferences],
   );
@@ -714,16 +862,29 @@ function useWorkspaceIsolation(input: {
   return {
     isolation,
     setIsolation,
-    effectiveIsolation: isWorktree ? "worktree" : "local",
+    effectiveIsolation,
     canCreateWorktree,
     showRefPicker: !supportsMultiplicity || isWorktree,
   };
 }
 
-function isolationLabel(t: TFunction, isolation: "local" | "worktree"): string {
-  return isolation === "worktree"
-    ? t("newWorkspace.isolation.worktree")
-    : t("newWorkspace.isolation.local");
+function isolationLabel(t: TFunction, isolation: IsolationMode): string {
+  if (isolation === "worktree") return t("newWorkspace.isolation.worktree");
+  if (isolation === "existing-worktree") return t("newWorkspace.isolation.existingWorktree");
+  return t("newWorkspace.isolation.local");
+}
+
+function buildIsolationOptions(input: {
+  canCreateWorktree: boolean;
+  t: TFunction;
+}): ComboboxOptionType[] {
+  const localOption = { id: "local", label: isolationLabel(input.t, "local") };
+  if (!input.canCreateWorktree) return [localOption];
+  return [
+    localOption,
+    { id: "worktree", label: isolationLabel(input.t, "worktree") },
+    { id: "existing-worktree", label: isolationLabel(input.t, "existing-worktree") },
+  ];
 }
 
 function getContentStyle(input: { isCompact: boolean; insetBottom: number }) {
@@ -796,9 +957,10 @@ async function createAndMergeWorkspace(input: {
 
 async function createMultiplicityWorkspace(input: {
   client: NonNullable<ReturnType<typeof useHostRuntimeClient>>;
-  isolation: "local" | "worktree";
+  isolation: IsolationMode;
   project: HostProjectListItem;
   sourceDirectory: string;
+  existingWorktreePath: string | null;
   checkoutRequest: PickerCheckoutRequest | undefined;
   withInitialAgent: boolean;
   prompt: string;
@@ -809,28 +971,23 @@ async function createMultiplicityWorkspace(input: {
   ) => void;
   serverId: string;
   createFailedMessage: string;
+  chooseWorktreeMessage: string;
 }): Promise<ReturnType<typeof normalizeWorkspaceDescriptor>> {
   const projectId = getHostProjectId(input.project, input.serverId);
   if (!projectId) throw new Error("Project is not available on the selected host");
-  const isWorktree = input.isolation === "worktree";
   const firstAgentContext = buildFirstAgentContext({
     prompt: input.prompt,
     attachments: input.attachments,
   });
   const payload = await input.client.createWorkspace({
-    source: isWorktree
-      ? {
-          kind: "worktree",
-          cwd: input.sourceDirectory,
-          projectId,
-          worktreeSlug: createNameId(),
-          ...input.checkoutRequest,
-        }
-      : {
-          kind: "directory",
-          path: input.sourceDirectory,
-          projectId,
-        },
+    source: multiplicityWorkspaceSource({
+      isolation: input.isolation,
+      sourceDirectory: input.sourceDirectory,
+      existingWorktreePath: input.existingWorktreePath,
+      projectId,
+      checkoutRequest: input.checkoutRequest,
+      chooseWorktreeMessage: input.chooseWorktreeMessage,
+    }),
     ...(firstAgentContext ? { firstAgentContext } : {}),
   });
   if (payload.error || !payload.workspace) {
@@ -842,6 +999,54 @@ async function createMultiplicityWorkspace(input: {
     : normalizedWorkspace;
   input.mergeWorkspaces(input.serverId, [workspaceForInitialMerge]);
   return normalizedWorkspace;
+}
+
+function multiplicityWorkspaceSource(input: {
+  isolation: IsolationMode;
+  sourceDirectory: string;
+  existingWorktreePath: string | null;
+  projectId: string;
+  checkoutRequest: PickerCheckoutRequest | undefined;
+  chooseWorktreeMessage: string;
+}) {
+  if (input.isolation === "worktree") {
+    return {
+      kind: "worktree" as const,
+      cwd: input.sourceDirectory,
+      projectId: input.projectId,
+      worktreeSlug: createNameId(),
+      ...input.checkoutRequest,
+    };
+  }
+  if (input.isolation === "existing-worktree") {
+    if (!input.existingWorktreePath) {
+      throw new Error(input.chooseWorktreeMessage);
+    }
+    return {
+      kind: "directory" as const,
+      path: input.existingWorktreePath,
+      projectId: input.projectId,
+    };
+  }
+  return {
+    kind: "directory" as const,
+    path: input.sourceDirectory,
+    projectId: input.projectId,
+  };
+}
+
+function existingWorktreePathForCreate(input: {
+  isolation: IsolationMode;
+  selectedWorktree: { worktreePath: string } | null;
+  chooseWorktreeMessage: string;
+}): string | null {
+  if (input.isolation !== "existing-worktree") {
+    return input.selectedWorktree?.worktreePath ?? null;
+  }
+  if (!input.selectedWorktree) {
+    throw new Error(input.chooseWorktreeMessage);
+  }
+  return input.selectedWorktree.worktreePath;
 }
 
 interface CreateChatAgentInput {
@@ -1284,6 +1489,24 @@ function useNewWorkspaceInitialContext({
   };
 }
 
+function resolveNewWorkspaceWorktreeSupport(input: {
+  project: HostProjectListItem | null;
+  serverId: string;
+}): "supported" | "unsupported" | "unknown" {
+  if (!input.project) return "unsupported";
+  return getWorktreeSupportForHostProject({ project: input.project, serverId: input.serverId });
+}
+
+function resetSelectionIfTargetChanged(input: {
+  currentId: string;
+  nextId: string;
+  reset: () => void;
+}): void {
+  if (input.currentId !== input.nextId) {
+    input.reset();
+  }
+}
+
 type RefPickerRenderOption = NonNullable<ComboboxProps["renderOption"]>;
 
 interface FormPickerControl {
@@ -1312,11 +1535,21 @@ interface NewWorkspaceFormStackInput {
     onSelect: (id: string) => void;
   };
   isolation: FormPickerControl & {
-    effectiveIsolation: "local" | "worktree";
+    effectiveIsolation: IsolationMode;
     options: ComboboxOptionType[];
     onSelect: (id: string) => void;
     renderOption: RefPickerRenderOption;
     canCreateWorktree: boolean;
+  };
+  worktree: FormPickerControl & {
+    show: boolean;
+    selectedSourceDirectory: string | null;
+    triggerLabel: string;
+    options: ComboboxOptionType[];
+    selectedOptionId: string;
+    onSelect: (id: string) => void;
+    emptyText: string;
+    renderOption: RefPickerRenderOption;
   };
   base: FormPickerControl & {
     selectedSourceDirectory: string | null;
@@ -1339,10 +1572,84 @@ interface NewWorkspaceFormStackInput {
   };
 }
 
+function renderSecondaryPickerControl(input: {
+  worktree: NewWorkspaceFormStackInput["worktree"];
+  base: NewWorkspaceFormStackInput["base"];
+  isPending: boolean;
+  desktopControlStyle: React.ComponentProps<typeof View>["style"];
+  badgePressableStyle: React.ComponentProps<typeof Pressable>["style"];
+  theme: Theme;
+  t: TFunction;
+}): ReactElement | null {
+  const { worktree, base, isPending, desktopControlStyle, badgePressableStyle, theme, t } = input;
+  if (worktree.show) {
+    return (
+      <View style={desktopControlStyle}>
+        <WorktreePickerTrigger
+          pickerAnchorRef={worktree.anchorRef}
+          onPress={worktree.open}
+          disabled={isPending || !worktree.selectedSourceDirectory}
+          badgePressableStyle={badgePressableStyle}
+          label={worktree.triggerLabel}
+          tooltipLabel={t("newWorkspace.tooltips.existingWorktree")}
+          iconColor={theme.colors.foregroundMuted}
+          iconSize={theme.iconSize.sm}
+        />
+        <Combobox
+          options={worktree.options}
+          value={worktree.selectedOptionId}
+          onSelect={worktree.onSelect}
+          searchable
+          searchPlaceholder={t("newWorkspace.worktreePicker.searchPlaceholder")}
+          title={t("newWorkspace.worktreePicker.title")}
+          open={worktree.openState}
+          onOpenChange={worktree.onOpenChange}
+          desktopPlacement="bottom-start"
+          anchorRef={worktree.anchorRef}
+          emptyText={worktree.emptyText}
+          renderOption={worktree.renderOption}
+        />
+      </View>
+    );
+  }
+  if (!base.showRefPicker) return null;
+  return (
+    <View style={desktopControlStyle}>
+      <RefPickerTrigger
+        pickerAnchorRef={base.anchorRef}
+        onPress={base.open}
+        disabled={isPending || !base.selectedSourceDirectory}
+        badgePressableStyle={badgePressableStyle}
+        selectedItem={base.selectedItem}
+        triggerLabel={base.triggerLabel}
+        accessibilityLabel={t("newWorkspace.refPicker.startingRef")}
+        tooltipLabel={t("newWorkspace.tooltips.startingRef")}
+        iconColor={theme.colors.foregroundMuted}
+        iconSize={theme.iconSize.sm}
+      />
+      <Combobox
+        options={base.options}
+        value={base.selectedOptionId}
+        onSelect={base.onSelect}
+        searchable
+        searchPlaceholder={t("newWorkspace.refPicker.searchPlaceholder")}
+        title={t("newWorkspace.refPicker.title")}
+        open={base.openState}
+        onOpenChange={base.onOpenChange}
+        onSearchQueryChange={base.setSearchQuery}
+        desktopPlacement="bottom-start"
+        anchorRef={base.anchorRef}
+        emptyText={base.emptyText}
+        renderOption={base.renderOption}
+      />
+    </View>
+  );
+}
+
 function useNewWorkspaceFormStack(input: NewWorkspaceFormStackInput): ReactElement {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
-  const { isCompact, isPending, project, host, isolation, base, launch } = input;
+  const { isCompact, isPending, project, host, isolation, worktree, base, launch } = input;
 
   const selectedHostLabel =
     host.allHosts.find((h) => h.serverId === host.selectedServerId)?.label ?? "Host";
@@ -1472,37 +1779,15 @@ function useNewWorkspaceFormStack(input: NewWorkspaceFormStackInput): ReactEleme
     </View>
   ) : null;
 
-  const baseControl = base.showRefPicker ? (
-    <View style={desktopControlStyle}>
-      <RefPickerTrigger
-        pickerAnchorRef={base.anchorRef}
-        onPress={base.open}
-        disabled={isPending || !base.selectedSourceDirectory}
-        badgePressableStyle={badgePressableStyle}
-        selectedItem={base.selectedItem}
-        triggerLabel={base.triggerLabel}
-        accessibilityLabel={t("newWorkspace.refPicker.startingRef")}
-        tooltipLabel={t("newWorkspace.tooltips.startingRef")}
-        iconColor={theme.colors.foregroundMuted}
-        iconSize={theme.iconSize.sm}
-      />
-      <Combobox
-        options={base.options}
-        value={base.selectedOptionId}
-        onSelect={base.onSelect}
-        searchable
-        searchPlaceholder={t("newWorkspace.refPicker.searchPlaceholder")}
-        title={t("newWorkspace.refPicker.title")}
-        open={base.openState}
-        onOpenChange={base.onOpenChange}
-        onSearchQueryChange={base.setSearchQuery}
-        desktopPlacement="bottom-start"
-        anchorRef={base.anchorRef}
-        emptyText={base.emptyText}
-        renderOption={base.renderOption}
-      />
-    </View>
-  ) : null;
+  const secondaryControl = renderSecondaryPickerControl({
+    worktree,
+    base,
+    isPending,
+    desktopControlStyle,
+    badgePressableStyle,
+    theme,
+    t,
+  });
 
   const launchControl = (
     <LaunchControl
@@ -1520,18 +1805,18 @@ function useNewWorkspaceFormStack(input: NewWorkspaceFormStackInput): ReactEleme
       <FormRow>{projectControl}</FormRow>
       {hostControl ? <FormRow>{hostControl}</FormRow> : null}
       {isolationControl ? <FormRow>{isolationControl}</FormRow> : null}
-      {baseControl ? <FormRow>{baseControl}</FormRow> : null}
+      {secondaryControl ? <FormRow>{secondaryControl}</FormRow> : null}
       <FormRow>{launchControl}</FormRow>
       {/* Keep fixed stack height without separating the visible controls. */}
       {isolationControl ? null : <View style={styles.baseSpacer} />}
-      {baseControl ? null : <View style={styles.baseSpacer} />}
+      {secondaryControl ? null : <View style={styles.baseSpacer} />}
     </View>
   ) : (
     <View testID="new-workspace-ref-picker-row" style={styles.formStackDesktop}>
       {projectControl}
       {hostControl}
       {isolationControl}
-      {baseControl}
+      {secondaryControl}
       <View style={styles.launchSpacer} />
       {launchControl}
     </View>
@@ -1709,15 +1994,26 @@ export function NewWorkspaceScreen({
     cwd: selectedSourceDirectory ?? "",
   });
 
-  const worktreeSupport = selectedProject
-    ? getWorktreeSupportForHostProject({ project: selectedProject, serverId: selectedServerId })
-    : "unsupported";
+  const worktreeSupport = resolveNewWorkspaceWorktreeSupport({
+    project: selectedProject,
+    serverId: selectedServerId,
+  });
   const isPending = isNewWorkspacePending({ pendingAction, isDraftHandoffActive });
   const { effectiveIsolation, setIsolation, canCreateWorktree, showRefPicker } =
     useWorkspaceIsolation({
       supportsMultiplicity: supportsWorkspaceMultiplicity,
       worktreeSupport,
     });
+  const existingWorktreePicker = useExistingWorktreePicker({
+    serverId: selectedServerId,
+    sourceDirectory: selectedSourceDirectory,
+    workspaceKeys: selectedProject?.workspaceKeys,
+    clientReady,
+    show: effectiveIsolation === "existing-worktree",
+    withConnectedClient,
+    t,
+  });
+  const resetExistingWorktreeSelection = existingWorktreePicker.resetSelection;
 
   const branchSuggestionsQuery = useQuery({
     queryKey: [
@@ -1824,16 +2120,36 @@ export function NewWorkspaceScreen({
       selectProjectOption(id);
       setProjectPickerOpen(false);
       clearPickerSelectionForTargetChange(selectedProjectOptionId, id);
+      resetSelectionIfTargetChanged({
+        currentId: selectedProjectOptionId,
+        nextId: id,
+        reset: resetExistingWorktreeSelection,
+      });
     },
-    [clearPickerSelectionForTargetChange, selectProjectOption, selectedProjectOptionId],
+    [
+      clearPickerSelectionForTargetChange,
+      resetExistingWorktreeSelection,
+      selectProjectOption,
+      selectedProjectOptionId,
+    ],
   );
 
   const handleSelectWorkspaceHost = useCallback(
     (id: string) => {
       handleSelectHost(id);
       clearPickerSelectionForTargetChange(selectedServerId, id);
+      resetSelectionIfTargetChanged({
+        currentId: selectedServerId,
+        nextId: id,
+        reset: resetExistingWorktreeSelection,
+      });
     },
-    [clearPickerSelectionForTargetChange, handleSelectHost, selectedServerId],
+    [
+      clearPickerSelectionForTargetChange,
+      handleSelectHost,
+      resetExistingWorktreeSelection,
+      selectedServerId,
+    ],
   );
 
   const handleAddProject = useCallback(() => {
@@ -1873,17 +2189,54 @@ export function NewWorkspaceScreen({
     setIsolationPickerOpen(nextOpen);
   }, []);
 
-  // "New worktree" is omitted entirely (not disabled) when the project isn't a
-  // git checkout, since worktree isolation is impossible there.
-  const isolationOptions = useMemo<ComboboxOptionType[]>(() => {
-    const localOption = { id: "local", label: isolationLabel(t, "local") };
-    if (!canCreateWorktree) return [localOption];
-    return [localOption, { id: "worktree", label: isolationLabel(t, "worktree") }];
-  }, [canCreateWorktree, t]);
+  const renderWorktreeOption = useCallback(
+    ({
+      option,
+      selected,
+      active,
+      onPress,
+    }: {
+      option: ComboboxOptionType;
+      selected: boolean;
+      active: boolean;
+      onPress: () => void;
+    }) => {
+      const item = existingWorktreePicker.itemById.get(option.id);
+      if (!item) return <View key={option.id} />;
+      return (
+        <WorktreeOptionItem
+          optionId={option.id}
+          label={item.label}
+          description={item.worktreePath}
+          selected={selected}
+          active={active}
+          disabled={isPending}
+          onPress={onPress}
+          trailingLabel={item.inUse ? t("newWorkspace.worktreePicker.inUse") : undefined}
+          iconColor={theme.colors.foregroundMuted}
+          iconSize={theme.iconSize.sm}
+        />
+      );
+    },
+    [
+      existingWorktreePicker.itemById,
+      isPending,
+      t,
+      theme.colors.foregroundMuted,
+      theme.iconSize.sm,
+    ],
+  );
+
+  // "New worktree" and "Existing worktree" are omitted entirely (not disabled)
+  // when the project isn't a git checkout, since worktree isolation is impossible there.
+  const isolationOptions = useMemo(
+    () => buildIsolationOptions({ canCreateWorktree, t }),
+    [canCreateWorktree, t],
+  );
 
   const handleSelectIsolationOption = useCallback(
     (id: string) => {
-      setIsolation(id === "worktree" ? "worktree" : "local");
+      setIsolation(isolationFromOptionId(id));
       setIsolationPickerOpen(false);
     },
     [setIsolation],
@@ -1999,6 +2352,11 @@ export function NewWorkspaceScreen({
             isolation: effectiveIsolation,
             project: selectedProject,
             sourceDirectory: selectedSourceDirectory,
+            existingWorktreePath: existingWorktreePathForCreate({
+              isolation: effectiveIsolation,
+              selectedWorktree: existingWorktreePicker.selectedExistingWorktree,
+              chooseWorktreeMessage: t("newWorkspace.errors.chooseWorktree"),
+            }),
             checkoutRequest,
             withInitialAgent: input.withInitialAgent,
             prompt: input.prompt,
@@ -2006,6 +2364,7 @@ export function NewWorkspaceScreen({
             mergeWorkspaces,
             serverId: selectedServerId,
             createFailedMessage: t("newWorkspace.errors.createWorktreeFailed"),
+            chooseWorktreeMessage: t("newWorkspace.errors.chooseWorktree"),
           })
         : await createAndMergeWorkspace({
             client: connectedClient,
@@ -2021,6 +2380,7 @@ export function NewWorkspaceScreen({
       buildCreateWorktreeInput,
       createdWorkspace,
       effectiveIsolation,
+      existingWorktreePicker.selectedExistingWorktree,
       mergeWorkspaces,
       queryClient,
       selectedItem,
@@ -2239,6 +2599,10 @@ export function NewWorkspaceScreen({
       onOpenChange: handleIsolationPickerOpenChange,
       renderOption: renderIsolationOption,
       canCreateWorktree,
+    },
+    worktree: {
+      ...existingWorktreePicker.control,
+      renderOption: renderWorktreeOption,
     },
     base: {
       anchorRef: pickerAnchorRef,

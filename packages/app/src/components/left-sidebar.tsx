@@ -5,6 +5,7 @@ import {
   GitBranch,
   History,
   Home,
+  KanbanSquare,
   Plus,
   Search,
   Server,
@@ -64,6 +65,7 @@ import { useCloseAgentListGesture } from "@/mobile-panels/gestures";
 import { MobilePanelOverlay } from "@/mobile-panels/presentation";
 import { useIsMobilePanelPresented } from "@/mobile-panels/provider";
 import {
+  buildBoardRoute,
   buildOpenProjectRoute,
   buildNewWorkspaceRoute,
   buildSchedulesRoute,
@@ -96,8 +98,10 @@ interface SidebarSharedProps {
   isManualRefresh: boolean;
   groupMode: SidebarGroupMode;
   collapsedProjectKeys: ReadonlySet<string>;
+  collapsedWorkspaceGroupKeys: ReadonlySet<string>;
   shortcutIndexByWorkspaceKey: Map<string, number>;
   toggleProjectCollapsed: (projectViewKey: string) => void;
+  toggleWorkspaceGroupCollapsed: (workspaceGroupKey: string) => void;
   handleRefresh: () => void;
   handleOpenProject: () => void;
   handleHome: () => void;
@@ -117,6 +121,7 @@ interface SidebarLabels {
   searchHosts: string;
   sessions: string;
   schedules: string;
+  board: string;
   closeSidebar: string;
 }
 
@@ -126,6 +131,7 @@ interface MobileSidebarProps extends SidebarSharedProps {
   closeSidebar: () => void;
   handleViewMoreNavigate: () => void;
   handleViewSchedulesNavigate: () => void;
+  handleViewBoardNavigate: () => void;
 }
 
 interface DesktopSidebarProps extends SidebarSharedProps {
@@ -133,6 +139,7 @@ interface DesktopSidebarProps extends SidebarSharedProps {
   active: boolean;
   handleViewMore: () => void;
   handleViewSchedules: () => void;
+  handleViewBoard: () => void;
 }
 
 export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boolean }) {
@@ -154,7 +161,9 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
     projectIconTargets,
     pinnedGroups,
     collapsedProjectKeys,
+    collapsedWorkspaceGroupKeys,
     toggleProjectCollapsed,
+    toggleWorkspaceGroupCollapsed,
     groupMode,
     shortcutModel,
   } = useSidebarModel();
@@ -231,6 +240,10 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
     router.push(buildSchedulesRoute());
   }, []);
 
+  const handleViewBoardNavigate = useCallback(() => {
+    router.push(buildBoardRoute());
+  }, []);
+
   const newWorkspaceKeys = useShortcutKeys("new-workspace");
   const labels = useMemo(
     (): SidebarLabels => ({
@@ -242,6 +255,7 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
       searchHosts: t("sidebar.host.searchPlaceholder"),
       sessions: t("sidebar.sections.sessions"),
       schedules: t("sidebar.sections.schedules"),
+      board: t("sidebar.sections.board"),
       closeSidebar: t("sidebar.actions.closeSidebar"),
     }),
     [t],
@@ -261,8 +275,10 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
     isManualRefresh,
     groupMode,
     collapsedProjectKeys,
+    collapsedWorkspaceGroupKeys,
     shortcutIndexByWorkspaceKey,
     toggleProjectCollapsed,
+    toggleWorkspaceGroupCollapsed,
     handleRefresh,
     labels,
     newWorkspaceKeys,
@@ -283,6 +299,7 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
           handleOpenHostSettings={handleOpenHostSettingsMobile}
           handleViewMoreNavigate={handleViewMoreNavigate}
           handleViewSchedulesNavigate={handleViewSchedulesNavigate}
+          handleViewBoardNavigate={handleViewBoardNavigate}
         />
       </RetainedPanelActivity>
     );
@@ -301,6 +318,7 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
         handleOpenHostSettings={handleOpenHostSettingsDesktop}
         handleViewMore={handleViewMoreNavigate}
         handleViewSchedules={handleViewSchedulesNavigate}
+        handleViewBoard={handleViewBoardNavigate}
       />
     </RetainedPanelActivity>
   );
@@ -617,8 +635,10 @@ function MobileSidebar({
   isManualRefresh,
   groupMode,
   collapsedProjectKeys,
+  collapsedWorkspaceGroupKeys,
   shortcutIndexByWorkspaceKey,
   toggleProjectCollapsed,
+  toggleWorkspaceGroupCollapsed,
   handleRefresh,
   newWorkspaceKeys,
   handleOpenProject,
@@ -632,11 +652,13 @@ function MobileSidebar({
   closeSidebar,
   handleViewMoreNavigate,
   handleViewSchedulesNavigate,
+  handleViewBoardNavigate,
 }: MobileSidebarProps) {
   const pathname = usePathname();
   const hasActiveHostFilter = useSidebarViewStore((state) => state.hostFilters.length > 0);
   const isSessionsActive = pathname.includes("/sessions");
   const isSchedulesActive = pathname.includes("/schedules");
+  const isBoardActive = pathname.includes("/board");
   const { gesture: closeGesture, gestureRef: closeGestureRef } = useCloseAgentListGesture();
   const dragGestureHostPresented = useIsMobilePanelPresented("agent-list");
 
@@ -649,6 +671,11 @@ function MobileSidebar({
     closeSidebar();
     handleViewSchedulesNavigate();
   }, [closeSidebar, handleViewSchedulesNavigate]);
+
+  const handleViewBoard = useCallback(() => {
+    closeSidebar();
+    handleViewBoardNavigate();
+  }, [closeSidebar, handleViewBoardNavigate]);
 
   const handleWorkspacePress = useCallback(() => {
     closeSidebar();
@@ -695,6 +722,14 @@ function MobileSidebar({
             testID="sidebar-schedules"
             variant="compact"
           />
+          <SidebarHeaderRow
+            icon={KanbanSquare}
+            label={labels.board}
+            onPress={handleViewBoard}
+            isActive={isBoardActive}
+            testID="sidebar-board"
+            variant="compact"
+          />
           <PluginSidebarItems onBeforeNavigate={closeSidebar} />
         </View>
         <WindowChromeSafeArea placement="inline" style={styles.mobileCloseButtonRow}>
@@ -722,7 +757,9 @@ function MobileSidebar({
         ) : (
           <SidebarWorkspaceList
             collapsedProjectKeys={collapsedProjectKeys}
+            collapsedWorkspaceGroupKeys={collapsedWorkspaceGroupKeys}
             onToggleProjectCollapsed={toggleProjectCollapsed}
+            onToggleWorktreeGroupCollapsed={toggleWorkspaceGroupCollapsed}
             shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
             groupMode={groupMode}
             workspaceGroups={workspaceGroups}
@@ -770,8 +807,10 @@ function DesktopSidebar({
   isManualRefresh,
   groupMode,
   collapsedProjectKeys,
+  collapsedWorkspaceGroupKeys,
   shortcutIndexByWorkspaceKey,
   toggleProjectCollapsed,
+  toggleWorkspaceGroupCollapsed,
   handleRefresh,
   newWorkspaceKeys,
   handleOpenProject,
@@ -784,12 +823,14 @@ function DesktopSidebar({
   active,
   handleViewMore,
   handleViewSchedules,
+  handleViewBoard,
 }: DesktopSidebarProps) {
   const ownsTopLeft = useOwnsWindowChromeCorner("top-left");
   const pathname = usePathname();
   const hasActiveHostFilter = useSidebarViewStore((state) => state.hostFilters.length > 0);
   const isSessionsActive = pathname.includes("/sessions");
   const isSchedulesActive = pathname.includes("/schedules");
+  const isBoardActive = pathname.includes("/board");
   const sidebarWidth = usePanelStore((state) => state.sidebarWidth);
   const setSidebarWidth = usePanelStore((state) => state.setSidebarWidth);
   const { width: viewportWidth } = useWindowDimensions();
@@ -920,6 +961,14 @@ function DesktopSidebar({
               testID="sidebar-schedules"
               variant="compact"
             />
+            <SidebarHeaderRow
+              icon={KanbanSquare}
+              label={labels.board}
+              onPress={handleViewBoard}
+              isActive={isBoardActive}
+              testID="sidebar-board"
+              variant="compact"
+            />
             <PluginSidebarItems />
           </View>
         </View>
@@ -929,7 +978,9 @@ function DesktopSidebar({
         ) : (
           <SidebarWorkspaceList
             collapsedProjectKeys={collapsedProjectKeys}
+            collapsedWorkspaceGroupKeys={collapsedWorkspaceGroupKeys}
             onToggleProjectCollapsed={toggleProjectCollapsed}
+            onToggleWorktreeGroupCollapsed={toggleWorkspaceGroupCollapsed}
             shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
             groupMode={groupMode}
             workspaceGroups={workspaceGroups}

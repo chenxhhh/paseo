@@ -23,6 +23,8 @@ function ws(
     workspaceKind: input.workspaceKind ?? "worktree",
     name: input.name ?? "main",
     title: input.title ?? null,
+    userStatus: input.userStatus ?? null,
+    activeAgents: input.activeAgents ?? [],
     currentBranch: input.currentBranch ?? null,
     statusBucket: input.statusBucket ?? "done",
     statusEnteredAt: input.statusEnteredAt ?? null,

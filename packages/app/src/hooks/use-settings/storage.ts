@@ -13,6 +13,7 @@ import {
   type SidebarRowItems,
 } from "@/components/sidebar/display-preferences/row-items";
 import { isNative } from "@/constants/platform";
+import { normalizeQuickCommands, type QuickCommand } from "@/quick-commands/model";
 import {
   FONT_SIZE,
   PLUGIN_THEME_PREFERENCE,
@@ -33,7 +34,7 @@ export type WorkspaceTitleSource = "title" | "branch";
 export type PullRequestOpenLocation = "main" | "side" | "explorer";
 /** What a sidebar workspace row shows in the space to the right of its title. */
 export type SidebarWorkspaceTrailing = "diff" | "timestamp" | "none";
-export type ToolCallDetailLevel = "overview" | "detailed";
+export type ToolCallDetailLevel = "overview" | "detailed" | "drawer";
 
 const ThemePreferenceSchema = z.enum([
   ...THEME_OPTIONS.map((option) => option.name),
@@ -89,6 +90,8 @@ export interface AppSettings {
   /** Desktop-only preferences for implicit opens into the ordinary side pane. */
   openInSidePane: OpenInSidePanePreferences;
   pullRequestOpenLocation: PullRequestOpenLocation;
+  /** User-defined prompt presets for the composer; each entry is global or project-bound. */
+  quickCommands: QuickCommand[];
 }
 
 export interface OpenInSidePanePreferences {
@@ -136,6 +139,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   vimKeybindings: false,
   openInSidePane: DEFAULT_OPEN_IN_SIDE_PANE_PREFERENCES,
   pullRequestOpenLocation: "explorer",
+  quickCommands: [],
 };
 
 export const DEFAULT_APP_SETTINGS: Settings = {
@@ -163,6 +167,7 @@ const SidebarRowItemsSchema = z
     changeRequest: z.boolean().catch(DEFAULT_SIDEBAR_ROW_ITEMS.changeRequest),
     services: z.boolean().optional().catch(undefined),
     labels: z.boolean().catch(DEFAULT_SIDEBAR_ROW_ITEMS.labels),
+    status: z.boolean().catch(DEFAULT_SIDEBAR_ROW_ITEMS.status),
     // COMPAT(sidebarRowItemsChecks): migrated in v0.3.0, remove after 2027-08-05.
     checks: z.boolean().optional().catch(undefined),
     // COMPAT(sidebarRowItemsScripts): migrated in v0.3.0, remove after 2027-08-05.
@@ -220,7 +225,7 @@ const StoredAppSettingsSchema = z
       .catch(DEFAULT_SIDEBAR_CHECKS_DISPLAY),
     autoExpandReasoning: z.boolean().catch(false),
     toolCallDetailLevel: z
-      .enum(["overview", "detailed"])
+      .enum(["overview", "detailed", "drawer"])
       .or(z.literal("concise").transform(() => "overview" as const))
       .optional()
       .catch("detailed"),
@@ -253,6 +258,8 @@ const StoredAppSettingsSchema = z
     pullRequestOpenLocation: z.enum(["main", "side", "explorer"]).optional(),
     // COMPAT(explorerSidebarRouting): replaced by source-specific side-pane preferences in v0.6.
     openSupportingTabsInSidePanel: z.boolean().optional().catch(undefined),
+    // Entries are re-validated entry-by-entry by normalizeQuickCommands on read.
+    quickCommands: z.array(z.unknown()).optional().catch(undefined),
     // COMPAT(rendererDesktopSettings): these fields used to share this renderer-owned key.
     manageBuiltInDaemon: z.boolean().optional().catch(undefined),
     releaseChannel: z.enum(["stable", "beta"]).optional().catch(undefined),
@@ -416,9 +423,14 @@ export function normalizeAppSettings(value: unknown): AppSettings {
     releaseChannel: _releaseChannel,
     compactToolCalls: _compactToolCalls,
     uiFontSize: _uiFontSize,
+    // Entries arrive untyped from storage; revalidate them instead of trusting the blob.
+    quickCommands: rawQuickCommands,
     ...settings
   } = StoredAppSettingsSchema.parse(value);
-  return settings;
+  return {
+    ...settings,
+    quickCommands: normalizeQuickCommands(rawQuickCommands ?? []),
+  };
 }
 
 function pickAppSettingsFromLegacy(legacy: StoredAppSettings): AppSettings {

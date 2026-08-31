@@ -12,6 +12,8 @@ initializing → idle → running → idle (or error → closed)
 
 Each live agent in `AgentManager` carries a `lastStatus` of `initializing`, `idle`, `running`, or `error`. `closed` is the persisted, resumable state for an agent record that has no live provider runtime. State transitions persist to disk and stream to subscribed clients via WebSocket.
 
+Attention is the "finished and unreviewed" flag on the agent record: `running → idle` sets it with reason `finished`, entering `error` sets it with reason `error`, and opening the agent's pane clears it. `finished` attention also decays server-side after two hours (`packages/server/src/server/agent/attention-decay-service.ts`), for live and closed agents alike, silently — no notification fires. `error` and permission attention never decay.
+
 ## Runtime residency
 
 An unarchived agent may be `closed` without being deleted or archived. Closing releases its provider
@@ -66,6 +68,8 @@ open. Detach clears the parent and every open-tab label. The surviving child the
 normal root agent immediately, and closing its still-open tab archives it.
 
 Runtime ownership is resolved from explicit workspace ID and caller context, never from `cwd`. Workspace creation is a separate operation with `local | worktree` isolation; agent creation only selects an existing workspace.
+
+Agent-scoped `create_workspace` and `create_agent` that cut a worktree inherit the caller's workspace `projectId` when the request omits `projectId`. An explicit `projectId` always wins. Inheritance does not apply when the source path sits outside the caller's workspace, or when the caller has no workspace / that workspace is archived; those fall through to path matching.
 
 Users can also detach an existing subagent from the subagents track. Detach is deliberately a manual lifecycle gesture, not an agent-facing MCP tool. It removes the parent and open-tab lifecycle labels: it does not stop, archive, move, or restart the agent. The agent keeps its current `cwd` and `workspaceId`, leaves the former parent's track, and behaves like a root agent for tab close, workspace activity, and future parent archive.
 
@@ -159,6 +163,8 @@ parentAgentId === thisAgent.id  AND  !archivedAt
 - **Provider subagents** are child executions owned by Claude, Codex, or OpenCode. They are not inserted into `AgentManager` as managed agents. Providers emit a separate descriptor and timeline stream through `agent.provider_subagents.*`; the client keeps that state outside the normal agent store and merges only the presentation rows into the track.
 
 Clicking either kind opens a workspace tab. A Paseo subagent tab is a normal interactive agent pane. A provider subagent tab is a read-only timeline pane with no composer, archive, detach, rewind, or fork actions. Both panes use `AgentStreamView`, so message, reasoning, tool-call, and layout rendering stay identical.
+
+Track rows carry the same status marks as agent tabs. A finished managed subagent reports its attention in the track — the ready-to-review dot on the row and a "ready to review" pill segment — until its pane is opened, which clears it. A completed provider child shows the done check; a canceled one finished without succeeding and stays unmarked, distinct from `failed`.
 
 Provider timelines use the same structural timeline item format but deliberately have a separate lifecycle and transport. A provider thread/session identifier is not a Paseo agent identifier, and closing its tab is always layout-only.
 

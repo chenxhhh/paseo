@@ -323,14 +323,15 @@ export async function selectNewWorkspaceProject(
 
 // The isolation trigger renders the active isolation's label ("Local" / "New
 // worktree"), so asserting its text proves what the screen currently remembers.
-const ISOLATION_TRIGGER_LABEL: Record<"local" | "worktree", string> = {
+const ISOLATION_TRIGGER_LABEL: Record<"local" | "worktree" | "existing-worktree", string> = {
   local: "Local",
   worktree: "New worktree",
+  "existing-worktree": "Existing worktree",
 };
 
 export async function expectWorkspaceIsolationSelected(
   page: Page,
-  isolation: "local" | "worktree",
+  isolation: "local" | "worktree" | "existing-worktree",
 ): Promise<void> {
   const trigger = page.getByRole("button", { name: "Workspace isolation" });
   await expect(trigger).toBeVisible({ timeout: 30_000 });
@@ -339,7 +340,7 @@ export async function expectWorkspaceIsolationSelected(
 
 export async function selectWorkspaceIsolation(
   page: Page,
-  isolation: "local" | "worktree",
+  isolation: "local" | "worktree" | "existing-worktree",
 ): Promise<void> {
   const trigger = page.getByTestId("workspace-create-isolation-trigger");
   await expect(trigger).toBeVisible({ timeout: 30_000 });
@@ -349,6 +350,27 @@ export async function selectWorkspaceIsolation(
   // so this helper also covers route-to-project reconciliation.
   const option = page.getByTestId(`workspace-create-isolation-${isolation}`);
   await expect(option).toBeVisible({ timeout: 30_000 });
+  await option.click();
+}
+
+export async function openExistingWorktreePicker(page: Page): Promise<void> {
+  const trigger = page.getByTestId("new-workspace-worktree-picker-trigger");
+  await expect(trigger).toBeVisible({ timeout: 30_000 });
+  await trigger.click();
+}
+
+export async function selectExistingWorktreeInPicker(
+  page: Page,
+  input: { label: string; inUse?: boolean },
+): Promise<void> {
+  const option = page
+    .locator('[data-testid^="new-workspace-worktree-picker-worktree:"]')
+    .filter({ hasText: input.label })
+    .first();
+  await expect(option).toBeVisible({ timeout: 30_000 });
+  if (input.inUse) {
+    await expect(option).toContainText("in use");
+  }
   await option.click();
 }
 

@@ -6,6 +6,7 @@ import {
   Archive,
   CircleCheck,
   Copy,
+  Kanban,
   MoreVertical,
   Pencil,
   Pin,
@@ -32,6 +33,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { Shortcut } from "@/components/ui/shortcut";
+import type { MenuPageDefinition } from "@/components/ui/menu";
 import { OpenInFileManagerMenuItem } from "@/workspace/open-in-file-manager/menu-item";
 import { resolveSidebarWorkspaceAccessibilityLabel } from "@/components/sidebar/sidebar-workspace-title";
 import {
@@ -43,6 +45,7 @@ import {
   WORKSPACE_LABEL_PAGE_ID,
   type WorkspaceLabelTarget,
 } from "@/workspace-labels/picker";
+import { useWorkspaceStatusMenuPages, WORKSPACE_STATUS_PAGE_ID } from "@/workspace-status/picker";
 
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const foregroundMutedColorMapping = (theme: Theme) => ({
@@ -57,6 +60,7 @@ const ThemedCircleCheck = withUnistyles(CircleCheck);
 const ThemedPin = withUnistyles(Pin);
 const ThemedPinOff = withUnistyles(PinOff);
 const ThemedTag = withUnistyles(Tag);
+const ThemedKanban = withUnistyles(Kanban);
 
 const copyLeadingIcon = <ThemedCopy size={14} uniProps={foregroundMutedColorMapping} />;
 const renameLeadingIcon = <ThemedPencil size={14} uniProps={foregroundMutedColorMapping} />;
@@ -81,6 +85,7 @@ export interface SidebarWorkspaceMenuProps {
   serverId?: string;
   workspaceId?: string;
   workspaceLabels?: readonly string[];
+  workspaceUserStatus?: string | null;
   onCopyPath?: () => void;
   onCopyBranchName?: () => void;
   onRename?: () => void;
@@ -150,6 +155,10 @@ function SidebarWorkspaceMenuItems({
     () => <ThemedTag size={14} uniProps={foregroundMutedColorMapping} />,
     [],
   );
+  const statusLeading = useMemo(
+    () => <ThemedKanban size={14} uniProps={foregroundMutedColorMapping} />,
+    [],
+  );
 
   return (
     <>
@@ -212,6 +221,15 @@ function SidebarWorkspaceMenuItems({
           {t("workspaceLabels.title")}
         </DropdownMenuSubTrigger>
       ) : null}
+      {serverId && workspaceId ? (
+        <DropdownMenuSubTrigger
+          id={WORKSPACE_STATUS_PAGE_ID}
+          leading={statusLeading}
+          testID={`sidebar-workspace-menu-status-${workspaceKey}`}
+        >
+          {t("workspaceStatus.moveTitle")}
+        </DropdownMenuSubTrigger>
+      ) : null}
       <OpenInFileManagerMenuItem
         surface={surface}
         path={openInFileManagerPath}
@@ -239,6 +257,7 @@ export function SidebarWorkspaceMenu({
   serverId,
   workspaceId,
   workspaceLabels,
+  workspaceUserStatus,
   onCopyPath,
   onCopyBranchName,
   onRename,
@@ -260,7 +279,7 @@ export function SidebarWorkspaceMenu({
       serverId && workspaceId ? { serverId, workspaceId, labels: workspaceLabels ?? [] } : null,
     [serverId, workspaceId, workspaceLabels],
   );
-  const pages = useWorkspaceLabelMenuPages(workspaceTarget);
+  const pages = useWorkspaceMenuPages(workspaceTarget, workspaceUserStatus ?? null);
   return (
     <DropdownMenu compactMode="sheet" open={open} onOpenChange={onOpenChange}>
       <DropdownMenuTrigger
@@ -284,6 +303,7 @@ export function SidebarWorkspaceMenu({
           serverId={serverId}
           workspaceId={workspaceId}
           workspaceLabels={workspaceLabels}
+          workspaceUserStatus={workspaceUserStatus}
           onCopyPath={onCopyPath}
           onCopyBranchName={onCopyBranchName}
           onRename={onRename}
@@ -300,6 +320,18 @@ export function SidebarWorkspaceMenu({
       </DropdownMenuContent>
     </DropdownMenu>
   );
+}
+
+/** The label and status sub-pages every workspace menu opens, combined for the surface's `pages`. */
+function useWorkspaceMenuPages(
+  workspaceTarget: WorkspaceLabelTarget | null,
+  workspaceUserStatus: string | null,
+): readonly MenuPageDefinition[] {
+  const labelPages = useWorkspaceLabelMenuPages(workspaceTarget);
+  const statusPages = useWorkspaceStatusMenuPages(
+    workspaceTarget ? { ...workspaceTarget, userStatus: workspaceUserStatus } : null,
+  );
+  return useMemo(() => [...labelPages, ...statusPages], [labelPages, statusPages]);
 }
 
 type ContextTriggerProps = Omit<
@@ -371,7 +403,7 @@ export function SidebarWorkspaceContextMenu({
     }),
     [workspace],
   );
-  const pages = useWorkspaceLabelMenuPages(workspaceTarget);
+  const pages = useWorkspaceMenuPages(workspaceTarget, workspace.userStatus);
 
   return (
     <ContextMenu open={contextMenuOpen} onOpenChange={onContextMenuOpenChange}>
@@ -395,6 +427,7 @@ export function SidebarWorkspaceContextMenu({
           serverId={workspaceTarget.serverId}
           workspaceId={workspaceTarget.workspaceId}
           workspaceLabels={workspaceTarget.labels}
+          workspaceUserStatus={workspace.userStatus}
           onCopyPath={onCopyPath}
           onCopyBranchName={onCopyBranchName}
           onRename={onRename}

@@ -542,6 +542,23 @@ type ScheduleUpdatePayload = Extract<
   SessionOutboundMessage,
   { type: "schedule/update/response" }
 >["payload"];
+type TaskListPayload = Extract<SessionOutboundMessage, { type: "task/list/response" }>["payload"];
+type TaskInspectPayload = Extract<
+  SessionOutboundMessage,
+  { type: "task/inspect/response" }
+>["payload"];
+type TaskResolveGatePayload = Extract<
+  SessionOutboundMessage,
+  { type: "task/resolve-gate/response" }
+>["payload"];
+type TaskAnswerQuestionPayload = Extract<
+  SessionOutboundMessage,
+  { type: "task/answer-question/response" }
+>["payload"];
+type TaskQuestionsPayload = Extract<
+  SessionOutboundMessage,
+  { type: "task/questions/response" }
+>["payload"];
 export type FetchAgentTimelinePayload = FetchAgentTimelineResponseMessage["payload"];
 export type AgentForkContextPayload = AgentForkContextResponseMessage["payload"];
 
@@ -2714,6 +2731,26 @@ export class DaemonClient {
       throw new Error(payload.error ?? "setWorkspacePinned rejected");
     }
     return { pinnedAt: payload.pinnedAt };
+  }
+
+  async setWorkspaceUserStatus(
+    workspaceId: string,
+    userStatus: string | null,
+    requestId?: string,
+  ): Promise<{ userStatus: string | null }> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "workspace.user-status.set.request",
+        workspaceId,
+        userStatus,
+      },
+      responseType: "workspace.user-status.set.response",
+    });
+    if (!payload.accepted) {
+      throw new Error(payload.error ?? "setWorkspaceUserStatus rejected");
+    }
+    return { userStatus: payload.userStatus };
   }
 
   async inspectWorkspaceRecovery(
@@ -5543,6 +5580,77 @@ export class DaemonClient {
         ...(options.expiresAt !== undefined ? { expiresAt: options.expiresAt } : {}),
       },
       responseType: "schedule/update/response",
+    });
+  }
+
+  async taskList(options?: {
+    ownerAgentId?: string;
+    requestId?: string;
+  }): Promise<TaskListPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: options?.requestId,
+      message: {
+        type: "task/list",
+        ...(options?.ownerAgentId ? { ownerAgentId: options.ownerAgentId } : {}),
+      },
+      responseType: "task/list/response",
+    });
+  }
+
+  async taskInspect(options: { id: string; requestId?: string }): Promise<TaskInspectPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "task/inspect",
+        taskId: options.id,
+      },
+      responseType: "task/inspect/response",
+    });
+  }
+
+  async taskResolveGate(options: {
+    id: string;
+    resolution: string;
+    requestId?: string;
+  }): Promise<TaskResolveGatePayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "task/resolve-gate",
+        taskId: options.id,
+        resolution: options.resolution,
+      },
+      responseType: "task/resolve-gate/response",
+    });
+  }
+
+  async taskAnswerQuestion(options: {
+    questionId: string;
+    answer: string;
+    requestId?: string;
+  }): Promise<TaskAnswerQuestionPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "task/answer-question",
+        questionId: options.questionId,
+        answer: options.answer,
+      },
+      responseType: "task/answer-question/response",
+    });
+  }
+
+  async taskQuestions(options?: {
+    status?: "pending" | "answered" | "closed";
+    requestId?: string;
+  }): Promise<TaskQuestionsPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: options?.requestId,
+      message: {
+        type: "task/questions",
+        ...(options?.status ? { status: options.status } : {}),
+      },
+      responseType: "task/questions/response",
     });
   }
 

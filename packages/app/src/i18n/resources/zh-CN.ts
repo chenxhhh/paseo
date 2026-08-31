@@ -158,6 +158,34 @@ export const zhCN: TranslationResources = {
       archiveAgent: "归档当前 Agent",
       freshDraft: "归档此 Agent 并开始新的草稿",
     },
+    quickCommands: {
+      trigger: "快捷指令",
+      empty: "还没有快捷指令",
+      sectionProject: "此项目",
+      sectionGlobal: "全局",
+      newCommand: "新建快捷指令",
+      manage: "管理快捷指令",
+      sheetTitle: "快捷指令",
+      editCommand: "编辑快捷指令",
+      add: "添加指令",
+      save: "保存",
+      delete: "删除",
+      deleteTitle: "删除快捷指令",
+      deleteMessage: "“{{label}}”将被永久移除。",
+      emptyManage: "还没有快捷指令。添加一条,即可一键插入预设的提示词。",
+      labelLabel: "名称",
+      labelPlaceholder: "显示在快捷指令菜单中",
+      promptLabel: "提示词",
+      promptPlaceholder: "将插入到输入框的文本",
+      scopeLabel: "适用范围",
+      scopeProject: "此项目",
+      scopeGlobal: "所有项目",
+      scopeProjectHint: "仅在 {{project}} 中可用",
+      scopeProjectFallback: "此项目",
+      scopeGlobalHint: "在所有项目中可用",
+      labelRequired: "请填写名称",
+      promptRequired: "请填写提示词",
+    },
     github: {
       searching: "正在搜索...",
       noResults: "没有结果。",
@@ -345,6 +373,19 @@ export const zhCN: TranslationResources = {
         added: "已添加",
         started: "已开始",
         completed: "已完成",
+        addedTasks: {
+          one: "已添加 {{count}} 项任务",
+          other: "已添加 {{count}} 项任务",
+        },
+        startedTasks: {
+          one: "已开始 {{count}} 项任务",
+          other: "已开始 {{count}} 项任务",
+        },
+        completedTasks: {
+          one: "已完成 {{count}} 项任务",
+          other: "已完成 {{count}} 项任务",
+        },
+        batchSeparator: " · ",
       },
     },
     compaction: {
@@ -353,6 +394,11 @@ export const zhCN: TranslationResources = {
       manual: "上下文已手动压缩",
       withTokens: "上下文已压缩（{{tokens}}K tokens）",
       completed: "上下文已压缩",
+    },
+    turn: {
+      openArtifact: "打开 {{name}}",
+      filesChanged_one: "{{count}} 个文件已更改",
+      filesChanged_other: "{{count}} 个文件已更改",
     },
   },
   importSession: {
@@ -973,6 +1019,27 @@ export const zhCN: TranslationResources = {
       },
     },
   },
+  workspaceStatus: {
+    moveTitle: "移动到状态",
+    clear: "清除状态",
+    updateHost: "更新此宿主后才能指派状态。",
+    board: {
+      title: "工作区看板",
+      empty: "还没有工作区。先创建一个，再拖入泳道。",
+      emptyLane: "暂无工作区",
+    },
+    manage: {
+      title: "管理列",
+      add: "添加列",
+      addTitle: "新建列",
+      namePlaceholder: "列名称",
+      renameTitle: "重命名列",
+      moveLeft: "左移",
+      moveRight: "右移",
+      remove: "删除列",
+      done: "完成",
+    },
+  },
   workspaceLabels: {
     title: "标签",
     unlabelled: "无标签",
@@ -1024,6 +1091,7 @@ export const zhCN: TranslationResources = {
         project: "项目",
         status: "状态",
         labels: "标签",
+        userStatus: "看板状态",
       },
       titleSource: {
         label: "标题",
@@ -1039,6 +1107,7 @@ export const zhCN: TranslationResources = {
         checks: "检查",
         services: "服务",
         labels: "标签",
+        status: "状态",
         diff: "差异统计",
         timestamp: "最近活动",
       },
@@ -1091,6 +1160,7 @@ export const zhCN: TranslationResources = {
     sections: {
       sessions: "历史",
       schedules: "计划",
+      board: "看板",
     },
     worktreeSetup: {
       title: "设置 worktree scripts",
@@ -1150,6 +1220,8 @@ export const zhCN: TranslationResources = {
         pin: "置顶",
         unpin: "取消置顶",
         archive: "归档",
+        archiveConfirm: "归档",
+        archiveCancel: "取消",
         archiveWorkspace: "归档工作区",
         hideFromSidebar: "从侧边栏隐藏",
         archiving: "正在归档...",
@@ -1182,6 +1254,7 @@ export const zhCN: TranslationResources = {
     isolation: {
       local: "本地",
       worktree: "新建 worktree",
+      existingWorktree: "已有 worktree",
       label: "隔离",
     },
     fields: {
@@ -1195,11 +1268,13 @@ export const zhCN: TranslationResources = {
       createWorktreeFailed: "创建 worktree 失败",
       composerStateRequired: "Composer 状态必填",
       selectModel: "请选择模型",
+      chooseWorktree: "请选择 worktree",
     },
     tooltips: {
       project: "Choose the project",
       host: "Choose the host",
       isolation: "Choose the isolation level",
+      existingWorktree: "选择已有 worktree",
       startingRef: "选择起始位置",
       launch: "Choose what to launch",
     },
@@ -1210,6 +1285,13 @@ export const zhCN: TranslationResources = {
       noMatchingRefs: "没有匹配的 refs。",
       searchPlaceholder: "搜索分支和 PR",
       title: "起始位置",
+    },
+    worktreePicker: {
+      title: "Worktree",
+      searchPlaceholder: "搜索 worktree",
+      noWorktrees: "没有可用的 worktree。",
+      inUse: "使用中",
+      chooseWorktree: "选择 worktree",
     },
     launch: {
       title: "What to launch",
@@ -1791,6 +1873,10 @@ export const zhCN: TranslationResources = {
     output: "输出",
   },
   toolCallGroup: {
+    thinking: {
+      one: "思考了 {{count}} 次",
+      other: "思考了 {{count}} 次",
+    },
     editedFiles: {
       one: "编辑了 {{count}} 个文件",
       other: "编辑了 {{count}} 个文件",
@@ -1969,11 +2055,12 @@ export const zhCN: TranslationResources = {
       },
       toolCallDetail: {
         label: "工具调用显示",
-        description: "工具调用在时间线中的显示方式",
+        description: "工具调用和思考内容在时间线中的显示方式",
         accessibilityLabel: "选择工具调用显示方式（{{value}}）",
         options: {
           overview: "摘要",
           detailed: "完整详情",
+          drawer: "抽屉",
         },
       },
       language: {

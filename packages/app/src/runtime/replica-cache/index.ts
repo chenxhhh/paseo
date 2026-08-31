@@ -72,6 +72,12 @@ const TaskActivitySchema = z.discriminatedUnion("type", [
     type: z.enum(["added", "started", "completed"]),
     task: z.string(),
   }),
+  z.strictObject({
+    type: z.literal("batch"),
+    added: z.number().int().nonnegative(),
+    started: z.number().int().nonnegative(),
+    completed: z.number().int().nonnegative(),
+  }),
 ]);
 
 const StoredTimelineItemSchema = z.discriminatedUnion("kind", [
@@ -265,6 +271,8 @@ const StoredWorkspaceSchema = z.strictObject({
   // dropped them painted its row without its chips and stayed that way: the directory cursor is
   // current on reconnect, so the daemon has nothing newer to send back.
   labels: z.array(z.string()).optional(),
+  // Same COMPAT shape as labels for the user-assigned status, for the same reason.
+  userStatus: z.string().nullable().optional(),
   status: z.enum(["needs_input", "failed", "running", "attention", "done"]),
   statusEnteredAt: IsoDateSchema.nullable(),
   activityAt: z.null(),
@@ -628,6 +636,7 @@ function serializeWorkspace(workspace: WorkspaceDescriptor): StoredWorkspace {
     title: workspace.title ?? null,
     pinnedAt: workspace.pinnedAt ?? null,
     labels: workspace.labels,
+    userStatus: workspace.userStatus ?? null,
     status: workspace.status,
     statusEnteredAt: workspace.statusEnteredAt?.toISOString() ?? null,
     activityAt: null,

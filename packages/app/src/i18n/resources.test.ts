@@ -422,6 +422,10 @@ describe("translation resources", () => {
       added: "Added",
       started: "Started",
       completed: "Completed",
+      addedTasks: { one: "Added {{count}} task", other: "Added {{count}} tasks" },
+      startedTasks: { one: "Started {{count}} task", other: "Started {{count}} tasks" },
+      completedTasks: { one: "Completed {{count}} task", other: "Completed {{count}} tasks" },
+      batchSeparator: " · ",
     });
   });
 

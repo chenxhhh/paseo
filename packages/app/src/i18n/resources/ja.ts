@@ -158,6 +158,35 @@ export const ja: TranslationResources = {
       archiveAgent: "現在のエージェントをアーカイブ",
       freshDraft: "このエージェントをアーカイブして新しい下書きを開始",
     },
+    quickCommands: {
+      trigger: "クイックコマンド",
+      empty: "クイックコマンドはまだありません",
+      sectionProject: "このプロジェクト",
+      sectionGlobal: "グローバル",
+      newCommand: "新しいクイックコマンド",
+      manage: "クイックコマンドを管理",
+      sheetTitle: "クイックコマンド",
+      editCommand: "クイックコマンドを編集",
+      add: "コマンドを追加",
+      save: "保存",
+      delete: "削除",
+      deleteTitle: "クイックコマンドを削除",
+      deleteMessage: "「{{label}}」は完全に削除されます。",
+      emptyManage:
+        "クイックコマンドはまだありません。追加すると、プリセットのプロンプトをワンクリックで挿入できます。",
+      labelLabel: "ラベル",
+      labelPlaceholder: "クイックコマンドのメニューに表示されます",
+      promptLabel: "プロンプト",
+      promptPlaceholder: "入力欄に挿入されるテキスト",
+      scopeLabel: "適用範囲",
+      scopeProject: "このプロジェクト",
+      scopeGlobal: "すべてのプロジェクト",
+      scopeProjectHint: "{{project}} でのみ利用できます",
+      scopeProjectFallback: "このプロジェクト",
+      scopeGlobalHint: "すべてのプロジェクトで利用できます",
+      labelRequired: "ラベルを入力してください",
+      promptRequired: "プロンプトを入力してください",
+    },
     github: {
       searching: "検索中...",
       noResults: "結果が見つかりません。",
@@ -348,6 +377,19 @@ export const ja: TranslationResources = {
         added: "追加",
         started: "開始",
         completed: "完了",
+        addedTasks: {
+          one: "{{count}}件のタスクを追加",
+          other: "{{count}}件のタスクを追加",
+        },
+        startedTasks: {
+          one: "{{count}}件のタスクを開始",
+          other: "{{count}}件のタスクを開始",
+        },
+        completedTasks: {
+          one: "{{count}}件のタスクを完了",
+          other: "{{count}}件のタスクを完了",
+        },
+        batchSeparator: "・",
       },
     },
     compaction: {
@@ -356,6 +398,11 @@ export const ja: TranslationResources = {
       manual: "コンテキストが手動で圧縮されました",
       withTokens: "コンテキストを圧縮しました（{{tokens}}Kトークン）",
       completed: "コンテキストを圧縮しました",
+    },
+    turn: {
+      openArtifact: "{{name}}を開く",
+      filesChanged_one: "{{count}} 件のファイルを変更",
+      filesChanged_other: "{{count}} 件のファイルを変更",
     },
   },
   importSession: {
@@ -992,6 +1039,27 @@ export const ja: TranslationResources = {
       },
     },
   },
+  workspaceStatus: {
+    moveTitle: "ステータスへ移動",
+    clear: "ステータスをクリア",
+    updateHost: "ステータスを割り当てるにはこのホストを更新してください。",
+    board: {
+      title: "ワークスペースボード",
+      empty: "ワークスペースがまだありません。作成してレーンにドラッグしてください。",
+      emptyLane: "まだ何もありません",
+    },
+    manage: {
+      title: "列の管理",
+      add: "列を追加",
+      addTitle: "新しい列",
+      namePlaceholder: "列名",
+      renameTitle: "列の名前を変更",
+      moveLeft: "左へ移動",
+      moveRight: "右へ移動",
+      remove: "列を削除",
+      done: "完了",
+    },
+  },
   workspaceLabels: {
     title: "ラベル",
     unlabelled: "ラベルなし",
@@ -1043,6 +1111,7 @@ export const ja: TranslationResources = {
         project: "プロジェクト",
         status: "ステータス",
         labels: "ラベル",
+        userStatus: "ボードステータス",
       },
       titleSource: {
         label: "タイトル",
@@ -1058,6 +1127,7 @@ export const ja: TranslationResources = {
         checks: "チェック",
         services: "サービス",
         labels: "ラベル",
+        status: "ステータス",
         diff: "差分統計",
         timestamp: "最終アクティビティ",
       },
@@ -1111,6 +1181,7 @@ export const ja: TranslationResources = {
     sections: {
       sessions: "履歴",
       schedules: "スケジュール",
+      board: "ボード",
     },
     worktreeSetup: {
       title: "ワークツリースクリプトを設定",
@@ -1172,6 +1243,8 @@ export const ja: TranslationResources = {
         pin: "上部に固定",
         unpin: "固定解除",
         archive: "アーカイブ",
+        archiveConfirm: "アーカイブ",
+        archiveCancel: "キャンセル",
         archiveWorkspace: "ワークスペースをアーカイブ",
         hideFromSidebar: "サイドバーから非表示",
         archiving: "アーカイブ中...",
@@ -1205,6 +1278,7 @@ export const ja: TranslationResources = {
     isolation: {
       local: "ローカル",
       worktree: "新しいワークツリー",
+      existingWorktree: "既存のワークツリー",
       label: "分離方法",
     },
     fields: {
@@ -1218,11 +1292,13 @@ export const ja: TranslationResources = {
       createWorktreeFailed: "ワークツリーの作成に失敗しました",
       composerStateRequired: "コンポーザーの状態が必要です",
       selectModel: "モデルを選択してください",
+      chooseWorktree: "ワークツリーを選択してください",
     },
     tooltips: {
       project: "Choose the project",
       host: "Choose the host",
       isolation: "Choose the isolation level",
+      existingWorktree: "既存のワークツリーを選択",
       startingRef: "開始点を選択",
       launch: "Choose what to launch",
     },
@@ -1233,6 +1309,13 @@ export const ja: TranslationResources = {
       noMatchingRefs: "一致するRefがありません。",
       searchPlaceholder: "ブランチとPRを検索",
       title: "開始点",
+    },
+    worktreePicker: {
+      title: "ワークツリー",
+      searchPlaceholder: "ワークツリーを検索",
+      noWorktrees: "利用できるワークツリーがありません。",
+      inUse: "使用中",
+      chooseWorktree: "ワークツリーを選択",
     },
     launch: {
       title: "What to launch",
@@ -1830,6 +1913,10 @@ export const ja: TranslationResources = {
     output: "出力",
   },
   toolCallGroup: {
+    thinking: {
+      one: "思考 {{count}} 回",
+      other: "思考 {{count}} 回",
+    },
     editedFiles: {
       one: "{{count}}個のファイルを編集",
       other: "{{count}}個のファイルを編集",
@@ -2010,11 +2097,12 @@ export const ja: TranslationResources = {
       },
       toolCallDetail: {
         label: "ツール呼び出しの表示",
-        description: "タイムラインでのツール呼び出しの表示方法",
+        description: "タイムラインでのツール呼び出しと思考の表示方法",
         accessibilityLabel: "ツール呼び出しの表示を選択（{{value}}）",
         options: {
           overview: "要約",
           detailed: "すべての詳細",
+          drawer: "ドロワー",
         },
       },
       language: {

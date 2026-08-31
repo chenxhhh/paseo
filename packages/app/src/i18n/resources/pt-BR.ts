@@ -158,6 +158,35 @@ export const ptBR: TranslationResources = {
       archiveAgent: "Arquivar o agente atual",
       freshDraft: "Arquivar este agente e iniciar um novo rascunho",
     },
+    quickCommands: {
+      trigger: "Comandos rápidos",
+      empty: "Nenhum comando rápido ainda",
+      sectionProject: "Este projeto",
+      sectionGlobal: "Global",
+      newCommand: "Novo comando rápido",
+      manage: "Gerenciar comandos rápidos",
+      sheetTitle: "Comandos rápidos",
+      editCommand: "Editar comando rápido",
+      add: "Adicionar comando",
+      save: "Salvar",
+      delete: "Excluir",
+      deleteTitle: "Excluir comando rápido",
+      deleteMessage: '"{{label}}" será removido permanentemente.',
+      emptyManage:
+        "Nenhum comando rápido ainda. Adicione um para inserir um prompt predefinido com um clique.",
+      labelLabel: "Rótulo",
+      labelPlaceholder: "Exibido no menu de comandos rápidos",
+      promptLabel: "Prompt",
+      promptPlaceholder: "Texto inserido na caixa de mensagem",
+      scopeLabel: "Disponibilidade",
+      scopeProject: "Este projeto",
+      scopeGlobal: "Todos os projetos",
+      scopeProjectHint: "Disponível apenas em {{project}}",
+      scopeProjectFallback: "este projeto",
+      scopeGlobalHint: "Disponível em todos os projetos",
+      labelRequired: "O rótulo é obrigatório",
+      promptRequired: "O prompt é obrigatório",
+    },
     github: {
       searching: "Buscando...",
       noResults: "Nenhum resultado encontrado.",
@@ -348,6 +377,19 @@ export const ptBR: TranslationResources = {
         added: "Adicionada",
         started: "Iniciada",
         completed: "Concluída",
+        addedTasks: {
+          one: "{{count}} tarefa adicionada",
+          other: "{{count}} tarefas adicionadas",
+        },
+        startedTasks: {
+          one: "{{count}} tarefa iniciada",
+          other: "{{count}} tarefas iniciadas",
+        },
+        completedTasks: {
+          one: "{{count}} tarefa concluída",
+          other: "{{count}} tarefas concluídas",
+        },
+        batchSeparator: " · ",
       },
     },
     compaction: {
@@ -356,6 +398,11 @@ export const ptBR: TranslationResources = {
       manual: "Contexto compactado manualmente",
       withTokens: "Contexto compactado ({{tokens}}K tokens)",
       completed: "Contexto compactado",
+    },
+    turn: {
+      openArtifact: "Abrir {{name}}",
+      filesChanged_one: "{{count}} arquivo alterado",
+      filesChanged_other: "{{count}} arquivos alterados",
     },
   },
   importSession: {
@@ -1003,6 +1050,27 @@ export const ptBR: TranslationResources = {
       },
     },
   },
+  workspaceStatus: {
+    moveTitle: "Mover para status",
+    clear: "Limpar status",
+    updateHost: "Atualize este host para atribuir status.",
+    board: {
+      title: "Quadro de workspaces",
+      empty: "Ainda não há workspaces. Crie um e arraste para uma coluna.",
+      emptyLane: "Nada aqui ainda",
+    },
+    manage: {
+      title: "Gerenciar colunas",
+      add: "Adicionar coluna",
+      addTitle: "Nova coluna",
+      namePlaceholder: "Nome da coluna",
+      renameTitle: "Renomear coluna",
+      moveLeft: "Mover para a esquerda",
+      moveRight: "Mover para a direita",
+      remove: "Remover coluna",
+      done: "Concluir",
+    },
+  },
   workspaceLabels: {
     title: "Etiquetas",
     unlabelled: "Sem etiqueta",
@@ -1057,6 +1125,7 @@ export const ptBR: TranslationResources = {
         project: "Projeto",
         status: "Status",
         labels: "Etiquetas",
+        userStatus: "Status do quadro",
       },
       titleSource: {
         label: "Título",
@@ -1072,6 +1141,7 @@ export const ptBR: TranslationResources = {
         checks: "Verificações",
         services: "Serviços",
         labels: "Etiquetas",
+        status: "Status",
         diff: "Estatísticas de diff",
         timestamp: "Última atividade",
       },
@@ -1124,6 +1194,7 @@ export const ptBR: TranslationResources = {
     sections: {
       sessions: "Histórico",
       schedules: "Agendamentos",
+      board: "Quadro",
     },
     worktreeSetup: {
       title: "Configurar scripts de worktree",
@@ -1185,6 +1256,8 @@ export const ptBR: TranslationResources = {
         pin: "Fixar no topo",
         unpin: "Desafixar",
         archive: "Arquivar",
+        archiveConfirm: "Arquivar",
+        archiveCancel: "Cancelar",
         archiveWorkspace: "Arquivar workspace",
         hideFromSidebar: "Ocultar da barra lateral",
         archiving: "Arquivando...",
@@ -1218,6 +1291,7 @@ export const ptBR: TranslationResources = {
     isolation: {
       local: "Local",
       worktree: "Novo worktree",
+      existingWorktree: "Worktree existente",
       label: "Isolamento",
     },
     fields: {
@@ -1231,11 +1305,13 @@ export const ptBR: TranslationResources = {
       createWorktreeFailed: "Falha ao criar worktree",
       composerStateRequired: "O estado do composer é obrigatório",
       selectModel: "Selecione um modelo",
+      chooseWorktree: "Escolha um worktree",
     },
     tooltips: {
       project: "Choose the project",
       host: "Choose the host",
       isolation: "Choose the isolation level",
+      existingWorktree: "Escolha um worktree existente",
       startingRef: "Escolha de onde começar",
       launch: "Choose what to launch",
     },
@@ -1246,6 +1322,13 @@ export const ptBR: TranslationResources = {
       noMatchingRefs: "Nenhuma ref correspondente.",
       searchPlaceholder: "Buscar branches e PRs",
       title: "Começar de",
+    },
+    worktreePicker: {
+      title: "Worktree",
+      searchPlaceholder: "Buscar worktrees",
+      noWorktrees: "Nenhum worktree disponível.",
+      inUse: "em uso",
+      chooseWorktree: "Escolher worktree",
     },
     launch: {
       title: "What to launch",
@@ -1844,6 +1927,10 @@ export const ptBR: TranslationResources = {
     output: "Saída",
   },
   toolCallGroup: {
+    thinking: {
+      one: "pensou {{count}} vez",
+      other: "pensou {{count}} vezes",
+    },
     editedFiles: {
       one: "editou {{count}} arquivo",
       other: "editou {{count}} arquivos",
@@ -2027,11 +2114,12 @@ export const ptBR: TranslationResources = {
       },
       toolCallDetail: {
         label: "Exibição de chamadas de ferramentas",
-        description: "Como as chamadas de ferramentas aparecem na linha do tempo",
+        description: "Como as chamadas de ferramentas e o raciocínio aparecem na linha do tempo",
         accessibilityLabel: "Selecionar exibição de chamadas de ferramentas ({{value}})",
         options: {
           overview: "Resumo",
           detailed: "Detalhes completos",
+          drawer: "Gaveta",
         },
       },
       language: {

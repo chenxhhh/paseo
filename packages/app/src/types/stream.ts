@@ -799,7 +799,13 @@ export interface TodoEntry {
 
 export type TaskActivity =
   | { type: "created"; count: number }
-  | { type: "added" | "started" | "completed"; task: string };
+  | { type: "added" | "started" | "completed"; task: string }
+  | {
+      type: "batch";
+      added: number;
+      started: number;
+      completed: number;
+    };
 
 export interface TodoListItem {
   kind: "todo_list";
@@ -1241,45 +1247,121 @@ function appendTodoList(
     return next;
   }
 
-  const lastItem = state[state.length - 1];
+  const merged = foldIntoAdjacentTodoRow({
+    state,
+    provider,
+    normalizedItems,
+    activities,
+    timestamp,
+    timelineCursor,
+  });
+  if (merged) {
+    return merged;
+  }
+
+  const next = [...state];
+  // One snapshot changing several tasks (a TodoWrite rewriting the whole list)
+  // still lands as a single batch row, matching how consecutive ops collapse.
+  const pushedActivity: TaskActivity =
+    activities.length === 1
+      ? (activities[0] as TaskActivity)
+      : { type: "batch", ...summarizeTaskActivities(activities) };
+  const idSeed = `${provider}:${JSON.stringify(pushedActivity)}:${JSON.stringify(normalizedItems)}`;
+  next.push({
+    kind: "todo_list",
+    id: createUniqueTimelineId(next, "todo", idSeed, timestamp),
+    ...(timelineCursor ? { timelineCursor } : {}),
+    timestamp,
+    provider,
+    items: normalizedItems,
+    activity: pushedActivity,
+  });
+  return next;
+}
+
+// Task ops that arrive back-to-back fold into the row above instead of stacking
+// one row per change: four consecutive TaskCreate calls on a non-empty plan
+// render as one "added 4 tasks" badge, a finish-then-start pair as one row.
+// The fold only applies while the todo row is still the latest stream item —
+// any message, tool call, or turn boundary between ops seals the row, so task
+// progress stays visible as separate rows while work happens in between.
+function foldIntoAdjacentTodoRow(input: {
+  state: StreamItem[];
+  provider: AgentProvider;
+  normalizedItems: TodoEntry[];
+  activities: readonly TaskActivity[];
+  timestamp: Date;
+  timelineCursor?: TimelinePosition;
+}): StreamItem[] | null {
+  const lastItem = input.state[input.state.length - 1];
+  if (lastItem?.kind !== "todo_list" || lastItem.provider !== input.provider) {
+    return null;
+  }
+
+  // A pending add right after the row that created the plan grows its count:
+  // the run of creates still reads as "Created N tasks".
   if (
-    activities.length === 1 &&
-    activities[0]?.type === "added" &&
-    lastItem?.kind === "todo_list" &&
-    lastItem.provider === provider &&
     lastItem.activity.type === "created" &&
-    normalizedItems.every((item) => taskStatus(item) === "pending")
+    input.activities.length === 1 &&
+    input.activities[0]?.type === "added" &&
+    input.normalizedItems.every((item) => taskStatus(item) === "pending")
   ) {
-    const next = [...state];
+    const next = [...input.state];
     next[next.length - 1] = {
       ...lastItem,
-      ...(timelineCursor ? { timelineCursor } : {}),
-      items: normalizedItems,
-      activity: { type: "created", count: normalizedItems.length },
-      timestamp,
+      ...(input.timelineCursor ? { timelineCursor: input.timelineCursor } : {}),
+      items: input.normalizedItems,
+      activity: { type: "created", count: input.normalizedItems.length },
+      timestamp: input.timestamp,
     };
     return next;
   }
 
-  const next = [...state];
-  for (const activity of activities) {
-    const idSeed = `${provider}:${JSON.stringify(activity)}:${JSON.stringify(normalizedItems)}`;
-    next.push({
-      kind: "todo_list",
-      id: createUniqueTimelineId(next, "todo", idSeed, timestamp),
-      ...(timelineCursor ? { timelineCursor } : {}),
-      timestamp,
-      provider,
-      items: normalizedItems,
-      activity,
-    });
+  // "created" rows otherwise stay separate: their count covers the fresh plan
+  // as a whole, which a batch of status flips would only muddle.
+  if (lastItem.activity.type === "created") {
+    return null;
   }
+
+  const next = [...input.state];
+  next[next.length - 1] = {
+    ...lastItem,
+    ...(input.timelineCursor ? { timelineCursor: input.timelineCursor } : {}),
+    items: input.normalizedItems,
+    activity: mergeTaskActivities(lastItem.activity, input.activities),
+    timestamp: input.timestamp,
+  };
   return next;
 }
 
 function taskStatus(task: TodoEntry): NonNullable<TodoEntry["status"]> {
   if (task.completed || task.status === "completed") return "completed";
   return task.status === "in_progress" ? "in_progress" : "pending";
+}
+
+function summarizeTaskActivities(activities: readonly TaskActivity[]): {
+  added: number;
+  started: number;
+  completed: number;
+} {
+  const counts = { added: 0, started: 0, completed: 0 };
+  for (const activity of activities) {
+    if (activity.type === "batch") {
+      counts.added += activity.added;
+      counts.started += activity.started;
+      counts.completed += activity.completed;
+    } else if (activity.type !== "created") {
+      counts[activity.type] += 1;
+    }
+  }
+  return counts;
+}
+
+function mergeTaskActivities(
+  previous: TaskActivity,
+  incoming: readonly TaskActivity[],
+): Extract<TaskActivity, { type: "batch" }> {
+  return { type: "batch", ...summarizeTaskActivities([previous, ...incoming]) };
 }
 
 function taskKey(task: TodoEntry, index: number): string {
@@ -1328,14 +1410,15 @@ function reduceTimelineToolCall(
     .trim()
     .replace(/[.\s-]+/g, "_")
     .toLowerCase();
-  if (event.provider === "claude" && normalizedToolName === "exitplanmode") {
+  // The Claude runtime emits canonical task snapshots for its own task tools, so the tool calls
+  // themselves never render. Match by tool name, not by provider id: a custom provider extending
+  // claude reports its own id (e.g. "glm") on fetched timeline entries, and gating on "claude"
+  // would double-render those calls as todo rows plus raw tool calls.
+  if (normalizedToolName === "exitplanmode") {
     return state;
   }
 
-  if (
-    event.provider === "claude" &&
-    (normalizedToolName === "todowrite" || normalizedToolName === "todo_write")
-  ) {
+  if (normalizedToolName === "todowrite" || normalizedToolName === "todo_write") {
     const tasks = extractTaskEntriesFromToolCall(item.name, inputFromUnknownDetail(item.detail));
     if (!tasks) {
       return state;
@@ -1350,10 +1433,9 @@ function reduceTimelineToolCall(
   }
 
   if (
-    event.provider === "claude" &&
-    (normalizedToolName === "taskcreate" ||
-      normalizedToolName === "taskupdate" ||
-      normalizedToolName === "tasklist")
+    normalizedToolName === "taskcreate" ||
+    normalizedToolName === "taskupdate" ||
+    normalizedToolName === "tasklist"
   ) {
     return state;
   }

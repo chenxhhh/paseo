@@ -158,6 +158,34 @@ export const ar: TranslationResources = {
       archiveAgent: "أرشفة الوكيل الحالي",
       freshDraft: "أرشفة هذا الوكيل وابدأ مسودة جديدة",
     },
+    quickCommands: {
+      trigger: "الأوامر السريعة",
+      empty: "لا توجد أوامر سريعة بعد",
+      sectionProject: "هذا المشروع",
+      sectionGlobal: "عالمي",
+      newCommand: "أمر سريع جديد",
+      manage: "إدارة الأوامر السريعة",
+      sheetTitle: "الأوامر السريعة",
+      editCommand: "تعديل الأمر السريع",
+      add: "إضافة أمر",
+      save: "حفظ",
+      delete: "حذف",
+      deleteTitle: "حذف الأمر السريع",
+      deleteMessage: 'سيتم إزالة "{{label}}" نهائيًا.',
+      emptyManage: "لا توجد أوامر سريعة بعد. أضف أمرًا لإدراج مطالبة جاهزة بنقرة واحدة.",
+      labelLabel: "التسمية",
+      labelPlaceholder: "تظهر في قائمة الأوامر السريعة",
+      promptLabel: "المطالبة",
+      promptPlaceholder: "النص الذي يُدرج في مربع الرسالة",
+      scopeLabel: "التوفر",
+      scopeProject: "هذا المشروع",
+      scopeGlobal: "كل المشاريع",
+      scopeProjectHint: "متاح في {{project}} فقط",
+      scopeProjectFallback: "هذا المشروع",
+      scopeGlobalHint: "متاح في كل المشاريع",
+      labelRequired: "التسمية مطلوبة",
+      promptRequired: "المطالبة مطلوبة",
+    },
     github: {
       searching: "جارٍ البحث...",
       noResults: "لم يتم العثور على نتائج.",
@@ -345,6 +373,19 @@ export const ar: TranslationResources = {
         added: "أُضيفت",
         started: "بدأت",
         completed: "اكتملت",
+        addedTasks: {
+          one: "تمت إضافة {{count}} مهمة",
+          other: "تمت إضافة {{count}} مهام",
+        },
+        startedTasks: {
+          one: "بدأت {{count}} مهمة",
+          other: "بدأت {{count}} مهام",
+        },
+        completedTasks: {
+          one: "اكتملت {{count}} مهمة",
+          other: "اكتملت {{count}} مهام",
+        },
+        batchSeparator: " · ",
       },
     },
     compaction: {
@@ -353,6 +394,11 @@ export const ar: TranslationResources = {
       manual: "تم ضغط السياق يدويًا",
       withTokens: "تم ضغط السياق (رموز{{tokens}}K)",
       completed: "تم ضغط السياق",
+    },
+    turn: {
+      openArtifact: "فتح {{name}}",
+      filesChanged_one: "تم تغيير {{count}} ملف",
+      filesChanged_other: "تم تغيير {{count}} ملفات",
     },
   },
   importSession: {
@@ -981,6 +1027,27 @@ export const ar: TranslationResources = {
       },
     },
   },
+  workspaceStatus: {
+    moveTitle: "نقل إلى حالة",
+    clear: "مسح الحالة",
+    updateHost: "حدّث هذا المضيف لتعيين الحالات.",
+    board: {
+      title: "لوحة مساحات العمل",
+      empty: "لا توجد مساحات عمل بعد. أنشئ واحدة ثم اسحبها إلى مسار.",
+      emptyLane: "لا شيء هنا بعد",
+    },
+    manage: {
+      title: "إدارة الأعمدة",
+      add: "إضافة عمود",
+      addTitle: "عمود جديد",
+      namePlaceholder: "اسم العمود",
+      renameTitle: "إعادة تسمية العمود",
+      moveLeft: "تحريك لليسار",
+      moveRight: "تحريك لليمين",
+      remove: "إزالة العمود",
+      done: "تم",
+    },
+  },
   workspaceLabels: {
     title: "التسميات",
     unlabelled: "بلا تسمية",
@@ -1032,6 +1099,7 @@ export const ar: TranslationResources = {
         project: "المشروع",
         status: "الحالة",
         labels: "التسميات",
+        userStatus: "حالة اللوحة",
       },
       titleSource: {
         label: "العنوان",
@@ -1047,6 +1115,7 @@ export const ar: TranslationResources = {
         checks: "الفحوصات",
         services: "الخدمات",
         labels: "التسميات",
+        status: "الحالة",
         diff: "إحصائيات الفروق",
         timestamp: "آخر نشاط",
       },
@@ -1099,6 +1168,7 @@ export const ar: TranslationResources = {
     sections: {
       sessions: "السجل",
       schedules: "الجداول",
+      board: "اللوحة",
     },
     worktreeSetup: {
       title: "إعداد البرامج النصية لشجرة العمل",
@@ -1160,6 +1230,8 @@ export const ar: TranslationResources = {
         pin: "تثبيت في الأعلى",
         unpin: "إلغاء التثبيت",
         archive: "أرشيف",
+        archiveConfirm: "أرشفة",
+        archiveCancel: "يلغي",
         archiveWorkspace: "أرشفة مساحة العمل",
         hideFromSidebar: "إخفاء من الشريط الجانبي",
         archiving: "أرشفة...",
@@ -1193,6 +1265,7 @@ export const ar: TranslationResources = {
     isolation: {
       local: "محلي",
       worktree: "شجرة عمل جديدة",
+      existingWorktree: "شجرة عمل موجودة",
       label: "العزل",
     },
     fields: {
@@ -1206,11 +1279,13 @@ export const ar: TranslationResources = {
       createWorktreeFailed: "فشل في إنشاء شجرة العمل",
       composerStateRequired: "حالة الملحن مطلوبة",
       selectModel: "اختر نموذجا",
+      chooseWorktree: "اختر شجرة عمل",
     },
     tooltips: {
       project: "Choose the project",
       host: "Choose the host",
       isolation: "Choose the isolation level",
+      existingWorktree: "اختر شجرة عمل موجودة",
       startingRef: "اختر من أين تبدأ",
       launch: "Choose what to launch",
     },
@@ -1221,6 +1296,13 @@ export const ar: TranslationResources = {
       noMatchingRefs: "لا توجد مراجع مطابقة.",
       searchPlaceholder: "بحث الفروع والعلاقات العامة",
       title: "ابدأ من",
+    },
+    worktreePicker: {
+      title: "شجرة العمل",
+      searchPlaceholder: "بحث أشجار العمل",
+      noWorktrees: "لا توجد أشجار عمل متاحة.",
+      inUse: "قيد الاستخدام",
+      chooseWorktree: "اختر شجرة عمل",
     },
     launch: {
       title: "What to launch",
@@ -1812,6 +1894,10 @@ export const ar: TranslationResources = {
     output: "الإخراج",
   },
   toolCallGroup: {
+    thinking: {
+      one: "فكّر {{count}} مرة",
+      other: "فكّر {{count}} مرات",
+    },
     editedFiles: {
       one: "حرّر {{count}} ملفًا",
       other: "حرّر {{count}} ملفات",
@@ -1993,11 +2079,12 @@ export const ar: TranslationResources = {
       },
       toolCallDetail: {
         label: "عرض استدعاءات الأدوات",
-        description: "كيفية ظهور استدعاءات الأدوات في المخطط الزمني",
+        description: "كيفية ظهور استدعاءات الأدوات والتفكير في المخطط الزمني",
         accessibilityLabel: "حدد عرض استدعاءات الأدوات ({{value}})",
         options: {
           overview: "ملخص",
           detailed: "التفاصيل الكاملة",
+          drawer: "درج",
         },
       },
       language: {

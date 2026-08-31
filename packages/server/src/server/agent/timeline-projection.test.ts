@@ -176,6 +176,115 @@ describe("projectTimelineRows", () => {
     expect(tool?.collapsed).toContain("tool_lifecycle");
   });
 
+  test("collapses a tool call that spans turns into one entry per turn", () => {
+    // Auto-continue after an abnormal turn end starts a new turnId while a
+    // subagent's Task parent card keeps appending running updates under it.
+    // Each turn group must collapse to a single projected entry.
+    function taskCardRow(seq: number, callId: string, turnId: string): AgentTimelineRow {
+      return {
+        seq,
+        timestamp: new Date(1000 + seq).toISOString(),
+        turnId,
+        item: {
+          type: "tool_call",
+          callId,
+          name: "Task",
+          status: "running",
+          error: null,
+          detail: { type: "sub_agent", log: `[Read] file-${seq}.ts` },
+        },
+      };
+    }
+
+    const rows: AgentTimelineRow[] = [
+      taskCardRow(1, "call_task", "foreground-turn-1"),
+      taskCardRow(2, "call_task", "foreground-turn-1"),
+      {
+        seq: 3,
+        timestamp: "2026-02-13T00:00:00.200Z",
+        item: { type: "assistant_message", text: "[Auto-continue] abnormal end" },
+      },
+      ...Array.from({ length: 40 }, (_, index) =>
+        taskCardRow(index + 4, "call_task", "autonomous-turn-2"),
+      ),
+    ];
+
+    const projected = projectTimelineRows({ rows, mode: "projected" });
+
+    expect(projected).toHaveLength(3);
+    const toolEntries = projected.filter((entry) => entry.item.type === "tool_call");
+    expect(toolEntries).toHaveLength(2);
+    expect(toolEntries[0]?.turnId).toBe("foreground-turn-1");
+    expect(toolEntries[0]?.sourceSeqRanges).toEqual([{ startSeq: 1, endSeq: 2 }]);
+    expect(toolEntries[1]?.turnId).toBe("autonomous-turn-2");
+    expect(toolEntries[1]?.seqStart).toBe(4);
+    expect(toolEntries[1]?.seqEnd).toBe(43);
+    expect(toolEntries[1]?.sourceSeqRanges).toEqual([{ startSeq: 4, endSeq: 43 }]);
+    expect(toolEntries[1]?.collapsed).toContain("tool_lifecycle");
+  });
+
+  test("re-merges a tool call whose turnId reappears after another turn", () => {
+    const rows: AgentTimelineRow[] = [
+      {
+        seq: 1,
+        timestamp: "2026-02-13T00:00:00.000Z",
+        turnId: "turn-a",
+        item: {
+          type: "tool_call",
+          callId: "call_1",
+          name: "Task",
+          status: "running",
+          error: null,
+          detail: { type: "sub_agent", log: "a1" },
+        },
+      },
+      {
+        seq: 2,
+        timestamp: "2026-02-13T00:00:00.100Z",
+        turnId: "turn-b",
+        item: {
+          type: "tool_call",
+          callId: "call_1",
+          name: "Task",
+          status: "running",
+          error: null,
+          detail: { type: "sub_agent", log: "b1" },
+        },
+      },
+      {
+        seq: 3,
+        timestamp: "2026-02-13T00:00:00.200Z",
+        turnId: "turn-a",
+        item: {
+          type: "tool_call",
+          callId: "call_1",
+          name: "Task",
+          status: "completed",
+          error: null,
+          detail: { type: "sub_agent", log: "a2" },
+        },
+      },
+    ];
+
+    const projected = projectTimelineRows({ rows, mode: "projected" });
+
+    expect(projected).toHaveLength(2);
+    const first = projected[0];
+    expect(first?.turnId).toBe("turn-a");
+    expect(first?.seqStart).toBe(1);
+    expect(first?.seqEnd).toBe(3);
+    expect(first?.sourceSeqRanges).toEqual([
+      { startSeq: 1, endSeq: 1 },
+      { startSeq: 3, endSeq: 3 },
+    ]);
+    if (first?.item.type === "tool_call") {
+      expect(first.item.status).toBe("completed");
+      expect(first.item.detail).toEqual({ type: "sub_agent", log: "a2" });
+    }
+    expect(projected[1]?.turnId).toBe("turn-b");
+    expect(projected[1]?.seqStart).toBe(2);
+  });
+
   test("returns canonical rows unchanged in canonical mode", () => {
     const rows: AgentTimelineRow[] = [
       {

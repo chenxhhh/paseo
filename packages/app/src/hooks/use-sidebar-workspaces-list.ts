@@ -31,7 +31,10 @@ export {
   computeSidebarOrderUpdates,
   deriveProjectStatusBucket,
   deriveSidebarLoadingState,
+  groupProjectWorkspaces,
   shouldShowSidebarHostLabels,
+  branchGroupCollapseKey,
+  worktreeGroupCollapseKey,
   type SidebarLoadingState,
   type SidebarOrderUpdates,
   type SidebarStatusWorkspacePlacement,
@@ -40,6 +43,10 @@ export {
   type SidebarProjectEntry,
   type SidebarStateBucket,
   type SidebarWorkspaceEntry,
+  type SidebarBranchGroup,
+  type SidebarWorktreeGroup,
+  type SidebarWorkspaceSubgroup,
+  type ProjectWorkspaceGrouping,
 } from "./sidebar-workspaces-view-model";
 
 /**

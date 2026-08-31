@@ -1,6 +1,12 @@
-import { MoreVertical, Pause, Pencil, Play, RotateCw, Trash2 } from "lucide-react-native";
+import { History, MoreVertical, Pause, Pencil, Play, RotateCw, Trash2 } from "lucide-react-native";
 import { useCallback, useState, type ReactElement } from "react";
-import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
+import {
+  Pressable,
+  Text,
+  View,
+  type GestureResponderEvent,
+  type PressableStateCallbackType,
+} from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import {
   DropdownMenu,
@@ -33,6 +39,7 @@ const ThemedPlay = withUnistyles(Play);
 const ThemedRotateCw = withUnistyles(RotateCw);
 const ThemedTrash2 = withUnistyles(Trash2);
 const ThemedKebab = withUnistyles(MoreVertical);
+const ThemedHistory = withUnistyles(History);
 
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
@@ -55,6 +62,7 @@ export interface ScheduleRowActions {
   onPause: () => void;
   onResume: () => void;
   onRunNow: () => void;
+  onViewRuns: () => void;
   onDelete: () => void;
 }
 
@@ -150,6 +158,7 @@ export function ScheduleRow({
   onPause,
   onResume,
   onRunNow,
+  onViewRuns,
   onDelete,
 }: ScheduleRowProps): ReactElement {
   const isCompact = useIsCompactFormFactor();
@@ -162,6 +171,8 @@ export function ScheduleRow({
   const badge = stateBadge(state);
   const meta = buildMeta(schedule, state, serverName, singleHost ?? false);
   const canRun = schedule.target.type === "new-agent" && (state === "active" || state === "paused");
+  // Hover-only on desktop; agent-target (heartbeat) schedules have no history entry.
+  const canShowHistoryShortcut = !isCompact && isHovered && schedule.target.type !== "agent";
 
   const rowStyle = useCallback(
     ({ pressed }: PressableStateCallbackType) => [
@@ -206,6 +217,9 @@ export function ScheduleRow({
 
         <View style={styles.trailing}>
           <StatusBadge label={badge.label} variant={badge.variant} />
+          {canShowHistoryShortcut ? (
+            <RowHistoryButton scheduleId={schedule.id} onPress={onViewRuns} />
+          ) : null}
           <ScheduleKebabMenu
             schedule={schedule}
             canRun={canRun}
@@ -214,6 +228,7 @@ export function ScheduleRow({
             onPause={onPause}
             onResume={onResume}
             onRunNow={onRunNow}
+            onViewRuns={onViewRuns}
             onDelete={onDelete}
           />
         </View>
@@ -222,10 +237,53 @@ export function ScheduleRow({
   );
 }
 
+/**
+ * Desktop-only shortcut that fades in while the row is hovered: one click opens
+ * the run-history sheet without going through the kebab menu. Touch form
+ * factors never hover, so they keep using the menu entry.
+ */
+function RowHistoryButton({
+  scheduleId,
+  onPress,
+}: {
+  scheduleId: string;
+  onPress: () => void;
+}): ReactElement {
+  const handlePress = useCallback(
+    (event: GestureResponderEvent) => {
+      // Sit inside the row's Pressable; keep the tap from also opening the editor.
+      event.stopPropagation();
+      onPress();
+    },
+    [onPress],
+  );
+  const buttonStyle = useCallback(
+    ({ pressed }: PressableStateCallbackType) => [
+      styles.historyButton,
+      pressed && styles.historyButtonPressed,
+    ],
+    [],
+  );
+
+  return (
+    <Pressable
+      onPress={handlePress}
+      hitSlop={8}
+      style={buttonStyle}
+      accessibilityRole="button"
+      accessibilityLabel="View run history"
+      testID={`schedule-row-history-${scheduleId}`}
+    >
+      <ThemedHistory size={14} uniProps={mutedColorMapping} />
+    </Pressable>
+  );
+}
+
 const editLeading = <ThemedPencil size={MENU_ICON_SIZE} uniProps={mutedColorMapping} />;
 const pauseLeading = <ThemedPause size={MENU_ICON_SIZE} uniProps={mutedColorMapping} />;
 const resumeLeading = <ThemedPlay size={MENU_ICON_SIZE} uniProps={mutedColorMapping} />;
 const runLeading = <ThemedRotateCw size={MENU_ICON_SIZE} uniProps={mutedColorMapping} />;
+const historyLeading = <ThemedHistory size={MENU_ICON_SIZE} uniProps={mutedColorMapping} />;
 const deleteLeading = <ThemedTrash2 size={MENU_ICON_SIZE} uniProps={destructiveColorMapping} />;
 
 function ScheduleExecutionMenuItems({
@@ -305,10 +363,18 @@ function ScheduleKebabMenu({
   onPause,
   onResume,
   onRunNow,
+  onViewRuns,
   onDelete,
 }: Pick<
   ScheduleRowProps,
-  "schedule" | "pending" | "onEdit" | "onPause" | "onResume" | "onRunNow" | "onDelete"
+  | "schedule"
+  | "pending"
+  | "onEdit"
+  | "onPause"
+  | "onResume"
+  | "onRunNow"
+  | "onViewRuns"
+  | "onDelete"
 > & {
   canRun: boolean;
 }): ReactElement {
@@ -333,6 +399,15 @@ function ScheduleKebabMenu({
         >
           Edit {productNameLower}
         </DropdownMenuItem>
+        {schedule.target.type !== "agent" ? (
+          <DropdownMenuItem
+            leading={historyLeading}
+            onSelect={onViewRuns}
+            testID={`schedule-menu-runs-${schedule.id}`}
+          >
+            View run history
+          </DropdownMenuItem>
+        ) : null}
         <ScheduleExecutionMenuItems
           schedule={schedule}
           canRun={canRun}
@@ -412,6 +487,16 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.base,
   },
   kebabTriggerHovered: {
+    backgroundColor: theme.colors.surface2,
+  },
+  historyButton: {
+    width: 28,
+    height: 28,
+    borderRadius: theme.borderRadius.full,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  historyButtonPressed: {
     backgroundColor: theme.colors.surface2,
   },
 }));

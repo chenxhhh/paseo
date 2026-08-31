@@ -81,6 +81,7 @@ import {
   type InFlightTurnForkHandler,
   type TurnContentStrategy,
 } from "./turn-footer";
+import type { TurnArtifactsMeta } from "./turn-summary";
 import { resolveBottomOverlayTailInset } from "./bottom-overlay-inset";
 import { layoutStream, type StreamLayoutItem } from "./layout";
 import {
@@ -159,6 +160,7 @@ function renderStreamItemWithTurnFooter(input: {
   strategy: TurnContentStrategy;
   supportsTimelineCursor: boolean;
   onForkAssistantTurn?: AssistantTurnForkHandler;
+  meta?: TurnArtifactsMeta;
 }): ReactNode {
   if (!input.content) {
     return null;
@@ -173,6 +175,7 @@ function renderStreamItemWithTurnFooter(input: {
       startIndex={footerHost.startIndex}
       supportsTimelineCursor={input.supportsTimelineCursor}
       onForkAssistantTurn={input.onForkAssistantTurn}
+      meta={input.meta}
     />
   ) : null;
   const content = (
@@ -479,6 +482,19 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       handleInlinePathPress({ raw: filePath, path: filePath }, "preferred");
     });
 
+    // Context for completed-turn footers: artifact chips open the produced file,
+    // and the rewind entry reverts the turn (hidden on read-only surfaces).
+    const turnFooterMeta = useMemo<TurnArtifactsMeta>(
+      () => ({
+        serverId: resolvedServerId,
+        agentId,
+        client,
+        capabilities: readOnly ? undefined : context.capabilities,
+        onOpenFile: handleToolCallOpenFile,
+      }),
+      [resolvedServerId, agentId, client, readOnly, context.capabilities, handleToolCallOpenFile],
+    );
+
     const handleForkAssistantTurn: AssistantTurnForkHandler = useStableEvent(
       async ({ target, boundary }) => {
         await forkAgent({
@@ -716,20 +732,27 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       [agentId, client, handleInlinePathPress, resolvedServerId, toast, workspaceRoot],
     );
 
-    const renderThoughtItem = useCallback(
-      (layoutItem: StreamLayoutItem, item: Extract<StreamItem, { kind: "thought" }>) => {
+    const renderThoughtContent = useCallback(
+      (item: Extract<StreamItem, { kind: "thought" }>, isLastInSequence: boolean) => {
         return (
           <ThoughtSlot
             itemId={item.id}
             onInlineDetailsExpandedChangeByItemId={setInlineDetailsExpanded}
             text={item.text}
             status={item.status}
-            isLastInSequence={layoutItem.isLastInToolSequence}
+            isLastInSequence={isLastInSequence}
             defaultExpanded={autoExpandReasoning}
           />
         );
       },
       [autoExpandReasoning, setInlineDetailsExpanded],
+    );
+
+    const renderThoughtItem = useCallback(
+      (layoutItem: StreamLayoutItem, item: Extract<StreamItem, { kind: "thought" }>) => {
+        return renderThoughtContent(item, layoutItem.isLastInToolSequence);
+      },
+      [renderThoughtContent],
     );
 
     const renderSingleToolCallItem = useCallback(
@@ -804,15 +827,20 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             onExpandedChange={setToolCallGroupExpanded}
           >
             {expanded
-              ? group.run.calls.map((call, index) => (
-                  <React.Fragment key={call.id}>
-                    {renderSingleToolCallItem(
-                      call,
-                      index === group.run.calls.length - 1,
-                      GROUPED_TOOL_CALL_DETAIL_MAX_HEIGHT,
-                    )}
-                  </React.Fragment>
-                ))
+              ? group.run.calls.map((call, index) => {
+                  const isLastInGroup = index === group.run.calls.length - 1;
+                  return (
+                    <React.Fragment key={call.id}>
+                      {call.kind === "thought"
+                        ? renderThoughtContent(call, isLastInGroup)
+                        : renderSingleToolCallItem(
+                            call,
+                            isLastInGroup,
+                            GROUPED_TOOL_CALL_DETAIL_MAX_HEIGHT,
+                          )}
+                    </React.Fragment>
+                  );
+                })
               : null}
           </OverviewToolCallGroupView>
         );
@@ -821,6 +849,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         projectedToolCalls.groupsByHostId,
         expandedToolCallGroupIds,
         renderSingleToolCallItem,
+        renderThoughtContent,
         setToolCallGroupExpanded,
       ],
     );
@@ -893,6 +922,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           strategy: streamRenderStrategy,
           supportsTimelineCursor: supportsAgentForkContextCursor,
           onForkAssistantTurn: readOnly ? undefined : handleForkAssistantTurn,
+          meta: turnFooterMeta,
         });
       },
       [
@@ -901,6 +931,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         renderStreamItemContent,
         streamRenderStrategy,
         supportsAgentForkContextCursor,
+        turnFooterMeta,
       ],
     );
 
@@ -928,6 +959,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             supportsTimelineCursor={supportsAgentForkContextCursor}
             onForkAssistantTurn={readOnly ? undefined : handleForkAssistantTurn}
             onForkInFlightTurn={readOnly ? undefined : handleForkInFlightTurn}
+            meta={turnFooterMeta}
           />
         ) : null,
       [
@@ -939,6 +971,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         bottomTurnFooterHost,
         streamRenderStrategy,
         supportsAgentForkContextCursor,
+        turnFooterMeta,
       ],
     );
     const renderModel = useMemo<AgentStreamRenderModel>(() => {
