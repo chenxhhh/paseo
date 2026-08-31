@@ -6,7 +6,7 @@ user-invocable: true
 
 # Run the app (Windows worktree web test)
 
-Verified end-to-end on 2026-08-24. Run everything from the worktree root in Git Bash.
+Verified end-to-end on 2026-08-24; seeding fix verified 2026-08-31. Run everything from the worktree root in Git Bash.
 
 ## Hard facts
 
@@ -24,7 +24,14 @@ env PASEO_HOME="$PWD/.dev/paseo-home" PASEO_LISTEN="127.0.0.1:6790" \
 ```
 
 - Use `dev:server:raw`, not `dev:server:watch`: under a background shell with no TTY, `watch:protocol` (tsc --watch) exits with no error message and `--kill-others` kills the whole tree — the daemon vanishes minutes later, health stops responding.
-- `PASEO_DEV_SEED_HOME` seeds the worktree home with real project/agent JSON metadata from `~/.paseo`, so the sidebar renders the real project hierarchy with no fixture setup. A few seeded files copy as NUL bytes; the daemon skips them — harmless.
+- `PASEO_DEV_SEED_HOME` does NOT work with `dev:server:raw`. The seeding lives in `scripts/dev-home.sh` (`seed_worktree_paseo_home`), which only runs when a `dev:*` script sources it — `dev:server:raw` runs `packages/server`'s dev script directly and skips it entirely (verified 2026-08-31: daemon booted with `materializedProjects: 0`, sidebar showed "还没有 projects"). Seed manually instead, before the daemon's first start (it must run against an empty home; the daemon refuses to reseed a home that already has data):
+  ```bash
+  SRC="$HOME/.paseo"; TGT="$PWD/.dev/paseo-home"; mkdir -p "$TGT"
+  find "$SRC/agents" -type f -name '*.json' -print0 2>/dev/null | while IFS= read -r -d '' f; do rel="${f#$SRC/}"; mkdir -p "$TGT/$(dirname "$rel")"; cp "$f" "$TGT/$rel"; done
+  find "$SRC/projects" -type f -name '*.json' -print0 2>/dev/null | while IFS= read -r -d '' f; do rel="${f#$SRC/}"; mkdir -p "$TGT/$(dirname "$rel")"; cp "$f" "$TGT/$rel"; done
+  [ -f "$SRC/config.json" ] && cp "$SRC/config.json" "$TGT/config.json"
+  ```
+  This mirrors `dev-home.sh`'s `copy_json_tree` (JSON-only, no rsync fallback). A few seeded files copy as NUL bytes; the daemon skips them — harmless. Ready-check the load with `grep "Agent registry loaded" <daemon log>` — expect hundreds of records, not 0.
 - A cold worktree needs `npm run build:server` first or the daemon dies on missing workspace `dist`.
 - Wait for readiness: `curl http://localhost:6790/api/health`.
 
