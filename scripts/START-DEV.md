@@ -16,7 +16,7 @@
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-paseo-dev.ps1
 ```
 
-> 脚本通过 `$PSScriptRoot` 自动定位仓库根，不依赖固定的克隆路径，可放在任意位置的 clone 中直接使用。
+> 脚本会自动向上查找 Paseo 仓库根（同时存在根 `package.json` 与 `packages/server/package.json` 的目录），无论从 `scripts/` 内还是从仓库外一份兄弟副本运行时都能正确定位，不会误落到盘符根目录。
 
 ## 与官方 `scripts/dev.ps1` 的区别
 

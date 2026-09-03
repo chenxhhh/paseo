@@ -10,10 +10,53 @@ Write-Host "  Metro  : http://localhost:8081" -ForegroundColor Gray
 Write-Host "===============================================" -ForegroundColor Cyan
 Write-Host ""
 
-# Repo root is the parent of scripts/ (this polyfill lives there). Deriving it
-# from $PSScriptRoot keeps this script portable across clone locations instead
-# of hard-coding an absolute path.
-$PaseoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+# Locate the repo root robustly. Priority:
+#   1. $env:PASEO_ROOT if set and points at the repo (explicit override).
+#   2. Walk up from this script until a dir has both a root package.json and
+#      packages/server/package.json (the Paseo monorepo signature) — this works
+#      for the copy shipped inside scripts/.
+#   3. Fallback for an outer copy (e.g. D:\UGit\start-*.ps1): check the common
+#      sibling layout  <outer>\Paseo\paseo.
+# Avoids the old trap of resolving to the drive root and running npm there.
+$PaseoRoot = $null
+# 1) explicit override
+if ($env:PASEO_ROOT -and (Test-Path (Join-Path $env:PASEO_ROOT "packages\server\package.json"))) {
+    $PaseoRoot = $env:PASEO_ROOT
+}
+# 2) walk up (works for the copy shipped inside scripts/)
+if (-not $PaseoRoot) {
+    $cursor = (Split-Path -Parent $MyInvocation.MyCommand.Path)
+    while ($cursor) {
+        $hasRootPkg = Test-Path (Join-Path $cursor "package.json")
+        $hasServerPkg = Test-Path (Join-Path $cursor "packages\server\package.json")
+        if ($hasRootPkg -and $hasServerPkg) {
+            $PaseoRoot = $cursor
+            break
+        }
+        $parent = Split-Path -Parent $cursor
+        # On Windows, Split-Path -Parent of a drive root (D:\) returns '' rather
+        # than itself, so guard against empty to avoid walking past the root.
+        if (-not $parent) { break }
+        $cursor = $parent
+    }
+}
+# 3) outer-copy sibling layout: <outer>\Paseo\paseo
+if (-not $PaseoRoot) {
+    $candidate = Join-Path $PSScriptRoot "Paseo\paseo"
+    if (Test-Path (Join-Path $candidate "packages\server\package.json")) {
+        $PaseoRoot = $candidate
+    }
+}
+if (-not $PaseoRoot) {
+    Write-Host ""
+    Write-Host "Could not locate the Paseo repo root." -ForegroundColor Red
+    Write-Host "This copy is run outside the repo and no sibling Paseo\paseo exists here." -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "Run the copy that ships inside the repo instead:" -ForegroundColor Yellow
+    Write-Host "    powershell -NoProfile -ExecutionPolicy Bypass -File D:\UGit\Paseo\paseo\scripts\start-paseo-dev.bat" -ForegroundColor Cyan
+    Write-Host "or set the PASEO_ROOT environment variable to the repo root and re-run this script." -ForegroundColor Yellow
+    exit 1
+}
 $SupervisorEntry = Join-Path $PaseoRoot "packages\server\dist\scripts\supervisor-entrypoint.js"
 
 function Get-CommandLine([int]$ProcessId) {
