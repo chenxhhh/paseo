@@ -9,6 +9,7 @@ import {
   hydrateStreamState,
   mergeToolCallDetail,
   reduceStreamUpdate,
+  streamTimelineItemIdentity,
   type AgentToolCallItem,
   type StreamItem,
   isAgentToolCallItem,
@@ -18,8 +19,98 @@ import {
 import type { AgentProvider, ToolCallDetail } from "@getpaseo/protocol/agent-types";
 import type { AgentStreamEventPayload } from "@getpaseo/protocol/messages";
 import { buildToolCallDisplayModel } from "@getpaseo/protocol/tool-call-display";
+import { timelineItemIdentity } from "@getpaseo/protocol/timeline-identity";
 
 type CanonicalToolStatus = "running" | "completed" | "failed" | "canceled";
+
+describe("plugin timeline rows", () => {
+  it("uses the protocol identity format for stream tool and plugin rows", () => {
+    const tool = {
+      kind: "tool_call",
+      id: "tool-row",
+      timestamp: new Date(1),
+      payload: {
+        source: "agent",
+        data: {
+          provider: "codex",
+          callId: "call-1",
+          name: "read",
+          status: "running",
+          error: null,
+          detail: { type: "unknown", input: null, output: null },
+        },
+      },
+    } satisfies StreamItem;
+    const plugin = {
+      kind: "plugin",
+      id: "review/row-1",
+      pluginId: "review",
+      pluginItemId: "row-1",
+      itemKind: "review",
+      version: 1,
+      data: {},
+      timestamp: new Date(1),
+    } satisfies StreamItem;
+
+    expect(streamTimelineItemIdentity(tool)).toBe(
+      timelineItemIdentity({ type: "tool_call", ...tool.payload.data }),
+    );
+    expect(streamTimelineItemIdentity(plugin)).toBe(
+      timelineItemIdentity({
+        type: "plugin",
+        id: plugin.pluginItemId,
+        pluginId: plugin.pluginId,
+        kind: plugin.itemKind,
+        version: plugin.version,
+        data: plugin.data,
+      }),
+    );
+  });
+
+  it("replaces a live row when the plugin-scoped identity repeats", () => {
+    const first = reduceStreamUpdate(
+      [],
+      {
+        type: "timeline",
+        provider: "codex",
+        item: {
+          type: "plugin",
+          id: "review-1",
+          pluginId: "review",
+          kind: "review",
+          version: 1,
+          data: { status: "running" },
+        },
+      },
+      new Date(1),
+    );
+    const second = reduceStreamUpdate(
+      first,
+      {
+        type: "timeline",
+        provider: "codex",
+        item: {
+          type: "plugin",
+          id: "review-1",
+          pluginId: "review",
+          kind: "review",
+          version: 1,
+          data: { status: "complete" },
+        },
+      },
+      new Date(2),
+    );
+
+    expect(second).toHaveLength(1);
+    expect(second[0]).toMatchObject({
+      kind: "plugin",
+      id: "review/review-1",
+      pluginId: "review",
+      pluginItemId: "review-1",
+      data: { status: "complete" },
+    });
+  });
+});
 
 describe("user message identity", () => {
   it("replaces provisional optimistic turn membership with canonical membership", () => {
@@ -1087,7 +1178,7 @@ describe("stream reducer canonical tool calls", () => {
 
     expect(state.flatMap((item) => (item.kind === "todo_list" ? [item.activity] : []))).toEqual([
       { type: "created", count: 2 },
-      { type: "batch", added: 0, started: 2, completed: 2, reopened: 0 },
+      { type: "batch", added: 0, started: 2, completed: 2 },
     ]);
   });
 
@@ -1212,7 +1303,7 @@ describe("stream reducer canonical tool calls", () => {
     );
     expect(todoRows.map((row) => row.activity)).toEqual([
       { type: "created", count: 1 },
-      { type: "batch", added: 3, started: 1, completed: 0, reopened: 0 },
+      { type: "batch", added: 3, started: 1, completed: 0 },
     ]);
     expect(todoRows[1]?.items).toHaveLength(4);
   });
@@ -1250,7 +1341,7 @@ describe("stream reducer canonical tool calls", () => {
     );
     expect(todoRows.map((row) => row.activity)).toEqual([
       { type: "created", count: 2 },
-      { type: "batch", added: 0, started: 1, completed: 1, reopened: 0 },
+      { type: "batch", added: 0, started: 1, completed: 1 },
     ]);
   });
 

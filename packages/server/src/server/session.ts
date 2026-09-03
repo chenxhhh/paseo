@@ -4,6 +4,7 @@ import { lstat, mkdir, mkdtemp, rename, rm, stat } from "node:fs/promises";
 import { basename, resolve, sep } from "path";
 import { homedir } from "node:os";
 import { CLIENT_CAPS, type ClientCapability } from "@getpaseo/protocol/client-capabilities";
+import { formatPluginSourceReference } from "@getpaseo/protocol/plugin-source-reference";
 import {
   serializeAgentStreamEvent,
   type AgentSnapshotPayload,
@@ -72,6 +73,11 @@ import {
 } from "./lifecycle-reasons.js";
 import { DirectorySyncService } from "./directory-sync/index.js";
 import {
+  assertWorkspaceAutomationAllowedForWorkspace,
+  clearWorkspaceAutomationBlock,
+  formatWorkspaceAutomationBlockedMessage,
+} from "./workspace-automation-gate.js";
+import {
   WorkspaceLabelError,
   WorkspaceLabelStorageUncertainError,
   type WorkspaceLabelService,
@@ -106,6 +112,8 @@ import {
   appendTimelineItemIfAgentKnown,
   emitLiveTimelineItemIfAgentKnown,
 } from "./agent/timeline-append.js";
+import { assertPluginTimelineDataSize } from "./agent/agent-timeline-content.js";
+import { parsePluginClientId } from "./plugins/plugin-session-identity.js";
 import {
   projectTimelineRows,
   selectProjectedTimelinePage,
@@ -242,6 +250,7 @@ import {
   handlePaseoWorktreeArchiveRequest as handleWorktreeArchiveRequest,
   handlePaseoWorktreeListRequest as handleWorktreeListRequest,
   handleWorkspaceSetupStatusRequest as handleWorkspaceSetupStatusRequestMessage,
+  handleWorkspaceSetupRunRequest as handleWorkspaceSetupRunRequestMessage,
 } from "./worktree-session.js";
 import { archiveByScope, type ActiveWorkspaceRef } from "./workspace-archive-service.js";
 import { WorkspaceSetupRuntime } from "./workspace-setup-runtime.js";
@@ -481,7 +490,6 @@ export interface SessionOptions {
       source: string;
       id?: string;
       ref?: string;
-      pluginPath?: string;
     }): Promise<import("@getpaseo/protocol/messages").PluginListItem>;
     statusSources(
       pluginId?: string,
@@ -1059,6 +1067,8 @@ export class Session {
       logger: this.sessionLogger,
       emit: (message) => this.emit(message),
       spawnWorkspaceScript,
+      assertAutomationAllowed: (workspaceId) =>
+        assertWorkspaceAutomationAllowedForWorkspace(this.workspaceRegistry, workspaceId),
       globalServicePorts: loadPersistedConfig(this.paseoHome).worktrees?.servicePorts,
     });
     this.subscribeToOptionalManagers();
@@ -1956,9 +1966,7 @@ export class Session {
       this.dispatchAgentLifecycleMessage(msg) ??
       this.dispatchAgentConfigMessage(msg) ??
       this.dispatchCheckoutMessage(msg) ??
-      this.dispatchWorkspaceRecoveryMessage(msg) ??
-      this.dispatchWorkspaceLabelMessage(msg) ??
-      this.dispatchWorkspaceOrMutationMessage(msg) ??
+      this.dispatchWorkspaceLifecycleMessage(msg) ??
       this.dispatchWorkspaceFileMessage(msg, source) ??
       this.dispatchProviderMessage(msg) ??
       this.dispatchOrchestrationSkillsMessage(msg) ??
@@ -1968,6 +1976,15 @@ export class Session {
       this.dispatchScheduleMessage(msg) ??
       this.dispatchMiscMessage(msg);
     if (promise) await promise;
+  }
+
+  private dispatchWorkspaceLifecycleMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    return (
+      this.dispatchWorkspaceRecoveryMessage(msg) ??
+      this.dispatchWorkspaceLabelMessage(msg) ??
+      this.dispatchWorkspaceSetupMessage(msg) ??
+      this.dispatchWorkspaceAndProjectMessage(msg)
+    );
   }
 
   private dispatchOrchestrationSkillsMessage(
@@ -2117,10 +2134,10 @@ export class Session {
       if (!this.pluginRuntime) throw new Error("Plugin service is unavailable");
       return this.pluginRuntime
         .installSource({
-          source: msg.source,
+          // COMPAT(plugin-source-path): accepted for v0.7 clients; remove after 2027-09-01.
+          source: formatPluginSourceReference(msg.source, msg.pluginPath),
           ...(msg.id ? { id: msg.id } : {}),
           ...(msg.ref ? { ref: msg.ref } : {}),
-          ...(msg.pluginPath ? { pluginPath: msg.pluginPath } : {}),
         })
         .then((plugin) => {
           this.emit({
@@ -2260,6 +2277,8 @@ export class Session {
     switch (msg.type) {
       case "fetch_agent_timeline_request":
         return this.handleFetchAgentTimelineRequest(msg, source);
+      case "agent.timeline.append.request":
+        return this.handleAgentTimelineAppendRequest(msg);
       case "agent.timeline.list_prompts.request":
         return this.handleAgentTimelineListPromptsRequest(msg, source);
       case "agent.provider_subagents.list.request":
@@ -2466,16 +2485,6 @@ export class Session {
     }
   }
 
-  // One link in the parent dispatch chain for both workspace dispatchers, so
-  // adding the mutation family did not lengthen that chain's complexity.
-  private dispatchWorkspaceOrMutationMessage(
-    msg: SessionInboundMessage,
-  ): Promise<void> | undefined {
-    return (
-      this.dispatchWorkspaceAndProjectMessage(msg) ?? this.dispatchWorkspaceMutationMessage(msg)
-    );
-  }
-
   private dispatchWorkspaceAndProjectMessage(
     msg: SessionInboundMessage,
   ): Promise<void> | undefined {
@@ -2485,11 +2494,17 @@ export class Session {
       case "project.list.request":
         return this.handleProjectListRequest(msg);
       case "paseo_worktree_list_request":
+        return this.handlePaseoWorktreeListRequest(msg);
       case "paseo_worktree_archive_request":
+        return this.handlePaseoWorktreeArchiveRequest(msg);
       case "create_paseo_worktree_request":
-        return this.dispatchPaseoWorktreeMessage(msg);
-      case "workspace_setup_status_request":
-        return this.handleWorkspaceSetupStatusRequest(msg);
+        return this.handleCreatePaseoWorktreeRequest(msg);
+      case "workspace.user-status.set.request":
+        return this.handleWorkspaceUserStatusSetRequest(
+          msg.workspaceId,
+          msg.userStatus,
+          msg.requestId,
+        );
       // COMPAT(desktopEditorBridge): added in v0.1.88, remove after 2026-12-03 once old clients no longer call daemon editor RPCs.
       case "list_available_editors_request":
       case "open_in_editor_request":
@@ -2502,39 +2517,16 @@ export class Session {
         return this.dispatchProjectLifecycleMessage(msg);
       case "workspace.github.search_repositories.request":
         return this.handleWorkspaceGithubSearchRepositoriesRequest(msg);
-      default:
-        return undefined;
-    }
-  }
-
-  // Read-write workspace mutations (archive/create/attention/metadata setters)
-  // split from the read side above so neither dispatch switch exceeds the
-  // complexity budget.
-  private dispatchWorkspaceMutationMessage(msg: SessionInboundMessage): Promise<void> | undefined {
-    switch (msg.type) {
-      case "archive_workspace_request":
-      case "workspace.create.request":
-      case "workspace.clear_attention.request":
-        return this.dispatchWorkspaceLifecycleMessage(msg);
-      case "workspace.title.set.request":
-      case "workspace.pin.set.request":
-      case "workspace.user-status.set.request":
-        return this.dispatchWorkspaceMetadataSetMessage(msg);
-      default:
-        return undefined;
-    }
-  }
-
-  // The workspace archive/create/attention family shares a dispatch group so
-  // the parent switch stays under the complexity budget.
-  private dispatchWorkspaceLifecycleMessage(msg: SessionInboundMessage): Promise<void> | undefined {
-    switch (msg.type) {
       case "archive_workspace_request":
         return this.handleArchiveWorkspaceRequest(msg);
       case "workspace.create.request":
         return this.handleWorkspaceCreateRequest(msg);
       case "workspace.clear_attention.request":
         return this.handleWorkspaceClearAttentionRequest(msg);
+      case "workspace.title.set.request":
+        return this.handleWorkspaceTitleSetRequest(msg.workspaceId, msg.title, msg.requestId);
+      case "workspace.pin.set.request":
+        return this.handleWorkspacePinSetRequest(msg.workspaceId, msg.pinned, msg.requestId);
       default:
         return undefined;
     }
@@ -2555,21 +2547,6 @@ export class Session {
     }
   }
 
-  // The paseo-owned worktree inspection family, grouped for the same reason as
-  // the project lifecycle group below.
-  private dispatchPaseoWorktreeMessage(msg: SessionInboundMessage): Promise<void> | undefined {
-    switch (msg.type) {
-      case "paseo_worktree_list_request":
-        return this.handlePaseoWorktreeListRequest(msg);
-      case "paseo_worktree_archive_request":
-        return this.handlePaseoWorktreeArchiveRequest(msg);
-      case "create_paseo_worktree_request":
-        return this.handleCreatePaseoWorktreeRequest(msg);
-      default:
-        return undefined;
-    }
-  }
-
   // The project add/create/clone/remove family shares a dispatch group so the
   // parent switch stays under the complexity budget.
   private dispatchProjectLifecycleMessage(msg: SessionInboundMessage): Promise<void> | undefined {
@@ -2585,6 +2562,16 @@ export class Session {
       default:
         return undefined;
     }
+  }
+
+  private dispatchWorkspaceSetupMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    if (msg.type === "workspace_setup_status_request") {
+      return this.handleWorkspaceSetupStatusRequest(msg);
+    }
+    if (msg.type === "workspace.setup.run.request") {
+      return this.handleWorkspaceSetupRunRequest(msg);
+    }
+    return undefined;
   }
 
   private dispatchWorkspaceLabelMessage(msg: SessionInboundMessage): Promise<void> | undefined {
@@ -3359,27 +3346,6 @@ export class Session {
           error: getErrorMessageOr(error, "Failed to remove project"),
         },
       });
-    }
-  }
-
-  // The three workspace metadata setters share a family; grouping their dispatch
-  // keeps the parent switch under the complexity budget.
-  private dispatchWorkspaceMetadataSetMessage(
-    msg: SessionInboundMessage,
-  ): Promise<void> | undefined {
-    switch (msg.type) {
-      case "workspace.title.set.request":
-        return this.handleWorkspaceTitleSetRequest(msg.workspaceId, msg.title, msg.requestId);
-      case "workspace.pin.set.request":
-        return this.handleWorkspacePinSetRequest(msg.workspaceId, msg.pinned, msg.requestId);
-      case "workspace.user-status.set.request":
-        return this.handleWorkspaceUserStatusSetRequest(
-          msg.workspaceId,
-          msg.userStatus,
-          msg.requestId,
-        );
-      default:
-        return undefined;
     }
   }
 
@@ -5740,6 +5706,7 @@ export class Session {
           ...(result.filteredAlreadyImportedCount > 0
             ? { filteredAlreadyImportedCount: result.filteredAlreadyImportedCount }
             : {}),
+          ...(result.providerErrors.length > 0 ? { providerErrors: result.providerErrors } : {}),
         },
       });
     } catch (error) {
@@ -6271,6 +6238,13 @@ export class Session {
         requestId: request.requestId,
         workspace: descriptor,
         setupTerminalId: null,
+        ...(result.workspace.untrustedSource
+          ? {
+              setupSkippedReason: formatWorkspaceAutomationBlockedMessage(
+                result.workspace.untrustedSource,
+              ),
+            }
+          : {}),
         error: null,
       },
     });
@@ -6796,6 +6770,8 @@ export class Session {
           }),
         startWorkspaceSetup: (workspaceId, operation) =>
           this.workspaceSetupRuntime.start(workspaceId, operation),
+        assertWorkspaceAutomationAllowed: (workspaceId) =>
+          assertWorkspaceAutomationAllowedForWorkspace(this.workspaceRegistry, workspaceId),
         emitWorkspaceUpdateForWorkspaceId: (workspaceId) =>
           this.emitWorkspaceUpdateForWorkspaceId(workspaceId),
         cacheWorkspaceSetupSnapshot: (workspaceId, snapshot) => {
@@ -6826,6 +6802,39 @@ export class Session {
       {
         emit: (message) => this.emit(message),
         workspaceSetupSnapshots: this.workspaceSetupSnapshots,
+        getWorkspace: (workspaceId) => this.workspaceRegistry.get(workspaceId),
+      },
+      request,
+    );
+  }
+
+  private async handleWorkspaceSetupRunRequest(
+    request: Extract<SessionInboundMessage, { type: "workspace.setup.run.request" }>,
+  ): Promise<void> {
+    return handleWorkspaceSetupRunRequestMessage(
+      {
+        getWorkspace: (workspaceId) => this.workspaceRegistry.get(workspaceId),
+        clearAutomationBlock: (workspaceId) =>
+          clearWorkspaceAutomationBlock(this.workspaceRegistry, workspaceId),
+        startWorkspaceSetup: (workspaceId, operation) =>
+          this.workspaceSetupRuntime.start(workspaceId, operation),
+        paseoHome: this.paseoHome,
+        worktreesRoot: this.worktreesRoot,
+        emitWorkspaceUpdateForWorkspaceId: (workspaceId) =>
+          this.emitWorkspaceUpdateForWorkspaceId(workspaceId),
+        cacheWorkspaceSetupSnapshot: (workspaceId, snapshot) =>
+          this.workspaceSetupSnapshots.set(workspaceId, snapshot),
+        emit: (message) => this.emit(message),
+        sessionLogger: this.sessionLogger,
+        terminalManager: this.terminalManager,
+        archiveWorkspaceRecord: (workspaceId) => this.archiveWorkspaceRecord(workspaceId),
+        serviceProxy: this.serviceProxy,
+        scriptRuntimeStore: this.scriptRuntimeStore,
+        getDaemonTcpPort: this.getDaemonTcpPort,
+        getDaemonTcpHost: this.getDaemonTcpHost,
+        serviceProxyPublicBaseUrl: this.serviceProxyPublicBaseUrl,
+        onScriptsChanged: (workspaceId, workspaceDirectory) =>
+          this.workspaceScripts.emitStatusUpdate(workspaceId, workspaceDirectory),
       },
       request,
     );
@@ -6857,6 +6866,8 @@ export class Session {
           markWorkspaceArchiving: (workspaceIds, archivingAt) =>
             this.markWorkspaceArchiving(workspaceIds, archivingAt),
           clearWorkspaceArchiving: (workspaceIds) => this.clearWorkspaceArchiving(workspaceIds),
+          assertWorkspaceAutomationAllowed: (workspaceId) =>
+            assertWorkspaceAutomationAllowedForWorkspace(this.workspaceRegistry, workspaceId),
           killTerminalsForWorkspace: (workspaceId) =>
             this.terminalController.killTerminalsForWorkspace(workspaceId),
           stopWorkspaceSetup: (workspaceId) => this.workspaceSetupRuntime.stop(workspaceId),
@@ -7279,6 +7290,22 @@ export class Session {
         source,
       );
     }
+  }
+
+  private async handleAgentTimelineAppendRequest(
+    msg: Extract<SessionInboundMessage, { type: "agent.timeline.append.request" }>,
+  ): Promise<void> {
+    const pluginId = parsePluginClientId(this.clientId);
+    if (!pluginId) throw new Error("Only plugin sessions can append plugin timeline items");
+    assertPluginTimelineDataSize(msg.item.data);
+    const { seq, epoch } = await this.agentManager.appendTimelineItem(msg.agentId, {
+      ...msg.item,
+      pluginId,
+    });
+    this.emit({
+      type: "agent.timeline.append.response",
+      payload: { requestId: msg.requestId, seq, epoch },
+    });
   }
 
   private async handleAgentTimelineListPromptsRequest(

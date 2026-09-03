@@ -10,6 +10,14 @@ import {
   type PersistedProjectKind,
   type PersistedWorkspaceKind,
 } from "./workspace-registry-model.js";
+import type { UntrustedWorkspaceSource } from "./workspace-automation-gate.js";
+
+const UntrustedWorkspaceSourceSchema = z.object({
+  kind: z.literal("change_request"),
+  forge: z.string(),
+  number: z.number().int().positive(),
+  headRepository: z.string(),
+});
 
 const PersistedProjectRecordSchema = z.object({
   projectId: z.string(),
@@ -100,6 +108,7 @@ const PersistedWorkspaceRecordSchema = z.object({
     .nullable()
     .optional()
     .transform((value) => value ?? null),
+  untrustedSource: UntrustedWorkspaceSourceSchema.optional(),
 });
 
 export type PersistedProjectRecord = z.infer<typeof PersistedProjectRecordSchema>;
@@ -682,6 +691,7 @@ export function createPersistedWorkspaceRecord(input: {
   pinnedAt?: string | null;
   labels?: string[];
   userStatus?: string | null;
+  untrustedSource?: UntrustedWorkspaceSource;
 }): PersistedWorkspaceRecord {
   return PersistedWorkspaceRecordSchema.parse({
     ...input,
