@@ -11,12 +11,14 @@ Build or manage the requested plugin directly. Use the current public docs to ca
 
 ## Check current documentation
 
-Fetch [https://paseo.sh/llms.txt](https://paseo.sh/llms.txt) first. Select and fetch the current plugin Markdown pages from that index before changing a plugin:
+Fetch [https://paseo.sh/llms.txt](https://paseo.sh/llms.txt) first. Select and fetch the v0.8 plugin Markdown pages from that index before changing a plugin:
 
-- [Plugin quickstart](https://paseo.sh/docs/plugins.md) ([browser page](https://paseo.sh/docs/plugins))
+- [Plugin quickstart (v0.8)](https://paseo.sh/docs/plugins/v0.8.md) ([browser page](https://paseo.sh/docs/plugins/v0.8))
 - [Plugin reference](https://paseo.sh/docs/plugins/v0.8/reference.md) ([browser page](https://paseo.sh/docs/plugins/v0.8/reference))
 
-Use the deployed docs when they disagree with this skill. Do not send the user away to read them instead of completing the work.
+Use the deployed v0.8 pages when they disagree with this skill. Do not send the user away to read them instead of completing the work.
+
+`https://paseo.sh/docs/plugins` is a version chooser, not a quickstart. It labels v0.7 "Current" because that tracks released versions; this daemon already requires v0.8 runtime entries and rejects a legacy `index.ts` root entry with "Plugin entry split is required", so the v0.7 pages describe a model this host cannot load.
 
 When working in the Paseo repository, also read `docs/plugins.md` and the relevant example under `plugin-examples/`.
 
@@ -58,6 +60,7 @@ my-plugin/
   index.client.tsx
   index.server.ts
   client/greeting.tsx
+  client/web.ts
   server/greeting.ts
   shared/greeting.ts
 ```

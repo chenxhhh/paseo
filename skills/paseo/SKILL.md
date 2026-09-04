@@ -31,7 +31,7 @@ For a local daemon, `project create` defaults to the current directory and resol
 
 **`archive_workspace`** — `{ workspaceId }`. Archives the workspace, its agents, and its terminals. Local directories remain; Paseo removes an owned worktree only after its final active workspace reference is archived.
 
-**`rename_workspace`** — `{ workspaceId, name }`. Rename workspace.
+**`rename_workspace`** — `{ workspaceId, title }`. Rename workspace. Omit `workspaceId` to rename your current workspace.
 
 ## Workspace scripts
 
@@ -70,6 +70,8 @@ Agent-scoped `create_agent` defaults `notifyOnFinish` to true. Set it to `false`
 **`list_agents`** — filter by `cwd`, `statuses`, `sinceHours`, `includeArchived`.
 
 **`archive_agent`** — `{ agentId }`. Interrupts if running, removes from active list.
+
+**`cancel_agent`** — `{ agentId }`. Aborts the current run and keeps the agent alive for the next prompt.
 
 ## Agent profiles and provider discovery
 
@@ -129,6 +131,8 @@ Agents take time — 10–30+ minutes is routine. Favor asynchronous workflows.
 For agent-scoped `create_agent` and background `send_agent_prompt`, leave `notifyOnFinish` omitted or set it to `true` unless the work is truly fire-and-forget. You will get notified when the target agent finishes, errors, or needs permission. Move on to other work. The notification arrives on its own.
 
 Don't poll `list_agents` or `get_agent_status` to "check on" a running agent. The notification will tell you.
+
+A needs-permission notification means the agent is blocked until you answer. Read the pending requests with **`list_pending_permissions`**, then answer with **`respond_to_permission`** — `{ agentId, requestId, response }`, where `behavior: "allow"` approves and `behavior: "deny"` rejects, optionally with a `message` the agent receives.
 
 ## CLI semantics
 
