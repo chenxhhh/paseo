@@ -58,12 +58,10 @@ import {
   type WorkspaceAgentRowSummary,
 } from "@/utils/workspace-agent-rows";
 import {
-  applyTurnLivenessTransition,
   resolveTurnPresentation,
   TURN_LIVENESS_IDLE,
   type TurnLiveness,
   type TurnPresentation,
-  type TurnLivenessTransition,
 } from "@/timeline/turn-liveness";
 
 export interface AgentRuntimeInfo {
@@ -80,7 +78,7 @@ export interface Agent {
   id: string;
   provider: AgentProvider;
   status: AgentLifecycleStatus;
-  activeTurn: { turnId: string | null; startedAt: Date | null } | null;
+  turn: TurnLiveness;
   createdAt: Date;
   updatedAt: Date;
   lastUserMessageAt: Date | null;
@@ -340,7 +338,9 @@ export function selectAgentTurnPresentation(
   agentId: string,
 ): TurnPresentation {
   return resolveTurnPresentation(
-    session?.agentTurnLiveness.get(agentId) ?? TURN_LIVENESS_IDLE,
+    session?.agents.get(agentId)?.turn ??
+      session?.agentDetails.get(agentId)?.turn ??
+      TURN_LIVENESS_IDLE,
     getActiveMessageSubmissions(session?.messageSubmissions.get(agentId)).length > 0,
   );
 }
@@ -395,7 +395,6 @@ export interface SessionState {
   agentStreamTail: Map<string, StreamItem[]>;
   agentStreamHead: Map<string, StreamItem[]>;
   agentTasks: Map<string, TodoEntry[]>;
-  agentTurnLiveness: Map<string, TurnLiveness>;
   messageSubmissions: Map<string, MessageSubmissionRecord[]>;
   agentTimelineCursor: Map<string, AgentTimelineCursorState>;
   agentTimelineHasOlder: Map<string, boolean>;
@@ -486,14 +485,6 @@ interface SessionStoreActions {
       taskSnapshot?: TodoEntry[];
     },
   ) => void;
-  applyAgentTurnLiveness: (
-    serverId: string,
-    agentId: string,
-    transition: TurnLivenessTransition | readonly TurnLivenessTransition[],
-  ) => void;
-  beginAgentCancellation: (serverId: string, agentId: string) => number;
-  settleAgentCancellation: (serverId: string, agentId: string, requestId: number) => void;
-  clearAgentTurnLiveness: (serverId: string) => void;
   beginAgentMessageSubmission: (
     serverId: string,
     agentId: string,
@@ -654,7 +645,6 @@ function createInitialSessionState(
     agentStreamTail: new Map(),
     agentStreamHead: new Map(),
     agentTasks: new Map(),
-    agentTurnLiveness: new Map(),
     messageSubmissions: new Map(),
     agentTimelineCursor: new Map(),
     agentTimelineHasOlder: new Map(),
@@ -722,7 +712,6 @@ function isSessionServerInfoUnchanged(input: {
 
 export const useSessionStore = create<SessionStore>()(
   subscribeWithSelector((set, get) => {
-    let nextCancellationRequestId = 0;
     const commitActivityUpdates: AgentLastActivityCommitter = (updates) => {
       set((prev) => {
         let nextActivity: Map<string, Date> | null = null;
@@ -1064,57 +1053,6 @@ export const useSessionStore = create<SessionStore>()(
                 agentTasks,
                 messageSubmissions,
               },
-            },
-          };
-        });
-      },
-
-      applyAgentTurnLiveness: (serverId, agentId, transition) => {
-        set((prev) => {
-          const session = prev.sessions[serverId];
-          if (!session) return prev;
-          const agentTurnLiveness = applyTurnLivenessTransition(
-            session.agentTurnLiveness,
-            agentId,
-            transition,
-          );
-          if (agentTurnLiveness === session.agentTurnLiveness) return prev;
-          return {
-            ...prev,
-            sessions: {
-              ...prev.sessions,
-              [serverId]: { ...session, agentTurnLiveness },
-            },
-          };
-        });
-      },
-
-      beginAgentCancellation: (serverId, agentId) => {
-        nextCancellationRequestId += 1;
-        const requestId = nextCancellationRequestId;
-        get().applyAgentTurnLiveness(serverId, agentId, {
-          type: "cancellation_started",
-          requestId,
-        });
-        return requestId;
-      },
-
-      settleAgentCancellation: (serverId, agentId, requestId) => {
-        get().applyAgentTurnLiveness(serverId, agentId, {
-          type: "cancellation_settled",
-          requestId,
-        });
-      },
-
-      clearAgentTurnLiveness: (serverId) => {
-        set((prev) => {
-          const session = prev.sessions[serverId];
-          if (!session || session.agentTurnLiveness.size === 0) return prev;
-          return {
-            ...prev,
-            sessions: {
-              ...prev.sessions,
-              [serverId]: { ...session, agentTurnLiveness: new Map() },
             },
           };
         });
@@ -1939,6 +1877,7 @@ export const useSessionStore = create<SessionStore>()(
             serverId,
             title: agent.title ?? null,
             status: agent.status,
+            turn: agent.turn,
             lastActivityAt,
             cwd: agent.cwd,
             provider: agent.provider,
