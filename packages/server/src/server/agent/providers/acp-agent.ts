@@ -634,6 +634,8 @@ export interface ACPConfigFeatureOption {
   tooltip?: string;
   icon?: string;
   emptyOptionLabel?: string;
+  hideWhenEmpty?: boolean;
+  skipUnsupportedOnRestore?: boolean;
 }
 
 export type SelectConfigOption = Extract<SessionConfigOption, { type: "select" }>;
@@ -801,7 +803,10 @@ export function deriveFeaturesFromACP(
 ): AgentFeature[] {
   return featureOptions.flatMap((featureOption) => {
     const option = findSelectConfigFeatureOption(configOptions, featureOption);
-    if (!option) {
+    if (
+      !option ||
+      (featureOption.hideWhenEmpty && flattenSelectOptions(option.options).length === 0)
+    ) {
       return [];
     }
 
@@ -1145,11 +1150,28 @@ export class ACPAgentClient implements AgentClient {
       const transformed = this.transformSessionResponse(response);
       return [
         autoAcceptFeature,
-        ...deriveFeaturesFromACP(transformed.configOptions, this.configFeatureOptions),
+        ...deriveFeaturesFromACP(
+          await this.resolveFeatureConfigOptions(
+            probe,
+            response.sessionId,
+            transformed.configOptions ?? [],
+            config,
+          ),
+          this.configFeatureOptions,
+        ),
       ];
     } finally {
       await this.closeProbe(probe, probeSessionId);
     }
+  }
+
+  protected async resolveFeatureConfigOptions(
+    _probe: SpawnedACPProcess,
+    _sessionId: string,
+    configOptions: SessionConfigOption[],
+    _config: AgentSessionConfig,
+  ): Promise<SessionConfigOption[]> {
+    return configOptions;
   }
 
   async listImportableSessions(
@@ -2828,6 +2850,17 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     for (const featureOption of this.configFeatureOptions) {
       if (!Object.prototype.hasOwnProperty.call(configuredFeatureValues, featureOption.id)) {
         continue;
+      }
+      if (featureOption.skipUnsupportedOnRestore) {
+        const option = findSelectConfigFeatureOption(this.configOptions, featureOption);
+        const value = configuredFeatureValues[featureOption.id];
+        if (typeof value !== "string" || !findSelectConfigChoice({ option, value })) {
+          this.logger.warn(
+            { featureId: featureOption.id },
+            "Skipping saved ACP feature value unsupported by the current model",
+          );
+          continue;
+        }
       }
       await this.setFeature(featureOption.id, configuredFeatureValues[featureOption.id]);
     }
