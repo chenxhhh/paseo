@@ -1,3 +1,4 @@
+import type { DaemonClientConfig } from "./daemon-client.js";
 import type { AgentPermissionResponse } from "@getpaseo/protocol/agent-types";
 import type {
   AgentSnapshotPayload,
@@ -16,6 +17,7 @@ import type {
   MutableDaemonConfig,
   MutableDaemonConfigPatch,
   ProviderDiagnosticResponseMessage,
+  ProviderUsageListResponseMessage,
   ProjectPlacementPayload,
   WorkspaceProjectDescriptorPayload,
   RefreshProvidersSnapshotResponseMessage,
@@ -74,6 +76,7 @@ export interface PaseoLogger {
 }
 
 export interface PaseoClientConfig {
+  capabilities?: DaemonClientConfig["capabilities"];
   url: string;
   clientId?: string;
   appVersion?: string;
@@ -104,6 +107,11 @@ export type PaseoProjectListOptions = Omit<ProjectListRequestMessage, "type" | "
   requestId?: string;
 };
 export type PaseoProjectListResult = ProjectListResponseMessage["payload"];
+export type PaseoProjectUpdate = Extract<
+  SessionOutboundMessage,
+  { type: "project.update" }
+>["payload"];
+export type PaseoProjectUpdateHandler = (update: PaseoProjectUpdate) => void;
 
 export interface PaseoAgentListResult {
   requestId: string;
@@ -173,6 +181,7 @@ export interface PaseoWorkspaceHandle {
 
 export interface PaseoProjectActions {
   list(options?: PaseoProjectListOptions): Promise<PaseoProjectListResult>;
+  subscribe(handler: PaseoProjectUpdateHandler): () => void;
 }
 
 export interface PaseoWorkspaceActions {
@@ -275,6 +284,15 @@ export type PaseoAgentStream = Extract<SessionOutboundMessage, { type: "agent_st
 
 export type PaseoAgentUpdateHandler = (update: PaseoAgentUpdate) => void;
 
+export type PaseoAgentTimelineEvent =
+  | PaseoAgentStream
+  | {
+      agentId: string;
+      event: { type: "replacement"; epoch: string };
+    };
+
+export type PaseoAgentTimelineSubscription = ReturnType<DaemonClient["subscribeAgentTimeline"]>;
+
 export interface PaseoAgentTimelineHandle {
   append(item: Omit<PluginTimelineItem, "pluginId">): Promise<{ seq: number; epoch: string }>;
   /**
@@ -284,10 +302,12 @@ export interface PaseoAgentTimelineHandle {
    */
   refetch(options?: PaseoAgentTimelineRefetchOptions): Promise<FetchAgentTimelinePayload>;
   /**
-   * Local listener for agent_stream events matching this handle id. It does not
-   * retain timeline entries or own application cache state.
+   * Subscribe to this agent and restore demand after reconnect. A replacement
+   * event invalidates previously fetched history; refetch the page you need.
+   * Await the returned unsubscribe function's `ready` promise before starting
+   * work that must be observed. It rejects if establishment fails.
    */
-  subscribe(handler: (event: PaseoAgentStream) => void): () => void;
+  subscribe(handler: (event: PaseoAgentTimelineEvent) => void): PaseoAgentTimelineSubscription;
 }
 
 export interface PaseoAgentHandle {
@@ -363,6 +383,10 @@ export type PaseoProviderSnapshotUpdate = Extract<
 >["payload"];
 export type PaseoProviderRefreshResult = RefreshProvidersSnapshotResponseMessage["payload"];
 export type PaseoProviderDiagnosticResult = ProviderDiagnosticResponseMessage["payload"];
+export type PaseoProviderUsageResult = ProviderUsageListResponseMessage["payload"];
+export interface PaseoProviderUsageOptions {
+  requestId?: string;
+}
 
 export interface PaseoProviderListOptions {
   cwd?: string;
@@ -401,6 +425,7 @@ export interface PaseoProviderActions {
     provider: PaseoAgentProvider,
     options?: { requestId?: string },
   ): Promise<PaseoProviderDiagnosticResult>;
+  listUsage(options?: PaseoProviderUsageOptions): Promise<PaseoProviderUsageResult>;
   subscribe(handler: (update: PaseoProviderSnapshotUpdate) => void): () => void;
 }
 
@@ -494,6 +519,10 @@ export function createPaseoApi(daemonClient: DaemonClient): PaseoApi {
     terminals,
     projects: {
       list: (options) => daemonClient.listProjects(options),
+      subscribe: (handler) =>
+        daemonClient.on("project.update", (message) => {
+          handler(message.payload);
+        }),
     },
     workspaces: {
       list: (options) => daemonClient.fetchWorkspaces(options),
@@ -535,6 +564,7 @@ export function createPaseoApi(daemonClient: DaemonClient): PaseoApi {
       waitForReady: (options) => waitForProvidersReady(daemonClient, options),
       refresh: (options) => daemonClient.refreshProvidersSnapshot(options),
       diagnostic: (provider, options) => daemonClient.getProviderDiagnostic(provider, options),
+      listUsage: (options) => listProviderUsage(daemonClient, options),
       subscribe: (handler) =>
         daemonClient.on("providers_snapshot_update", (message) => {
           handler(message.payload);
@@ -656,10 +686,15 @@ function createAgentHandleFactory(daemonClient: DaemonClient): AgentHandleFactor
           return result;
         },
         subscribe: (handler) =>
-          daemonClient.on("agent_stream", (message) => {
-            if (message.payload.agentId === id) {
-              handler(message.payload);
-            }
+          daemonClient.subscribeAgentTimeline(id, (message) => {
+            handler(
+              message.type === "agent_stream"
+                ? message.payload
+                : {
+                    agentId: message.payload.agentId,
+                    event: { type: "replacement", epoch: message.payload.epoch },
+                  },
+            );
           }),
       },
       get workspaceId() {
@@ -792,6 +827,17 @@ function parseProviderModel(selection: string): { provider: string; model: strin
     provider: selection.slice(0, separator),
     model: selection.slice(separator + 1),
   };
+}
+
+function listProviderUsage(
+  daemonClient: DaemonClient,
+  options?: PaseoProviderUsageOptions,
+): Promise<PaseoProviderUsageResult> {
+  // COMPAT(providerUsageList): added in v0.1.98, remove after 2027-02-28 once daemon floor >= v0.1.98.
+  if (daemonClient.getLastServerInfoMessage()?.features?.providerUsageList !== true) {
+    return Promise.reject(new Error("Update the host to list provider usage."));
+  }
+  return daemonClient.listProviderUsage(options);
 }
 
 function waitForProvidersReady(
