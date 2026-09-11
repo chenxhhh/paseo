@@ -3830,6 +3830,7 @@ describe("ACP session/load invariant — cwd and mcpServers always passed", () =
     handle: AgentPersistenceHandle;
     loadSession?: ReturnType<typeof vi.fn>;
     unstableResumeSession?: ReturnType<typeof vi.fn>;
+    resumeAfterLoad?: boolean;
   }) {
     const loadSession =
       args.loadSession ??
@@ -3880,6 +3881,7 @@ describe("ACP session/load invariant — cwd and mcpServers always passed", () =
           ...args.capabilities,
         },
         handle: args.handle,
+        resumeAfterLoad: args.resumeAfterLoad,
       },
     );
 
@@ -4089,5 +4091,48 @@ describe("ACP session/load invariant — cwd and mcpServers always passed", () =
       cwd: "/tmp/paseo-acp-test",
       mcpServers: [],
     });
+  });
+
+  test("resumeAfterLoad issues unstable_resumeSession after loadSession", async () => {
+    const { session, loadSession, unstableResumeSession } = makeTestSession({
+      capabilities: { loadSession: true, sessionCapabilities: { resume: {} } },
+      handle: { sessionId: "session-1", provider: "claude-acp" },
+      resumeAfterLoad: true,
+    });
+
+    await session.initializeResumedSession();
+
+    expect(loadSession).toHaveBeenCalledTimes(1);
+    expect(unstableResumeSession).toHaveBeenCalledTimes(1);
+    expect(unstableResumeSession).toHaveBeenCalledWith({
+      sessionId: "session-1",
+      cwd: "/tmp/paseo-acp-test",
+      mcpServers: [],
+    });
+  });
+
+  test("resumeAfterLoad without session resume capability only loads", async () => {
+    const { session, loadSession, unstableResumeSession } = makeTestSession({
+      capabilities: { loadSession: true },
+      handle: { sessionId: "session-1", provider: "claude-acp" },
+      resumeAfterLoad: true,
+    });
+
+    await session.initializeResumedSession();
+
+    expect(loadSession).toHaveBeenCalledTimes(1);
+    expect(unstableResumeSession).not.toHaveBeenCalled();
+  });
+
+  test("default behavior keeps loadSession only even with resume capability", async () => {
+    const { session, loadSession, unstableResumeSession } = makeTestSession({
+      capabilities: { loadSession: true, sessionCapabilities: { resume: {} } },
+      handle: { sessionId: "session-1", provider: "claude-acp" },
+    });
+
+    await session.initializeResumedSession();
+
+    expect(loadSession).toHaveBeenCalledTimes(1);
+    expect(unstableResumeSession).not.toHaveBeenCalled();
   });
 });

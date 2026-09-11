@@ -51,6 +51,7 @@ interface GenericACPAgentClientOptions {
   configFeatureOptions?: ACPConfigFeatureOption[];
   extensionCommandsParser?: ACPExtensionCommandsParser;
   catalogModelResolver?: ACPCatalogModelResolver;
+  resumeAfterLoad?: boolean;
   now?: () => number;
 }
 
@@ -77,6 +78,7 @@ export class GenericACPAgentClient extends ACPAgentClient {
       configFeatureOptions: options.configFeatureOptions,
       extensionCommandsParser: options.extensionCommandsParser,
       catalogModelResolver: options.catalogModelResolver,
+      resumeAfterLoad: options.resumeAfterLoad,
       now: options.now,
     });
 

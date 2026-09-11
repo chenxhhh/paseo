@@ -448,6 +448,12 @@ interface ACPAgentClientOptions {
   initialCommandsWaitTimeoutMs?: number;
   terminateProcess?: ProcessTerminator;
   now?: () => number;
+  /**
+   * Some providers (Knot CLI) return settings from session/load while keeping the
+   * session closed for prompting; they require an explicit session/resume before
+   * the next turn. Only opt in providers verified to need it.
+   */
+  resumeAfterLoad?: boolean;
 }
 
 interface ACPAgentSessionOptions {
@@ -481,6 +487,7 @@ interface ACPAgentSessionOptions {
   waitForInitialCommands?: boolean;
   initialCommandsWaitTimeoutMs?: number;
   terminateProcess?: ProcessTerminator;
+  resumeAfterLoad?: boolean;
 }
 
 export interface SpawnedACPProcess {
@@ -915,6 +922,7 @@ export class ACPAgentClient implements AgentClient {
   private readonly importPromptCache = new Map<string, ACPImportPromptCacheEntry>();
   private readonly now: () => number;
   protected readonly terminateProcess: ProcessTerminator;
+  private readonly resumeAfterLoad: boolean;
 
   constructor(options: ACPAgentClientOptions) {
     this.provider = options.provider;
@@ -943,6 +951,7 @@ export class ACPAgentClient implements AgentClient {
     this.initialCommandsWaitTimeoutMs = options.initialCommandsWaitTimeoutMs ?? 1500;
     this.extensionCommandsParser = options.extensionCommandsParser;
     this.now = options.now ?? Date.now;
+    this.resumeAfterLoad = options.resumeAfterLoad ?? false;
   }
 
   async createSession(
@@ -1026,6 +1035,7 @@ export class ACPAgentClient implements AgentClient {
       extensionCommandsParser: this.extensionCommandsParser,
       waitForInitialCommands: this.waitForInitialCommands,
       initialCommandsWaitTimeoutMs: this.initialCommandsWaitTimeoutMs,
+      resumeAfterLoad: this.resumeAfterLoad,
     });
     await session.initializeResumedSession();
     return session;
@@ -1708,6 +1718,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   private waitForInitialCommands: boolean;
   private initialCommandsWaitTimeoutMs: number;
   private readonly extensionCommandsParser?: ACPExtensionCommandsParser;
+  private readonly resumeAfterLoad: boolean;
   private currentTurnUsage: AgentUsage | undefined;
   private activeForegroundTurnId: string | null = null;
   private lastTimelineItem: AgentTimelineItem | null = null;
@@ -1750,6 +1761,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     this.waitForInitialCommands = options.waitForInitialCommands ?? false;
     this.initialCommandsWaitTimeoutMs = options.initialCommandsWaitTimeoutMs ?? 1500;
     this.extensionCommandsParser = options.extensionCommandsParser;
+    this.resumeAfterLoad = options.resumeAfterLoad ?? false;
   }
 
   get id(): string | null {
@@ -1813,6 +1825,16 @@ export class ACPAgentSession implements AgentSession, ACPClient {
         this.replayingHistory = false;
         this.historyPending = this.persistedHistory.length > 0;
         this.applySessionState(response);
+        if (this.resumeAfterLoad && sessionCapabilities?.resume) {
+          const resumed = await this.runACPRequest(() =>
+            this.connection!.unstable_resumeSession({
+              sessionId: handle.sessionId,
+              cwd: this.config.cwd,
+              mcpServers: this.acpMcpServers(),
+            }),
+          );
+          this.applySessionState(resumed);
+        }
       } else if (sessionCapabilities?.resume) {
         const response = await this.runACPRequest(() =>
           this.connection!.unstable_resumeSession({

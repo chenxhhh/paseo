@@ -77,6 +77,8 @@ export class WithACPAgentClient extends GenericACPAgentClient {
     super({
       ...options,
       catalogModelResolver: resolveWithCatalogModels,
+      // Knot CLI keeps loaded sessions closed until an explicit session/resume.
+      resumeAfterLoad: true,
       configFeatureOptions: [
         WITH_CONTEXT_FEATURE_OPTION,
         ...(options.providerId === "with-desktop"
