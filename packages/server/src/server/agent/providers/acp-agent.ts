@@ -2730,6 +2730,20 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     return {};
   }
 
+  /**
+   * Some ACP agents (notably the Knot CLI) ignore session-level mcpServers but
+   * watch a global config file (~/.bg-agent/mcp_config.json) instead. Wrapper
+   * scripts such as .with-connect/acp-compat.cjs read this env var on startup
+   * and mirror it into that file, giving those agents access to Paseo-managed
+   * MCP servers (including the daemon's own tool endpoint with its capability
+   * token, which no external process could reconstruct on its own).
+   */
+  private mcpServersEnv(): Record<string, string> {
+    const servers = this.config.mcpServers;
+    if (!servers || Object.keys(servers).length === 0) return {};
+    return { PASEO_MCP_SERVERS_JSON: JSON.stringify(servers) };
+  }
+
   private async spawnProcess(): Promise<SpawnedACPProcess> {
     const prefix = await resolveProviderLaunch({
       commandConfig: this.runtimeSettings?.command,
@@ -2746,7 +2760,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       cwd: this.config.cwd,
       ...createProviderEnvSpec({
         runtimeSettings: this.runtimeSettings,
-        overlays: [this.launchEnv],
+        overlays: [this.launchEnv, this.mcpServersEnv()],
       }),
       stdio: ["pipe", "pipe", "pipe"],
     });
