@@ -25,12 +25,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-paseo-dev.ps
 
 ## 脚本做了什么（4 个阶段）
 
-| 阶段                | 动作                                                                                                                                                              | 解决的坑                                                                        |
-| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| `[1/4]` 依赖就绪    | 检查 `node_modules/.bin/tsc`，缺失则 `npm install`；检查 5 个内部包（protocol/client/highlight/plugin/relay）的 dist 探针文件，缺失则 `npm run build:server-deps` | `'tsc' 不是内部或外部命令`；`Cannot find module '@getpaseo/...'`                |
-| `[2/4]` server dist | 比对 server 源码是否有更新，有则重建 `@getpaseo/server`                                                                                                           | 桌面 daemon 加载的是 `dist` 而非 TS，源码改动后 dist 过期导致 provider 探测失败 |
-| `[3/4]` 端口 6767   | 若 6767 被已打包版或旧源码 daemon 占用，自动停止并重启                                                                                                            | 开发客户端误连已安装版 daemon、或复用旧 daemon 不加载新 dist                    |
-| `[4/4]` 启动桌面端  | 设定 `PASEO_HOME` 等环境变量后调用 `packages/desktop/scripts/dev.ps1`                                                                                             | —                                                                               |
+| 阶段                | 动作                                                                                                                                                                                                                            | 解决的坑                                                                                                |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `[1/4]` 依赖就绪    | 检查 `node_modules/.bin/tsc`，缺失则 `npm install`；检查 5 个内部包（protocol/client/highlight/plugin/relay）的 dist 探针文件，缺失则 `npm run build:server-deps`；探针在但 src 比 dist 新的包按依赖序增量重建（protocol 先行） | `'tsc' 不是内部或外部命令`；`Cannot find module '@getpaseo/...'`；git pull 后旧 dist 引发 TS2307/TS2339 |
+| `[2/4]` server dist | 比对 server 源码是否有更新，有则重建 `@getpaseo/server`                                                                                                                                                                         | 桌面 daemon 加载的是 `dist` 而非 TS，源码改动后 dist 过期导致 provider 探测失败                         |
+| `[3/4]` 端口 6767   | 若 6767 被已打包版或旧源码 daemon 占用，自动停止并重启                                                                                                                                                                          | 开发客户端误连已安装版 daemon、或复用旧 daemon 不加载新 dist                                            |
+| `[4/4]` 启动桌面端  | 设定 `PASEO_HOME` 等环境变量后调用 `packages/desktop/scripts/dev.ps1`                                                                                                                                                           | —                                                                                                       |
 
 ## 自愈逻辑（防坑）
 

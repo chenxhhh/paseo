@@ -16,7 +16,7 @@ Write-Host ""
 #      packages/server/package.json (the Paseo monorepo signature) — this works
 #      for the copy shipped inside scripts/.
 #   3. Fallback for an outer copy (e.g. D:\UGit\start-*.ps1): check the common
-#      sibling layout  <outer>\Paseo\paseo.
+#      sibling layout  <outer>\Paseo\paseo  (PaseoRoot\Paseo\paseo).
 # Avoids the old trap of resolving to the drive root and running npm there.
 $PaseoRoot = $null
 # 1) explicit override
@@ -200,6 +200,37 @@ try {
         }
     } else {
         Write-Host "  internal dists OK" -ForegroundColor Gray
+    }
+
+    # (c) stale internal dists: a git pull that touches e.g. packages/protocol/src
+    #     leaves dist/ behind (dist is not tracked by git). A stale protocol d.ts
+    #     makes the server tsc step fail with TS2307/TS2339 against old
+    #     declarations. Rebuild any internal package whose src is newer than its
+    #     dist probe. Order matters: client depends on protocol, so protocol
+    #     rebuilds first.
+    $internalBuilds = @(
+        @{ pkg = "packages\protocol";  probe = "dist\messages.d.ts"; build = "build:protocol" },
+        @{ pkg = "packages\client";    probe = "dist\index.d.ts";    build = "build:client" },
+        @{ pkg = "packages\highlight"; probe = "dist\index.d.ts";    build = "build:highlight" },
+        @{ pkg = "packages\plugin";    probe = "dist\index.d.ts";    build = "build:plugin" },
+        @{ pkg = "packages\relay";     probe = "dist\index.d.ts";    build = "build:relay" }
+    )
+    foreach ($item in $internalBuilds) {
+        $probe = Join-Path $PaseoRoot (Join-Path $item.pkg $item.probe)
+        $srcRoot = Join-Path $PaseoRoot (Join-Path $item.pkg "src")
+        if (-not (Test-Path $probe) -or -not (Test-Path $srcRoot)) {
+            continue # missing dist handled by the check above
+        }
+        $probeTime = (Get-Item $probe).LastWriteTime
+        $newestSrc = Get-NewestSourceWriteTime $srcRoot
+        if ($newestSrc -and $newestSrc -gt $probeTime) {
+            Write-Host "  $($item.pkg) src is newer than dist -> npm run $($item.build)" -ForegroundColor Yellow
+            & npm run $item.build
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "  $($item.build) failed (exit $LASTEXITCODE). Aborting." -ForegroundColor Red
+                exit 1
+            }
+        }
     }
 } finally {
     Pop-Location
