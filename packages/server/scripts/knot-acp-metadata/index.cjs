@@ -7,6 +7,7 @@ const { Transform } = require("node:stream");
 const { StringDecoder } = require("node:string_decoder");
 const yaml = require("js-yaml");
 const { startProxy } = require("./proxy.cjs");
+const { cleanupStaleRuntimeDirs, writeOwnerPid } = require("./stale-cleanup.cjs");
 const { DesktopTransport, discoverEndpoint } = require("../with-desktop-acp/transport.cjs");
 const { modelsFrom } = require("../with-desktop-acp/bridge.cjs");
 class ProtocolOutput extends Transform {
@@ -133,6 +134,12 @@ async function launch(opts) {
     }
     const root = opts["--runtime-root"] || os.tmpdir();
     fs.mkdirSync(root, { recursive: true });
+    // Force-killed runs (SIGKILL, task manager, power loss) never reach their
+    // exit hooks; sweep their leftover directories before creating a new one.
+    cleanupStaleRuntimeDirs({
+      root,
+      log: (message) => process.stderr.write(`${message}\n`),
+    });
     dir = fs.mkdtempSync(path.join(root, "knot-metadata-"));
     if (process.platform === "win32") {
       const identity = execFileSync("whoami.exe", [], {
@@ -144,6 +151,7 @@ async function launch(opts) {
         windowsHide: true,
       });
     } else fs.chmodSync(dir, 0o700);
+    writeOwnerPid(dir);
     config.manager.server_url = proxy.url;
     const temporary = path.join(dir, "config.yaml");
     fs.writeFileSync(temporary, yaml.dump(config, { noRefs: true }), { mode: 0o600 });
