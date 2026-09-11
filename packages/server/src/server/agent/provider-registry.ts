@@ -808,7 +808,11 @@ function addDerivedProviders(
           if (providerId === "kimi") {
             return new KimiACPAgentClient(acpOptions);
           }
-          if (providerId === "with" || providerId === "with-desktop") {
+          if (
+            providerId === "with" ||
+            providerId === "with-desktop" ||
+            providerId === "with-metadata"
+          ) {
             return new WithACPAgentClient(acpOptions);
           }
           if (providerId === "kiro") {
