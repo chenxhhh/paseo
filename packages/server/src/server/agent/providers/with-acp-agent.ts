@@ -77,7 +77,26 @@ export class WithACPAgentClient extends GenericACPAgentClient {
     super({
       ...options,
       catalogModelResolver: resolveWithCatalogModels,
-      configFeatureOptions: [WITH_CONTEXT_FEATURE_OPTION],
+      configFeatureOptions: [
+        WITH_CONTEXT_FEATURE_OPTION,
+        ...(options.providerId === "with-desktop"
+          ? [
+              {
+                id: "enable_web_search",
+                configId: "enable_web_search",
+                category: "_tools",
+                label: "Web Search",
+                emptyOptionLabel: "Default",
+              },
+              {
+                id: "enable_thinking",
+                configId: "enable_thinking",
+                category: "model_config",
+                label: "Enable Thinking",
+              },
+            ]
+          : []),
+      ],
     });
   }
 
