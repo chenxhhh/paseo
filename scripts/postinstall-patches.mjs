@@ -45,6 +45,16 @@ const patchedPackages = [
   },
 ];
 
+// @expo/cli vendors a React canary build under static/canary-full/node_modules. It is only
+// used when experiments.reactCanary / reactServerComponentRoutes / Server Actions are enabled,
+// which this app does not use. Remove it so vulnerability scanners don't flag the vendored
+// react 19.2.0-canary (CVE-2025-55182). npm restores it on every install, so prune each time.
+const expoCliCanaryPath = "node_modules/@expo/cli/static/canary-full";
+if (existsSync(expoCliCanaryPath)) {
+  rmSync(expoCliCanaryPath, { recursive: true, force: true });
+  console.log("postinstall-patches: removed unused @expo/cli static/canary-full");
+}
+
 const installedPackages = patchedPackages.filter(({ nodeModulesPath }) =>
   existsSync(nodeModulesPath),
 );
