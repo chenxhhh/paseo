@@ -487,7 +487,21 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
         }
       },
       reportError: (error) => {
-        console.warn("[Session] viewed timeline synchronization failed", { serverId, error });
+        const details =
+          error instanceof Error
+            ? {
+                name: error.name,
+                message: error.message,
+                ...("code" in error ? { code: String((error as { code?: unknown }).code) } : {}),
+                ...("requestType" in error
+                  ? { requestType: String((error as { requestType?: unknown }).requestType) }
+                  : {}),
+                ...(error.stack ? { stack: error.stack } : {}),
+              }
+            : { raw: String(error) };
+        console.warn(
+          `[Session] viewed timeline synchronization failed (serverId=${serverId}): ${JSON.stringify(details)}`,
+        );
       },
       schedule: (task, delayMs) => {
         const timeout = setTimeout(task, delayMs);
