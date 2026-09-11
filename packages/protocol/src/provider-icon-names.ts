@@ -7,6 +7,8 @@ export const BUILTIN_PROVIDER_ICON_NAMES = [
   "omp",
   "opencode",
   "pi",
+  "tclaude",
+  "with",
 ];
 
 export const ACP_PROVIDER_ICON_NAMES = [
