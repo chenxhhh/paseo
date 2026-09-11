@@ -11,6 +11,9 @@ const DEFAULT_GRACE_MS = 10 * 60 * 1000;
 const DEFAULT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 function isProcessAlive(pid) {
+  // Self is trivially alive; short-circuiting also sidesteps transient
+  // OpenProcess quirks on Windows when probing our own pid.
+  if (pid === process.pid) return true;
   try {
     process.kill(pid, 0);
     return true;

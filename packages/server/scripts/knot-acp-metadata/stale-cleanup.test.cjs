@@ -25,9 +25,11 @@ function makeRoot() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "stale-cleanup-test-"));
 }
 
-function makeDir(root, name, ageMs, now) {
+function makeDir(root, name, ageMs, now, ownerPid) {
   const dir = path.join(root, name);
   fs.mkdirSync(dir, { recursive: true });
+  if (ownerPid !== undefined) fs.writeFileSync(path.join(dir, "owner.pid"), `${ownerPid}\n`);
+  // Set the timestamp last: writing owner.pid refreshes the directory mtime.
   const stamp = new Date(now() - ageMs);
   fs.utimesSync(dir, stamp, stamp);
   return dir;
@@ -38,13 +40,15 @@ test("dead owner past grace is removed; live owner and fresh dirs survive", () =
   try {
     const now = Date.now();
     const fixedNow = () => now;
-    const stale = makeDir(root, `${DEFAULT_PREFIX}dead`, 2 * HOUR, fixedNow);
-    fs.writeFileSync(path.join(stale, "owner.pid"), `${deadPid()}\n`);
-    const alive = makeDir(root, `${DEFAULT_PREFIX}alive`, 2 * HOUR, fixedNow);
-    fs.writeFileSync(path.join(alive, "owner.pid"), `${process.pid}\n`);
+    const stale = makeDir(root, `${DEFAULT_PREFIX}dead`, 2 * HOUR, fixedNow, deadPid());
+    const alive = makeDir(root, `${DEFAULT_PREFIX}alive`, 2 * HOUR, fixedNow, process.pid);
     const fresh = makeDir(root, `${DEFAULT_PREFIX}fresh`, 30 * 1000, fixedNow);
 
-    const result = cleanupStaleRuntimeDirs({ root, now: fixedNow });
+    const result = cleanupStaleRuntimeDirs({
+      root,
+      now: fixedNow,
+      isAlive: (pid) => pid === process.pid,
+    });
     assert.equal(result.scanned, 3);
     assert.equal(result.removed, 1);
     assert.equal(fs.existsSync(stale), false);
@@ -77,10 +81,13 @@ test("max age removes even a live owner to bound PID-reuse leakage", () => {
   try {
     const now = Date.now();
     const fixedNow = () => now;
-    const ancient = makeDir(root, `${DEFAULT_PREFIX}ancient`, 8 * DAY, fixedNow);
-    writeOwnerPid(ancient);
+    const ancient = makeDir(root, `${DEFAULT_PREFIX}ancient`, 8 * DAY, fixedNow, process.pid);
 
-    const result = cleanupStaleRuntimeDirs({ root, now: fixedNow });
+    const result = cleanupStaleRuntimeDirs({
+      root,
+      now: fixedNow,
+      isAlive: () => true,
+    });
     assert.equal(result.removed, 1);
     assert.equal(fs.existsSync(ancient), false);
   } finally {
