@@ -46,7 +46,7 @@ export function BoardCardMenu({
     <DropdownMenu open={workspace !== null} onOpenChange={handleOpenChange}>
       {/* The card is the trigger; this zero-size stand-in exists only because a
           controlled menu still mounts one. */}
-      <DropdownMenuTrigger accessibilityElementsHidden pointerEvents="none">
+      <DropdownMenuTrigger aria-hidden pointerEvents="none">
         <View style={styles.hiddenTrigger} />
       </DropdownMenuTrigger>
       <DropdownMenuContent
