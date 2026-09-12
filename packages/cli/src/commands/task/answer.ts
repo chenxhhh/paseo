@@ -9,7 +9,7 @@ export async function runAnswerCommand(
   options: TaskCommandOptions,
   _command: Command,
 ): Promise<ListResult<TaskQuestionRow>> {
-  const { client } = await connectTaskClient(options.host);
+  const { client } = await connectTaskClient(options.daemonTarget);
   try {
     const payload = await client.taskAnswerQuestion({ questionId, answer });
     if (payload.error || !payload.question) {

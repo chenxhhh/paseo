@@ -8,7 +8,7 @@ export async function runInspectCommand(
   options: TaskCommandOptions,
   _command: Command,
 ): Promise<ListResult<TaskInspectRow>> {
-  const { client } = await connectTaskClient(options.host);
+  const { client } = await connectTaskClient(options.daemonTarget);
   try {
     const payload = await client.taskInspect({ id });
     if (payload.error || !payload.task) {

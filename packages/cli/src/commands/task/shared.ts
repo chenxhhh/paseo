@@ -1,3 +1,4 @@
+import type { DaemonTarget } from "../../utils/daemon-target.js";
 import { connectToDaemon, getDaemonHost } from "../../utils/client.js";
 import type { CommandError, CommandOptions } from "../../output/index.js";
 import type {
@@ -31,13 +32,16 @@ export interface TaskDaemonClient {
 }
 
 export async function connectTaskClient(
-  host: string | undefined,
+  target: DaemonTarget,
 ): Promise<{ client: TaskDaemonClient; host: string }> {
-  const resolvedHost = getDaemonHost({ host });
+  const resolvedHost = getDaemonHost({ target });
   try {
-    const client = (await connectToDaemon({ host })) as unknown as TaskDaemonClient;
+    const client = (await connectToDaemon({
+      target,
+    })) as unknown as TaskDaemonClient;
     return { client, host: resolvedHost };
   } catch (error) {
+    if (error && typeof error === "object" && "code" in error) throw error;
     const message = error instanceof Error ? error.message : String(error);
     throw {
       code: "DAEMON_NOT_RUNNING",

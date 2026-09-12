@@ -7,7 +7,7 @@ export async function runLsCommand(
   options: TaskCommandOptions & { owner?: string },
   _command: Command,
 ): Promise<ListResult<TaskRow>> {
-  const { client } = await connectTaskClient(options.host);
+  const { client } = await connectTaskClient(options.daemonTarget);
   try {
     const payload = await client.taskList(
       options.owner ? { ownerAgentId: options.owner } : undefined,

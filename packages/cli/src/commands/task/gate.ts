@@ -9,7 +9,7 @@ export async function runGateCommand(
   options: TaskCommandOptions,
   _command: Command,
 ): Promise<ListResult<TaskInspectRow>> {
-  const { client } = await connectTaskClient(options.host);
+  const { client } = await connectTaskClient(options.daemonTarget);
   try {
     const payload = await client.taskResolveGate({ id, resolution });
     if (payload.error || !payload.task) {

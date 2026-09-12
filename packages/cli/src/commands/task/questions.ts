@@ -7,7 +7,7 @@ export async function runQuestionsCommand(
   options: TaskCommandOptions & { pending?: boolean },
   _command: Command,
 ): Promise<ListResult<TaskQuestionRow>> {
-  const { client } = await connectTaskClient(options.host);
+  const { client } = await connectTaskClient(options.daemonTarget);
   try {
     const payload = await client.taskQuestions(
       options.pending ? { status: "pending" as const } : undefined,

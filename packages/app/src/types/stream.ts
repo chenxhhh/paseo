@@ -1484,11 +1484,9 @@ function reduceTimelineToolCall(
   // The Claude runtime emits canonical task snapshots for its own task tools, so the tool calls
   // themselves never render. Match by tool name, not by provider id: a custom provider extending
   // claude reports its own id (e.g. "glm") on fetched timeline entries, and gating on "claude"
-  // would double-render those calls as todo rows plus raw tool calls.
-  if (normalizedToolName === "exitplanmode") {
-    return state;
-  }
-
+  // would double-render those calls as todo rows plus raw tool calls. ExitPlanMode is exempt:
+  // it stays in the stream so resolved plans can reveal a card at their original timeline
+  // position, and the tool-call projection filters it from raw tool lists instead.
   if (normalizedToolName === "todowrite" || normalizedToolName === "todo_write") {
     const tasks = extractTaskEntriesFromToolCall(item.name, inputFromUnknownDetail(item.detail));
     if (!tasks) {
