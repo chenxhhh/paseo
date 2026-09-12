@@ -10,6 +10,61 @@ const { startProxy } = require("./proxy.cjs");
 const { cleanupStaleRuntimeDirs, writeOwnerPid } = require("./stale-cleanup.cjs");
 const { DesktopTransport, discoverEndpoint } = require("../with-desktop-acp/transport.cjs");
 const { modelsFrom } = require("../with-desktop-acp/bridge.cjs");
+
+// The Knot CLI ignores ACP session/new mcpServers; it loads MCP servers from
+// the file named by the `mcp_config_path` key of its server config (verified
+// against CLI v0.29: initial load AND the hot-reload watcher both follow it).
+// acp-agent.ts exports Paseo's authoritative server map (daemon tool endpoint
+// with its capability token plus user-configured servers) through the
+// PASEO_MCP_SERVERS_JSON env var; we mirror it into this session's private
+// directory so concurrent sessions never fight over the global
+// ~/.bg-agent/mcp_config.json.
+function convertMcpServer(config) {
+  if (!config || typeof config !== "object" || typeof config.type !== "string") return null;
+  if (config.type === "stdio") {
+    if (typeof config.command !== "string" || !config.command) return null;
+    return {
+      type: "stdio",
+      command: config.command,
+      ...(Array.isArray(config.args) ? { args: config.args } : {}),
+      ...(config.env && typeof config.env === "object" ? { env: config.env } : {}),
+    };
+  }
+  if (config.type === "http" || config.type === "sse") {
+    if (typeof config.url !== "string" || !config.url) return null;
+    return {
+      type: config.type,
+      transportType: config.type,
+      url: config.url,
+      ...(config.headers && typeof config.headers === "object" ? { headers: config.headers } : {}),
+    };
+  }
+  return null;
+}
+
+function mcpServersFromEnv() {
+  const raw = process.env.PASEO_MCP_SERVERS_JSON;
+  if (!raw) return null;
+  let servers;
+  try {
+    servers = JSON.parse(raw);
+  } catch (error) {
+    process.stderr.write(`[knot-metadata] PASEO_MCP_SERVERS_JSON parse failed: ${error.message}\n`);
+    return null;
+  }
+  if (!servers || typeof servers !== "object" || Array.isArray(servers)) return null;
+  const names = Object.keys(servers);
+  if (names.length === 0) return null;
+  const converted = {};
+  let dropped = 0;
+  for (const [name, config] of Object.entries(servers)) {
+    const entry = convertMcpServer(config);
+    if (entry) converted[name] = entry;
+    else dropped += 1;
+  }
+  if (Object.keys(converted).length === 0) return null;
+  return { mcpServers: converted, dropped };
+}
 class ProtocolOutput extends Transform {
   constructor() {
     super();
@@ -153,6 +208,24 @@ async function launch(opts) {
     } else fs.chmodSync(dir, 0o700);
     writeOwnerPid(dir);
     config.manager.server_url = proxy.url;
+    const injected = mcpServersFromEnv();
+    if (injected) {
+      const mcpPath = path.join(dir, "mcp-config.json");
+      fs.writeFileSync(mcpPath, JSON.stringify({ mcpServers: injected.mcpServers }, null, 2), {
+        mode: 0o600,
+      });
+      config.mcp_config_path = mcpPath;
+      process.stderr.write(
+        `[knot-metadata] MCP injection: ${Object.keys(injected.mcpServers).length} server(s) isolated to ${mcpPath}` +
+          (injected.dropped ? `, ${injected.dropped} dropped` : "") +
+          "\n",
+      );
+      onEvent({
+        type: "mcp-injection",
+        servers: Object.keys(injected.mcpServers),
+        dropped: injected.dropped,
+      });
+    }
     const temporary = path.join(dir, "config.yaml");
     fs.writeFileSync(temporary, yaml.dump(config, { noRefs: true }), { mode: 0o600 });
     child = spawn(opts["--cli"], ["acp", "--no-update", "--config", temporary], {
