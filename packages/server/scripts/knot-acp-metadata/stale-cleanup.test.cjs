@@ -76,20 +76,69 @@ test("no owner file: grace window protects concurrency, grace expiry removes", (
   }
 });
 
-test("max age removes even a live owner to bound PID-reuse leakage", () => {
+test("live owners and their MCP configs survive at seven days and beyond", () => {
   const root = makeRoot();
   try {
-    const now = Date.now();
-    const fixedNow = () => now;
-    const ancient = makeDir(root, `${DEFAULT_PREFIX}ancient`, 8 * DAY, fixedNow, process.pid);
+    const fixedNow = () => 1800000000000;
+    const dirs = [7, 8, 30].map((days) => {
+      const dir = makeDir(root, `${DEFAULT_PREFIX}alive-${days}`, days * DAY, fixedNow, process.pid);
+      fs.writeFileSync(path.join(dir, "mcp-config.json"), '{"mcpServers":{}}');
+      const stamp = new Date(fixedNow() - days * DAY);
+      fs.utimesSync(dir, stamp, stamp);
+      return dir;
+    });
 
-    const result = cleanupStaleRuntimeDirs({
+    assert.deepEqual(cleanupStaleRuntimeDirs({ root, now: fixedNow }), {
+      scanned: 3,
+      removed: 0,
+    });
+    for (const dir of dirs) {
+      assert.equal(fs.readFileSync(path.join(dir, "mcp-config.json"), "utf8"), '{"mcpServers":{}}');
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("old directory is retained while its PID is alive and removed after exit", () => {
+  const root = makeRoot();
+  try {
+    const fixedNow = () => 1800000000000;
+    const ownerPid = 12345;
+    const dir = makeDir(root, `${DEFAULT_PREFIX}long-running`, 30 * DAY, fixedNow, ownerPid);
+    let alive = true;
+    const options = {
       root,
       now: fixedNow,
-      isAlive: () => true,
+      isAlive: (pid) => {
+        assert.equal(pid, ownerPid);
+        return alive;
+      },
+    };
+
+    assert.deepEqual(cleanupStaleRuntimeDirs(options), { scanned: 1, removed: 0 });
+    assert.equal(fs.existsSync(dir), true);
+    alive = false;
+    assert.deepEqual(cleanupStaleRuntimeDirs(options), { scanned: 1, removed: 1 });
+    assert.equal(fs.existsSync(dir), false);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("dead and missing owners beyond seven days are still cleaned after grace", () => {
+  const root = makeRoot();
+  try {
+    const fixedNow = () => 1800000000000;
+    const dead = makeDir(root, `${DEFAULT_PREFIX}dead-old`, 8 * DAY, fixedNow, 12345);
+    const legacy = makeDir(root, `${DEFAULT_PREFIX}legacy-old`, 30 * DAY, fixedNow);
+
+    assert.deepEqual(cleanupStaleRuntimeDirs({ root, now: fixedNow, isAlive: () => false }), {
+      scanned: 2,
+      removed: 2,
     });
-    assert.equal(result.removed, 1);
-    assert.equal(fs.existsSync(ancient), false);
+    assert.equal(fs.existsSync(dead), false);
+    assert.equal(fs.existsSync(legacy), false);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

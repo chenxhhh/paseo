@@ -2,13 +2,13 @@
 // Force-killed adapter processes (SIGKILL, task manager, power loss) cannot run
 // their exit hooks, so their private temporary config directories survive.
 // Every launch therefore sweeps the runtime root: directories whose owner
-// process is dead and whose grace period has elapsed are removed, and a hard
-// maximum age bounds the damage from PID reuse keeping dead owners "alive".
+// process is dead and whose grace period has elapsed are removed. A live owner
+// is always protected, regardless of age. PID reuse may delay cleanup until the
+// reused process exits; age alone cannot safely distinguish it from a live session.
 const fs = require("node:fs");
 
 const DEFAULT_PREFIX = "knot-metadata-";
 const DEFAULT_GRACE_MS = 10 * 60 * 1000;
-const DEFAULT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 function isProcessAlive(pid) {
   // Self is trivially alive; short-circuiting also sidesteps transient
@@ -52,7 +52,6 @@ function cleanupStaleRuntimeDirs({
   prefix = DEFAULT_PREFIX,
   now = Date.now,
   graceMs = DEFAULT_GRACE_MS,
-  maxAgeMs = DEFAULT_MAX_AGE_MS,
   isAlive = isProcessAlive,
   log,
 } = {}) {
@@ -76,16 +75,11 @@ function cleanupStaleRuntimeDirs({
     } catch {
       continue;
     }
-    // Hard age bound regardless of owner: PID reuse must never make a dead
-    // directory immortal.
-    if (ageMs > maxAgeMs) {
-      if (removeDir(dir, log)) removed += 1;
-      continue;
-    }
     const ownerPid = readOwnerPid(dir);
+    // Never delete a live session's config, even after weeks of uptime.
+    if (ownerPid !== null && isAlive(ownerPid)) continue;
     // No owner file yet plus a fresh directory means a concurrent launch is
     // still initializing; the grace period covers that window.
-    if (ownerPid !== null && isAlive(ownerPid)) continue;
     if (ageMs > graceMs && removeDir(dir, log)) removed += 1;
   }
   return { scanned, removed };
