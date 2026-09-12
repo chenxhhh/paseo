@@ -79,6 +79,9 @@ export class WithACPAgentClient extends GenericACPAgentClient {
       catalogModelResolver: resolveWithCatalogModels,
       // Knot CLI keeps loaded sessions closed until an explicit session/resume.
       resumeAfterLoad: true,
+      // Only the desktop bridge forwards permission requests. The official CLI
+      // executes tools without ACP approval, so an Auto Accept toggle is misleading.
+      supportsAutoAccept: options.providerId === "with-desktop",
       configFeatureOptions: [
         WITH_CONTEXT_FEATURE_OPTION,
         ...(options.providerId === "with-desktop"

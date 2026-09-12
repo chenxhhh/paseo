@@ -1141,9 +1141,10 @@ export class ACPAgentClient implements AgentClient {
   }
 
   async listFeatures(config: AgentSessionConfig): Promise<AgentFeature[]> {
-    const autoAcceptFeature = buildACPAutoAcceptFeature(config);
+    const permissionFeatures =
+      this.capabilities.supportsAutoAccept === false ? [] : [buildACPAutoAcceptFeature(config)];
     if (this.configFeatureOptions.length === 0) {
-      return [autoAcceptFeature];
+      return permissionFeatures;
     }
 
     this.assertProvider(config);
@@ -1159,7 +1160,7 @@ export class ACPAgentClient implements AgentClient {
       probeSessionId = response.sessionId;
       const transformed = this.transformSessionResponse(response);
       return [
-        autoAcceptFeature,
+        ...permissionFeatures,
         ...deriveFeaturesFromACP(
           await this.resolveFeatureConfigOptions(
             probe,
@@ -1953,7 +1954,9 @@ export class ACPAgentSession implements AgentSession, ACPClient {
 
   get features(): AgentFeature[] {
     return [
-      buildACPAutoAcceptFeature(this.config),
+      ...(this.capabilities.supportsAutoAccept === false
+        ? []
+        : [buildACPAutoAcceptFeature(this.config)]),
       ...deriveFeaturesFromACP(this.configOptions, this.configFeatureOptions),
     ];
   }
@@ -2296,6 +2299,11 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     }
 
     if (featureId === ACP_AUTO_ACCEPT_FEATURE_ID) {
+      if (this.capabilities.supportsAutoAccept === false) {
+        throw new Error(
+          "This provider does not support ACP Auto Accept; Paseo cannot guarantee execution approval.",
+        );
+      }
       this.config.featureValues = {
         ...this.config.featureValues,
         [ACP_AUTO_ACCEPT_FEATURE_ID]: value === true,
@@ -2491,7 +2499,9 @@ export class ACPAgentSession implements AgentSession, ACPClient {
 
   async requestPermission(params: RequestPermissionRequest): Promise<RequestPermissionResponse> {
     const canAutoAccept =
-      isACPAutoAcceptEnabled(this.config) && !isACPChooserRequest(params.options);
+      this.capabilities.supportsAutoAccept !== false &&
+      isACPAutoAcceptEnabled(this.config) &&
+      !isACPChooserRequest(params.options);
     if (canAutoAccept) {
       const allowOption = selectPermissionOption(params.options, { behavior: "allow" });
       if (allowOption) {

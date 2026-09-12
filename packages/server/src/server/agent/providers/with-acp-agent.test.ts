@@ -132,7 +132,7 @@ describe("With ACP model options", () => {
         ],
       }),
     );
-    expect(features).toContainEqual(expect.objectContaining({ id: "auto_accept", value: false }));
+    expect(features.map((feature) => feature.id)).not.toContain("auto_accept");
     expect(f.close).toHaveBeenCalledWith("probe");
   });
 
@@ -143,7 +143,7 @@ describe("With ACP model options", () => {
       cwd: "C:/test",
       model: "glm-5.3",
     });
-    expect(features.map((feature) => feature.id)).toEqual(["auto_accept"]);
+    expect(features).toEqual([]);
   });
 
   test("closes the feature probe if the model switch fails", async () => {
@@ -185,6 +185,10 @@ function sessionFixture(
       logger: createTestLogger(),
       defaultCommand: ["knot-cli", "acp"],
       defaultModes: [],
+      capabilities: new WithACPAgentClient({
+        logger: createTestLogger(),
+        command: ["knot-cli", "acp"],
+      }).capabilities,
       configFeatureOptions: [WITH_CONTEXT_FEATURE_OPTION],
     },
   );
@@ -205,6 +209,50 @@ function sessionFixture(
 }
 
 describe("With ACP session configuration", () => {
+  test.each([undefined, "with", "with-metadata", "with-desktop"])(
+    "only the desktop bridge supports Auto Accept (%s)",
+    (providerId) => {
+      const client = new WithACPAgentClient({
+        logger: createTestLogger(),
+        command: ["knot-cli", "acp"],
+        providerId,
+      });
+      expect(client.capabilities.supportsAutoAccept).toBe(providerId === "with-desktop");
+    },
+  );
+
+  test.each([true, false])("hides saved Auto Accept=%s and rejects changes", async (value) => {
+    const f = sessionFixture({ featureValues: { auto_accept: value } });
+    expect(f.session.features.map((feature) => feature.id)).not.toContain("auto_accept");
+    await expect(f.session.setFeature("auto_accept", value)).rejects.toThrow(
+      "does not support ACP Auto Accept",
+    );
+    expect(f.setSessionConfigOption).not.toHaveBeenCalled();
+  });
+
+  test("does not auto-approve unexpected permission callbacks from a saved setting", async () => {
+    const f = sessionFixture({ featureValues: { auto_accept: true } });
+    const permission = f.session.requestPermission({
+      sessionId: "session",
+      toolCall: {
+        toolCallId: "command",
+        title: "Run command",
+        kind: "execute",
+        status: "pending",
+      },
+      options: [{ optionId: "allow-once", name: "Allow", kind: "allow_once" }],
+    });
+    const pending = f.session.getPendingPermissions();
+    expect(pending).toHaveLength(1);
+    await f.session.respondToPermission(pending[0].id, {
+      behavior: "allow",
+      selectedActionId: "allow-once",
+    });
+    await expect(permission).resolves.toEqual({
+      outcome: { outcome: "selected", optionId: "allow-once" },
+    });
+  });
+
   test.each(["glm-5.3", "gpt-6-astra"])(
     "ignores stale saved context values when restoring %s",
     async (model) => {

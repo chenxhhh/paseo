@@ -52,6 +52,7 @@ interface GenericACPAgentClientOptions {
   extensionCommandsParser?: ACPExtensionCommandsParser;
   catalogModelResolver?: ACPCatalogModelResolver;
   resumeAfterLoad?: boolean;
+  supportsAutoAccept?: boolean;
   now?: () => number;
 }
 
@@ -70,7 +71,12 @@ export class GenericACPAgentClient extends ACPAgentClient {
         env: options.env,
       },
       defaultCommand: options.command,
-      capabilities: buildGenericACPCapabilities(providerParams),
+      capabilities: {
+        ...buildGenericACPCapabilities(providerParams),
+        ...(options.supportsAutoAccept === undefined
+          ? {}
+          : { supportsAutoAccept: options.supportsAutoAccept }),
+      },
       waitForInitialCommands: options.waitForInitialCommands,
       initialCommandsWaitTimeoutMs: options.initialCommandsWaitTimeoutMs,
       clientCapabilities: providerParams.clientCapabilities,
