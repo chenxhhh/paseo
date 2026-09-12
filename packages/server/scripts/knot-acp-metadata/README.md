@@ -6,7 +6,10 @@ Runs the unmodified official Knot CLI ACP implementation. Only the manager model
 
 - Node >=22; the existing Paseo checkout with `js-yaml` ^4.1.1 installed (root devDependency).
 - Official Knot CLI v0.29.0 and its existing source YAML configuration.
-- Running With desktop for additional model capabilities. If unavailable at startup, official metadata is retained and a warning is emitted. Metadata is a process-start snapshot, refreshed by launching a new process.
+- Additional capabilities are loaded from a persistent local snapshot first; a valid snapshot means startup does not contact With desktop. On first use (or invalid/missing snapshot), desktop discovery is attempted and successful metadata is saved. Without either source, official metadata is retained with a warning that saved context choices may not restore.
+- Snapshots live under `~/.paseo/with-metadata/`, keyed by the absolute source YAML path. Version, source path and update time are stored alongside whitelisted model capability fields only. Credentials and full desktop settings are not stored. Account changes using the same YAML path require an explicit refresh; official model availability and authorization remain authoritative.
+- Snapshots older than seven days remain usable with a warning. Failed/empty/invalid refreshes never replace a successful snapshot. Updates use a temporary file plus atomic rename. Existing ACP processes keep their startup catalog; refreshed metadata applies to newly launched processes.
+- Explicit refresh (desktop must be running): `node D:/UGit/Paseo/paseo/packages/server/scripts/knot-acp-metadata/refresh-catalog.cjs --config C:/Users/xinghanchen/AppData/Local/Programs/with/resources/with-app-cli/etc/bg-agent-client.yaml`. Exit status is nonzero if refresh/persistence fails; the previous file remains intact. This command does not start a chat. No scheduled task is installed automatically.
 - Reuses sibling `with-desktop-acp/transport.cjs` and `bridge.cjs` only to discover the local endpoint and extract models. Does NOT call desktop chat, session, permission or WebSocket APIs.
 
 ## Run

@@ -8,8 +8,7 @@ const { StringDecoder } = require("node:string_decoder");
 const yaml = require("js-yaml");
 const { startProxy } = require("./proxy.cjs");
 const { cleanupStaleRuntimeDirs, writeOwnerPid } = require("./stale-cleanup.cjs");
-const { DesktopTransport, discoverEndpoint } = require("../with-desktop-acp/transport.cjs");
-const { modelsFrom } = require("../with-desktop-acp/bridge.cjs");
+const { loadCatalog } = require("./catalog-cache.cjs");
 
 // The Knot CLI ignores ACP session/new mcpServers; it loads MCP servers from
 // the file named by the `mcp_config_path` key of its server config (verified
@@ -125,20 +124,12 @@ async function launch(opts) {
   const config = yaml.load(fs.readFileSync(opts["--config"], "utf8"));
   if (!config?.manager?.server_url) throw new Error("Source config has no manager.server_url");
   if (!fs.existsSync(opts["--cli"])) throw new Error("CLI executable not found");
-  let desktopModels = [];
-  try {
-    const t = new DesktopTransport(await discoverEndpoint(), { requestTimeout: 15000 });
-    try {
-      desktopModels = modelsFrom(await t.invoke("get_agent_models"));
-    } finally {
-      t.close();
-    }
-  } catch {
-    process.stderr.write(
-      "[knot-metadata] Desktop catalog unavailable; retaining official capabilities. No selected option will be silently downgraded.\n",
-    );
-    onEvent({ type: "desktop-unavailable" });
-  }
+  const catalog = await loadCatalog({
+    source: opts["--config"],
+    log: (message) => process.stderr.write(`[knot-metadata] ${message}\n`),
+  });
+  const desktopModels = catalog.models;
+  onEvent({ type: "model-catalog", source: catalog.source, updatedAt: catalog.updatedAt });
   let proxy;
   let capture;
   let child;
