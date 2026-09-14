@@ -66,17 +66,20 @@ async function buildPrompt(
         configKey: "title",
         label: "Title style",
         default: [
-          "An actionable task label: requested operation + concrete target + strongest distinguishing anchor (sentence case, max 80 characters).",
-          "Preserve explicit identifiers such as PR or issue numbers, file paths, packages, components, commands, and quoted names when they distinguish the task.",
-          "Aim for about 4 words, but never drop a part needed to understand or distinguish the task.",
-          'Example: "Refactor PR #2638 Playwright specs".',
+          "始终用简体中文生成标题：请求的操作 + 具体目标 + 最强的区分锚点，最多 80 字符。",
+          "即使提示词是英文，标题的叙述部分也必须是简体中文。",
+          "PR/issue 编号、文件路径、包名、组件名、命令、引号内的名称等显式标识符保留英文原文，不要翻译或音译。",
+          "控制在 20 个汉字以内，但不省略区分任务所必需的信息。不要加引号，不要以句号结尾。",
+          "示例：重构 PR #2638 的 Playwright 测试规格",
         ].join("\n"),
       },
       {
         configKey: "branchName",
         label: "Branch style",
-        default:
-          "A short task-shaped slug preserving the operation, target, and explicit identifier when present.",
+        default: [
+          "A short English task-shaped slug preserving the operation, target, and explicit identifier when present.",
+          "Always plain ASCII English words — never translate, transliterate, or derive it from the title.",
+        ].join("\n"),
       },
     ],
     after: "Return JSON only with fields 'title' and 'branch'.",
