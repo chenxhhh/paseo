@@ -3830,7 +3830,9 @@ describe("ACP session/load invariant — cwd and mcpServers always passed", () =
     handle: AgentPersistenceHandle;
     loadSession?: ReturnType<typeof vi.fn>;
     unstableResumeSession?: ReturnType<typeof vi.fn>;
+    newSession?: ReturnType<typeof vi.fn>;
     resumeAfterLoad?: boolean;
+    recreateOnSessionLost?: boolean;
   }) {
     const loadSession =
       args.loadSession ??
@@ -3848,6 +3850,14 @@ describe("ACP session/load invariant — cwd and mcpServers always passed", () =
         models: null,
         configOptions: [],
       });
+    const newSession =
+      args.newSession ??
+      vi.fn().mockResolvedValue({
+        sessionId: "session-recreated",
+        modes: null,
+        models: null,
+        configOptions: [],
+      });
 
     class TestSession extends ACPAgentSession {
       protected override async spawnProcess(): Promise<SpawnedACPProcess> {
@@ -3855,6 +3865,7 @@ describe("ACP session/load invariant — cwd and mcpServers always passed", () =
           child: createProbeChildStub(),
           connection: {
             prompt: vi.fn(),
+            newSession,
             loadSession,
             unstable_resumeSession: unstableResumeSession,
           } as unknown as ClientSideConnection,
@@ -3882,10 +3893,11 @@ describe("ACP session/load invariant — cwd and mcpServers always passed", () =
         },
         handle: args.handle,
         resumeAfterLoad: args.resumeAfterLoad,
+        recreateOnSessionLost: args.recreateOnSessionLost,
       },
     );
 
-    return { session, loadSession, unstableResumeSession };
+    return { session, loadSession, unstableResumeSession, newSession };
   }
 
   test("loadSession is always called with sessionId, cwd, and mcpServers even when mcpServers is empty", async () => {
@@ -4134,6 +4146,49 @@ describe("ACP session/load invariant — cwd and mcpServers always passed", () =
 
     expect(loadSession).toHaveBeenCalledTimes(1);
     expect(unstableResumeSession).not.toHaveBeenCalled();
+  });
+
+  test("recreateOnSessionLost rebuilds a fresh session when loadSession reports session not found", async () => {
+    const { session, loadSession, newSession } = makeTestSession({
+      capabilities: { loadSession: true },
+      handle: { sessionId: "session-lost", provider: "claude-acp" },
+      recreateOnSessionLost: true,
+      loadSession: vi.fn().mockRejectedValue(new Error("session not found: acp-sess-gone")),
+    });
+
+    await session.initializeResumedSession();
+
+    expect(loadSession).toHaveBeenCalledTimes(1);
+    expect(newSession).toHaveBeenCalledTimes(1);
+    expect(newSession).toHaveBeenCalledWith({
+      cwd: "/tmp/paseo-acp-test",
+      mcpServers: [],
+    });
+    expect(session.id).toBe("session-recreated");
+    expect(session.describePersistence()?.nativeHandle).toBe("session-recreated");
+  });
+
+  test("session not found without the opt-in still fails the resume", async () => {
+    const { session, newSession } = makeTestSession({
+      capabilities: { loadSession: true },
+      handle: { sessionId: "session-lost", provider: "claude-acp" },
+      loadSession: vi.fn().mockRejectedValue(new Error("session not found: acp-sess-gone")),
+    });
+
+    await expect(session.initializeResumedSession()).rejects.toThrow("session not found");
+    expect(newSession).not.toHaveBeenCalled();
+  });
+
+  test("recreateOnSessionLost does not mask other load failures", async () => {
+    const { session, newSession } = makeTestSession({
+      capabilities: { loadSession: true },
+      handle: { sessionId: "session-1", provider: "claude-acp" },
+      recreateOnSessionLost: true,
+      loadSession: vi.fn().mockRejectedValue(new Error("session/load failed")),
+    });
+
+    await expect(session.initializeResumedSession()).rejects.toThrow("session/load failed");
+    expect(newSession).not.toHaveBeenCalled();
   });
 });
 

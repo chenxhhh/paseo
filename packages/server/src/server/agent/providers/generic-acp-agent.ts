@@ -52,6 +52,7 @@ interface GenericACPAgentClientOptions {
   extensionCommandsParser?: ACPExtensionCommandsParser;
   catalogModelResolver?: ACPCatalogModelResolver;
   resumeAfterLoad?: boolean;
+  recreateOnSessionLost?: boolean;
   supportsAutoAccept?: boolean;
   now?: () => number;
 }
@@ -85,6 +86,7 @@ export class GenericACPAgentClient extends ACPAgentClient {
       extensionCommandsParser: options.extensionCommandsParser,
       catalogModelResolver: options.catalogModelResolver,
       resumeAfterLoad: options.resumeAfterLoad,
+      recreateOnSessionLost: options.recreateOnSessionLost,
       now: options.now,
     });
 

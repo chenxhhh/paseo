@@ -61,6 +61,10 @@ Daemon-restart resume keeps working through a three-part mirror protocol:
 
 Rollback: set `KNOT_METADATA_HOME_ISOLATION=0` in the daemon environment to restore the legacy shared-home behavior (no fake home, no registry mirroring). `KNOT_METADATA_REAL_HOME` is a test-only override for the real home location.
 
+## Recovery fallback (2026-09-14)
+
+Even with home isolation, a session whose registry entry is already gone (e.g. lost before this fix shipped) can never `session/load`. Paseo's `ACPAgentSession` now supports `recreateOnSessionLost`: when a resume fails with a provider-side `session not found` error, the failed process is closed and a fresh session is created instead of failing the resume forever. Paseo's own persisted timeline keeps the visible conversation history; only provider-side context is lost, and `describePersistence()` re-anchors the handle to the new session id on the next persist. `WithACPAgentClient` (the `with`/`with-metadata` providers) opts in; every other failure keeps failing the resume so real breakage is not masked.
+
 ## Scope and safety
 
 - Supplements only same-name, official-catalog `ext-glm-5.3` and `gpt-6-astra`, with desktop `is_support_thinking=false`.
