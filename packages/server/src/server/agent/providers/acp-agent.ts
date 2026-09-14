@@ -94,6 +94,8 @@ import {
   type ProviderCatalog,
   type ResolveAgentCreateConfigInput,
   type ResolveAgentCreateConfigResult,
+  type SteerActiveTurnOptions,
+  type SteerResult,
   type ToolCallDetail,
   type ToolCallTimelineItem,
 } from "../agent-sdk-types.js";
@@ -285,6 +287,10 @@ const ACP_PLAN_YIELD_CONTINUE_PROMPT = "Continue.";
 const ACP_PROBE_CLOSE_TIMEOUT_MS = 2_000;
 const ACP_IMPORT_HISTORY_LOAD_TIMEOUT_MS = 30_000;
 const ACP_IMPORT_HISTORY_BUDGET_MS = 60_000;
+// Grace period for an agent to answer session/cancel with a cancelled prompt
+// response. Keep it below the manager's own interrupt budget (2s) so a silent
+// agent still settles the run instead of being force-canceled.
+const ACP_CANCEL_SETTLE_TIMEOUT_MS = 1_000;
 
 function summarizeMalformedACPStdoutError(error: unknown): { type: string; message: string } {
   return {
@@ -602,6 +608,13 @@ interface PendingPermission {
 interface PendingUserMessage {
   text: string;
   messageId?: string;
+}
+
+/** A steer waiting for the in-flight session/prompt to settle. */
+interface QueuedACPSteer {
+  prompt: AgentPromptInput;
+  messageId: string;
+  clientMessageId?: string;
 }
 
 export type SessionStateResponse = NewSessionResponse | LoadSessionResponse | ResumeSessionResponse;
@@ -1694,6 +1707,8 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   private readonly pendingPermissions = new Map<string, PendingPermission>();
   private pendingUserMessage: PendingUserMessage | null = null;
   private submittedUserMessageTurnId: string | null = null;
+  private pendingSteers: QueuedACPSteer[] = [];
+  private turnSettledWaiters: Array<() => void> = [];
   private readonly toolCalls = new Map<string, ACPToolSnapshot>();
   private readonly terminalEntries = new Map<string, TerminalEntry>();
   private readonly persistedHistory: AgentTimelineItem[] = [];
@@ -1911,6 +1926,69 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     this.dispatchPrompt(turnId, prompt, messageId);
 
     return { turnId };
+  }
+
+  /**
+   * ACP has no steer RPC, so a steer is queued and sent as the next
+   * session/prompt when the in-flight one settles — still inside the Paseo turn
+   * the steer was admitted to.
+   */
+  async steerActiveTurn(
+    prompt: AgentPromptInput,
+    options: SteerActiveTurnOptions,
+  ): Promise<SteerResult> {
+    if (this.closed || !this.connection || !this.sessionId) {
+      return { status: "unavailable" };
+    }
+    if (this.activeForegroundTurnId !== options.expectedTurnId) {
+      return { status: "unavailable" };
+    }
+    // A blocked prompt can never settle, so a steer queued behind it could never
+    // be delivered. Only accept when this steer may answer the permission.
+    if (this.pendingPermissions.size > 0) {
+      if (!options.clearPendingPermissions) {
+        return { status: "unavailable" };
+      }
+      await this.clearPendingPermissionsForSteer();
+      if (this.activeForegroundTurnId !== options.expectedTurnId) {
+        return { status: "unavailable" };
+      }
+    }
+    this.pendingSteers.push({
+      prompt,
+      messageId: options.clientMessageId ?? randomUUID(),
+      ...(options.clientMessageId ? { clientMessageId: options.clientMessageId } : {}),
+    });
+    return { status: "accepted" };
+  }
+
+  private async clearPendingPermissionsForSteer(): Promise<void> {
+    for (const requestId of Array.from(this.pendingPermissions.keys())) {
+      if (!this.pendingPermissions.has(requestId)) continue;
+      await this.respondToPermission(requestId, {
+        behavior: "deny",
+        message: "The user answered with a message instead of approving. Their message follows.",
+      });
+    }
+  }
+
+  /** Runs the oldest queued steer as the next ACP prompt of the same Paseo turn. */
+  private deliverQueuedSteer(turnId: string): void {
+    const steer = this.pendingSteers.shift();
+    if (!steer) {
+      this.finishTurn({
+        type: "turn_completed",
+        provider: this.provider,
+        usage: this.currentTurnUsage,
+        turnId,
+      });
+      return;
+    }
+    // A fresh fallback id keeps the steer's answer out of the previous assistant message.
+    this.fallbackAssistantMessageId = null;
+    this.lastTimelineItem = null;
+    this.emitSubmittedUserMessage(steer.prompt, steer.messageId, turnId, steer.clientMessageId);
+    this.dispatchPrompt(turnId, steer.prompt, steer.messageId);
   }
 
   subscribe(callback: (event: AgentStreamEvent) => void): () => void {
@@ -2412,8 +2490,8 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       turnId: pending.turnId ?? undefined,
     });
 
-    if (response.behavior === "deny" && response.interrupt && this.connection && this.sessionId) {
-      await this.connection.cancel({ sessionId: this.sessionId });
+    if (response.behavior === "deny" && response.interrupt) {
+      await this.cancelActiveACPPrompt();
     }
   }
 
@@ -2442,8 +2520,57 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     }
     this.pendingPermissions.clear();
 
-    if (this.activeForegroundTurnId) {
-      await this.connection.cancel({ sessionId: this.sessionId });
+    await this.cancelActiveACPPrompt();
+  }
+
+  /**
+   * Cancels the in-flight session/prompt and settles the turn even when the
+   * agent never answers the cancel with a stopReason:"cancelled" response.
+   * A silent agent would otherwise leave activeForegroundTurnId set forever,
+   * so every later prompt is refused with "A foreground turn is already
+   * active" until the process is replaced.
+   */
+  private async cancelActiveACPPrompt(): Promise<void> {
+    const turnId = this.activeForegroundTurnId;
+    if (!turnId || !this.connection || !this.sessionId) {
+      return;
+    }
+    await this.connection.cancel({ sessionId: this.sessionId });
+    if (await this.waitForTurnToSettle(ACP_CANCEL_SETTLE_TIMEOUT_MS)) {
+      return;
+    }
+    if (this.activeForegroundTurnId !== turnId) {
+      return;
+    }
+    this.synthesizeCanceledToolCalls();
+    this.finishTurn({
+      type: "turn_canceled",
+      provider: this.provider,
+      reason: "Interrupted",
+      turnId,
+    });
+  }
+
+  /** Resolves true once the in-flight prompt settles, false after timeoutMs. */
+  private waitForTurnToSettle(timeoutMs: number): Promise<boolean> {
+    if (!this.activeForegroundTurnId) {
+      return Promise.resolve(true);
+    }
+    let settleTurn!: () => void;
+    const turnSettled = new Promise<void>((resolve) => {
+      settleTurn = resolve;
+    });
+    this.turnSettledWaiters.push(settleTurn);
+    const timedOut = new Promise<boolean>((resolve) => {
+      setTimeout(() => resolve(false), timeoutMs);
+    });
+    return Promise.race([turnSettled.then(() => true), timedOut]);
+  }
+
+  private settleTurnWaiters(): void {
+    const waiters = this.turnSettledWaiters.splice(0);
+    for (const waiter of waiters) {
+      waiter();
     }
   }
 
@@ -2493,6 +2620,8 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     this.subscribers.clear();
     this.connection = null;
     this.child = null;
+    this.pendingSteers.length = 0;
+    this.settleTurnWaiters();
     this.activeForegroundTurnId = null;
   }
 
@@ -3156,6 +3285,14 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       return;
     }
 
+    // The user's queued steer is itself the next instruction, so it wins over
+    // the synthetic plan-yield continue.
+    if (this.pendingSteers.length > 0) {
+      this.deliverTranslatedEvents(this.flushPendingUserMessage());
+      this.deliverQueuedSteer(turnId);
+      return;
+    }
+
     if (this.shouldResumeAfterPlanYield(response.stopReason)) {
       this.planYieldContinues += 1;
       this.lastTimelineItem = null;
@@ -3290,6 +3427,9 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     this.deliverTranslatedEvents(this.flushPendingUserMessage());
     this.activeForegroundTurnId = null;
     this.fallbackAssistantMessageId = null;
+    // A steer is only deliverable inside the turn it was admitted to.
+    this.pendingSteers.length = 0;
+    this.settleTurnWaiters();
     if (this.submittedUserMessageTurnId === event.turnId) {
       this.submittedUserMessageTurnId = null;
     }

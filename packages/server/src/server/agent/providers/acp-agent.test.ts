@@ -11,6 +11,7 @@ import {
   PermissionOption,
   PromptResponse,
   RequestPermissionRequest,
+  RequestPermissionResponse,
   SessionConfigOption,
   SessionUpdate,
 } from "@agentclientprotocol/sdk";
@@ -47,6 +48,7 @@ import { transformPiModels } from "./pi/agent.js";
 import type { AgentStreamEvent } from "../agent-sdk-types.js";
 import type {
   AgentCapabilityFlags,
+  AgentPermissionRequest,
   AgentPersistenceHandle,
   ProviderRefreshContext,
 } from "../agent-sdk-types.js";
@@ -90,11 +92,36 @@ describe("buildACPClientCapabilities", () => {
 
 interface ACPSessionInternals {
   sessionId: string | null;
-  connection: { prompt: (...args: unknown[]) => Promise<PromptResponse> };
+  connection: {
+    prompt: (...args: unknown[]) => Promise<PromptResponse>;
+    cancel?: (input: { sessionId: string }) => Promise<void>;
+  };
   activeForegroundTurnId: string | null;
   configOptions: SessionConfigOption[];
+  pendingPermissions: Map<string, PendingPermissionInternals>;
   translateSessionUpdate(update: SessionUpdate): AgentStreamEvent[];
   acpMcpServers(): unknown[];
+}
+
+interface PendingPermissionInternals {
+  request: AgentPermissionRequest;
+  options: PermissionOption[];
+  resolve: (response: RequestPermissionResponse) => void;
+  reject: (error: Error) => void;
+  turnId: string | null;
+}
+
+function submittedUserMessageTexts(events: AgentStreamEvent[]): string[] {
+  return events.flatMap((event) =>
+    event.type === "timeline" && event.item.type === "user_message" ? [event.item.text] : [],
+  );
+}
+
+/** Drives the fire-and-forget session/prompt promise chains to completion. */
+async function flushPromptMicrotasks(): Promise<void> {
+  for (let index = 0; index < 5; index += 1) {
+    await Promise.resolve();
+  }
 }
 
 interface ACPModelSelectionInternals {
@@ -3327,6 +3354,213 @@ describe("ACPAgentSession", () => {
     await expect(turnFailed).resolves.toMatchObject({
       error: expect.not.stringContaining("[object Object]"),
     });
+  });
+
+  test("steerActiveTurn queues the message and sends it as the next prompt when the current one settles", async () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    const promptResolvers: Array<(value: PromptResponse) => void> = [];
+    const prompt = vi.fn(
+      () =>
+        new Promise<PromptResponse>((resolve) => {
+          promptResolvers.push(resolve);
+        }),
+    );
+
+    asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+    asInternals<ACPSessionInternals>(session).connection = { prompt };
+
+    session.subscribe((event) => events.push(event));
+
+    const { turnId } = await session.startTurn("first", { clientMessageId: "msg-first" });
+
+    const steer = await session.steerActiveTurn("focus on the tests", {
+      expectedTurnId: turnId,
+      clientMessageId: "msg-steer",
+    });
+
+    expect(steer).toEqual({ status: "accepted" });
+    expect(prompt).toHaveBeenCalledTimes(1);
+    expect(submittedUserMessageTexts(events)).toEqual(["first"]);
+
+    promptResolvers[0]({ stopReason: "end_turn" });
+    await flushPromptMicrotasks();
+
+    expect(prompt).toHaveBeenCalledTimes(2);
+    expect(prompt).toHaveBeenLastCalledWith({
+      sessionId: "session-1",
+      messageId: "msg-steer",
+      prompt: [{ type: "text", text: "focus on the tests" }],
+    });
+    expect(asInternals<ACPSessionInternals>(session).activeForegroundTurnId).toBe(turnId);
+    expect(events.filter((event) => event.type === "turn_started")).toHaveLength(1);
+    expect(submittedUserMessageTexts(events)).toEqual(["first", "focus on the tests"]);
+    expect(events.filter((event) => event.type === "turn_completed")).toHaveLength(0);
+
+    promptResolvers[1]({ stopReason: "end_turn" });
+    await flushPromptMicrotasks();
+
+    expect(events.filter((event) => event.type === "turn_completed")).toHaveLength(1);
+    expect(asInternals<ACPSessionInternals>(session).activeForegroundTurnId).toBeNull();
+  });
+
+  test("queued steers deliver in order, one per settled prompt", async () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    const promptResolvers: Array<(value: PromptResponse) => void> = [];
+    const prompt = vi.fn(
+      () =>
+        new Promise<PromptResponse>((resolve) => {
+          promptResolvers.push(resolve);
+        }),
+    );
+
+    asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+    asInternals<ACPSessionInternals>(session).connection = { prompt };
+
+    session.subscribe((event) => events.push(event));
+
+    const { turnId } = await session.startTurn("first");
+    await session.steerActiveTurn("one", { expectedTurnId: turnId, clientMessageId: "msg-one" });
+    await session.steerActiveTurn("two", { expectedTurnId: turnId, clientMessageId: "msg-two" });
+
+    promptResolvers[0]({ stopReason: "end_turn" });
+    await flushPromptMicrotasks();
+    expect(prompt).toHaveBeenCalledTimes(2);
+    expect(prompt).toHaveBeenLastCalledWith(expect.objectContaining({ messageId: "msg-one" }));
+    expect(submittedUserMessageTexts(events)).toEqual(["first", "one"]);
+
+    promptResolvers[1]({ stopReason: "end_turn" });
+    await flushPromptMicrotasks();
+    expect(prompt).toHaveBeenCalledTimes(3);
+    expect(prompt).toHaveBeenLastCalledWith(expect.objectContaining({ messageId: "msg-two" }));
+    expect(submittedUserMessageTexts(events)).toEqual(["first", "one", "two"]);
+    expect(asInternals<ACPSessionInternals>(session).activeForegroundTurnId).toBe(turnId);
+
+    promptResolvers[2]({ stopReason: "end_turn" });
+    await flushPromptMicrotasks();
+    expect(events.filter((event) => event.type === "turn_completed")).toHaveLength(1);
+  });
+
+  test("steerActiveTurn requires clearPendingPermissions while a permission blocks the prompt", async () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    const prompt = vi.fn(() => new Promise<PromptResponse>(() => {}));
+
+    asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+    asInternals<ACPSessionInternals>(session).connection = { prompt };
+    session.subscribe((event) => events.push(event));
+
+    const { turnId } = await session.startTurn("first");
+    const internals = asInternals<ACPSessionInternals>(session);
+    const resolvedOutcomes: RequestPermissionResponse[] = [];
+    internals.pendingPermissions.set("perm-1", {
+      request: {
+        id: "perm-1",
+        provider: "claude-acp",
+        name: "run command",
+        kind: "tool",
+      },
+      options: [{ optionId: "reject", name: "Reject", kind: "reject_once" }],
+      resolve: (value) => resolvedOutcomes.push(value),
+      reject: () => undefined,
+      turnId,
+    });
+
+    const refused = await session.steerActiveTurn("answer while blocked", {
+      expectedTurnId: turnId,
+    });
+    expect(refused).toEqual({ status: "unavailable" });
+
+    const accepted = await session.steerActiveTurn("answer while blocked", {
+      expectedTurnId: turnId,
+      clearPendingPermissions: true,
+    });
+    expect(accepted).toEqual({ status: "accepted" });
+    expect(internals.pendingPermissions.size).toBe(0);
+    expect(resolvedOutcomes).toEqual([{ outcome: { outcome: "selected", optionId: "reject" } }]);
+    expect(events.find((event) => event.type === "permission_resolved")).toMatchObject({
+      requestId: "perm-1",
+      resolution: { behavior: "deny" },
+    });
+  });
+
+  test("interrupt discards queued steers and settles the turn when the agent never answers the cancel", async () => {
+    vi.useFakeTimers();
+    try {
+      const session = createSession();
+      const events: AgentStreamEvent[] = [];
+      const prompt = vi.fn(() => new Promise<PromptResponse>(() => {}));
+      const cancel = vi.fn(async () => undefined);
+
+      asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+      asInternals<ACPSessionInternals>(session).connection = { prompt, cancel };
+
+      session.subscribe((event) => events.push(event));
+
+      const { turnId } = await session.startTurn("first");
+      await session.steerActiveTurn("never delivered", { expectedTurnId: turnId });
+
+      const interrupted = session.interrupt();
+      await vi.advanceTimersByTimeAsync(5_000);
+      await interrupted;
+
+      expect(cancel).toHaveBeenCalledWith({ sessionId: "session-1" });
+      expect(events.find((event) => event.type === "turn_canceled")).toMatchObject({ turnId });
+      expect(asInternals<ACPSessionInternals>(session).activeForegroundTurnId).toBeNull();
+
+      // The steer died with the turn, so a fresh prompt starts cleanly instead of
+      // being refused with "A foreground turn is already active".
+      await session.startTurn("continue");
+      expect(prompt).toHaveBeenCalledTimes(2);
+      expect(submittedUserMessageTexts(events)).toEqual(["first", "continue"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("a late answer to the abandoned prompt cannot finish the turn that replaced it", async () => {
+    vi.useFakeTimers();
+    try {
+      const session = createSession();
+      const events: AgentStreamEvent[] = [];
+      const promptResolvers: Array<(value: PromptResponse) => void> = [];
+      const prompt = vi.fn(
+        () =>
+          new Promise<PromptResponse>((resolve) => {
+            promptResolvers.push(resolve);
+          }),
+      );
+      const cancel = vi.fn(async () => undefined);
+
+      asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+      asInternals<ACPSessionInternals>(session).connection = { prompt, cancel };
+
+      session.subscribe((event) => events.push(event));
+
+      await session.startTurn("first");
+      const interrupted = session.interrupt();
+      await vi.advanceTimersByTimeAsync(5_000);
+      await interrupted;
+
+      const { turnId: secondTurnId } = await session.startTurn("continue");
+
+      // The agent finally answers the cancelled prompt long after it was abandoned.
+      promptResolvers[0]({ stopReason: "cancelled" });
+      await flushPromptMicrotasks();
+
+      expect(asInternals<ACPSessionInternals>(session).activeForegroundTurnId).toBe(secondTurnId);
+      expect(events.filter((event) => event.type === "turn_canceled")).toHaveLength(1);
+
+      promptResolvers[1]({ stopReason: "end_turn" });
+      await flushPromptMicrotasks();
+
+      const completed = events.filter((event) => event.type === "turn_completed");
+      expect(completed).toHaveLength(1);
+      expect(completed[0]).toMatchObject({ turnId: secondTurnId });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
