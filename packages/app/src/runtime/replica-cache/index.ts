@@ -33,7 +33,12 @@ import {
 export type DirectoryReplicaMutation =
   | { kind: "agent"; type: "upsert"; id: string; value: Agent }
   | { kind: "agent"; type: "delete"; id: string }
-  | { kind: "workspace"; type: "upsert"; id: string; value: WorkspaceDescriptor }
+  | {
+      kind: "workspace";
+      type: "upsert";
+      id: string;
+      value: WorkspaceDescriptor;
+    }
   | { kind: "workspace"; type: "delete"; id: string }
   | { kind: "project"; type: "upsert"; id: string; value: ProjectDescriptor }
   | { kind: "project"; type: "delete"; id: string };
@@ -104,7 +109,10 @@ const TodoEntrySchema = z.strictObject({
 });
 
 const TaskActivitySchema = z.discriminatedUnion("type", [
-  z.strictObject({ type: z.literal("created"), count: z.number().int().nonnegative() }),
+  z.strictObject({
+    type: z.literal("created"),
+    count: z.number().int().nonnegative(),
+  }),
   z.strictObject({
     type: z.enum(["added", "started", "completed"]),
     task: z.string(),
@@ -371,10 +379,20 @@ interface ReplicaCacheOptions {
 
 type StructuredReplicaUpsert =
   | { serverId: string; kind: "agent"; id: string; value: Agent }
-  | { serverId: string; kind: "workspace"; id: string; value: WorkspaceDescriptor }
+  | {
+      serverId: string;
+      kind: "workspace";
+      id: string;
+      value: WorkspaceDescriptor;
+    }
   | { serverId: string; kind: "project"; id: string; value: ProjectDescriptor }
   | { serverId: string; kind: "timeline"; id: string; value: CachedTimeline }
-  | { serverId: string; kind: "checkpoint"; id: string; value: DirectoryCheckpoint };
+  | {
+      serverId: string;
+      kind: "checkpoint";
+      id: string;
+      value: DirectoryCheckpoint;
+    };
 
 const DirectoryCursorSchema = z.strictObject({
   generation: z.string(),
@@ -633,7 +651,9 @@ function serializeAgent(agent: Agent): StoredAgent {
       supportsReasoningStream: agent.capabilities.supportsReasoningStream,
       supportsToolInvocations: agent.capabilities.supportsToolInvocations,
       ...(agent.capabilities.supportsRewindConversation !== undefined
-        ? { supportsRewindConversation: agent.capabilities.supportsRewindConversation }
+        ? {
+            supportsRewindConversation: agent.capabilities.supportsRewindConversation,
+          }
         : {}),
       ...(agent.capabilities.supportsRewindFiles !== undefined
         ? { supportsRewindFiles: agent.capabilities.supportsRewindFiles }
@@ -998,6 +1018,8 @@ export class ReplicaCache {
       await this.prepareStore();
       while (this.activeServerIds.has(serverId)) {
         await this.flush();
+        // A failed cache write must not block fetching authoritative server history.
+        if (this.hasPendingHostChanges(serverId)) return [];
         const revision = this.hostRevisions.get(serverId) ?? 0;
         const rows = await this.rowStore.read(serverId, kinds, ids);
         if (this.canReadHostRevision(serverId, revision)) return rows;
@@ -1011,7 +1033,10 @@ export class ReplicaCache {
   private async deleteInvalidRow(row: ReplicaRow): Promise<void> {
     const invalidEntity = directoryEntityForRow(row);
     if (!invalidEntity) {
-      const changes = { upserts: [], deletes: [row] } satisfies ReplicaRowChanges;
+      const changes = {
+        upserts: [],
+        deletes: [row],
+      } satisfies ReplicaRowChanges;
       await this.queueOperation(async () => {
         await this.rowStore.apply(changes);
         this.applyStoredChanges(changes);
@@ -1144,7 +1169,12 @@ export class ReplicaCache {
     if (!this.activeServerIds.has(serverId)) return;
     if (timeline.agentId !== agentId) throw new Error("Timeline cache key does not match payload");
     this.advanceHostRevision(serverId);
-    this.queueUpsert({ serverId, kind: "timeline", id: agentId, value: timeline });
+    this.queueUpsert({
+      serverId,
+      kind: "timeline",
+      id: agentId,
+      value: timeline,
+    });
     this.schedulePersist();
   }
 
@@ -1491,25 +1521,31 @@ export class ReplicaCache {
   }
 
   private ensureStoredIndex(): Promise<void> {
-    this.storedIndexPromise ??= this.rowStore.readAll().then(async (hosts) => {
-      this.storedRows.clear();
-      this.hostBytes.clear();
-      this.hostWriteOrder.clear();
-      this.totalBytes = 0;
-      for (const host of hosts) {
-        if (!this.activeServerIds.has(host.serverId)) {
-          await this.rowStore.deleteHost(host.serverId);
-          continue;
+    this.storedIndexPromise ??= this.rowStore
+      .readAll()
+      .then(async (hosts) => {
+        this.storedRows.clear();
+        this.hostBytes.clear();
+        this.hostWriteOrder.clear();
+        this.totalBytes = 0;
+        for (const host of hosts) {
+          if (!this.activeServerIds.has(host.serverId)) {
+            await this.rowStore.deleteHost(host.serverId);
+            continue;
+          }
+          const rows = new Map(host.rows.map((row) => [rowKey(row), row]));
+          const bytes = host.rows.reduce((sum, row) => sum + rowBytes(row), 0);
+          this.storedRows.set(host.serverId, rows);
+          this.hostBytes.set(host.serverId, bytes);
+          this.totalBytes += bytes;
+          this.touchHost(host.serverId);
         }
-        const rows = new Map(host.rows.map((row) => [rowKey(row), row]));
-        const bytes = host.rows.reduce((sum, row) => sum + rowBytes(row), 0);
-        this.storedRows.set(host.serverId, rows);
-        this.hostBytes.set(host.serverId, bytes);
-        this.totalBytes += bytes;
-        this.touchHost(host.serverId);
-      }
-      return undefined;
-    });
+        return undefined;
+      })
+      .catch((error) => {
+        this.storedIndexPromise = null;
+        throw error;
+      });
     return this.storedIndexPromise;
   }
 

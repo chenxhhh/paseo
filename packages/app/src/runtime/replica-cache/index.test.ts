@@ -174,7 +174,9 @@ function timelineItem(text = "Cached"): StreamItem {
 }
 
 function directory(
-  checkpoint: DirectoryCheckpoint = { agents: { generation: "g", afterSeq: 12 } },
+  checkpoint: DirectoryCheckpoint = {
+    agents: { generation: "g", afterSeq: 12 },
+  },
 ) {
   const cachedAgent = agent();
   const workspace = normalizeWorkspaceDescriptor(workspacePayload());
@@ -265,7 +267,9 @@ describe("ReplicaCache", () => {
     expect(restoredDirectory.agents.get("agent-1")?.title).toBe("Cached agent");
     expect(restoredDirectory.workspaces.get("workspace-1")?.name).toBe("main");
     expect(restoredDirectory.projects.get("project-1")?.projectDisplayName).toBe("Paseo");
-    expect(restoredDirectory.checkpoint).toEqual({ agents: { generation: "g", afterSeq: 12 } });
+    expect(restoredDirectory.checkpoint).toEqual({
+      agents: { generation: "g", afterSeq: 12 },
+    });
     expect(restoredTimeline).toEqual(timeline());
   });
 
@@ -287,7 +291,11 @@ describe("ReplicaCache", () => {
     const writer = createCache(storage);
     writer.commitTimeline(SERVER_ID, "agent-1", timeline());
     await writer.flush();
-    writer.commitTimeline(SERVER_ID, "agent-1", { ...timeline(), items: [], range: null });
+    writer.commitTimeline(SERVER_ID, "agent-1", {
+      ...timeline(),
+      items: [],
+      range: null,
+    });
     writer.replaceDirectoryBaseline(SERVER_ID, directory());
     await writer.flush();
 
@@ -503,7 +511,9 @@ describe("ReplicaCache", () => {
     await writer.flush();
     const row = [...storage.rows.values()].find((candidate) => candidate.kind === "timeline");
     if (!row) throw new Error("timeline row was not written");
-    const payload = JSON.parse(row.payload) as { items: Array<Record<string, unknown>> };
+    const payload = JSON.parse(row.payload) as {
+      items: Array<Record<string, unknown>>;
+    };
     delete payload.items[0]?.pluginItemId;
     storage.rows.set(`${row.serverId}:${row.kind}:${row.id}`, {
       ...row,
@@ -596,7 +606,10 @@ describe("ReplicaCache", () => {
       (total, row) => total + Buffer.byteLength(row.payload),
       0,
     );
-    const cache = new ReplicaCache(storage, { ...noLegacyCleanup, maxBytes: initialBytes + 100 });
+    const cache = new ReplicaCache(storage, {
+      ...noLegacyCleanup,
+      maxBytes: initialBytes + 100,
+    });
     cache.setHosts([SERVER_ID, otherServerId]);
     commitDirectory(cache, otherServerId, directory());
     await cache.flush();
@@ -720,7 +733,10 @@ describe("ReplicaCache", () => {
 
   it("rebuilds every directory row before restoring its checkpoint after eviction", async () => {
     const storage = new MemoryStorage();
-    const cache = new ReplicaCache(storage, { ...noLegacyCleanup, maxBytes: 2_500 });
+    const cache = new ReplicaCache(storage, {
+      ...noLegacyCleanup,
+      maxBytes: 2_500,
+    });
     cache.setHosts([SERVER_ID, "other-host"]);
     const cachedDirectory = directory();
     commitDirectory(cache, SERVER_ID, cachedDirectory);
@@ -765,4 +781,20 @@ describe("ReplicaCache", () => {
 
     expect(storage.cleanups).toBe(1);
   });
+});
+
+it("falls back without hanging when cache writes fail and retries the index", async () => {
+  const storage = new MemoryStorage();
+  const originalReadAll = storage.readAll.bind(storage);
+  let fail = true;
+  storage.readAll = async () => {
+    if (fail) throw new Error("corrupt cache index");
+    return originalReadAll();
+  };
+  const cache = createCache(storage);
+  cache.commitTimeline(SERVER_ID, "agent-1", timeline());
+  expect(await cache.readTimeline(SERVER_ID, "agent-1")).toBeUndefined();
+  fail = false;
+  await cache.flush();
+  expect((await cache.readTimeline(SERVER_ID, "agent-1"))?.items).toEqual([timelineItem()]);
 });
