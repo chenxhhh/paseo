@@ -9,6 +9,12 @@ const yaml = require("js-yaml");
 const { startProxy } = require("./proxy.cjs");
 const { cleanupStaleRuntimeDirs, writeOwnerPid } = require("./stale-cleanup.cjs");
 const { loadCatalog } = require("./catalog-cache.cjs");
+const {
+  isEnabled: homeIsolationEnabled,
+  createFakeUserDir,
+  seedResumeRegistry,
+  mirrorSessionEntry,
+} = require("./home-isolation.cjs");
 
 // The Knot CLI ignores ACP session/new mcpServers; it loads MCP servers from
 // the file named by the `mcp_config_path` key of its server config (verified
@@ -65,8 +71,9 @@ function mcpServersFromEnv() {
   return { mcpServers: converted, dropped };
 }
 class ProtocolOutput extends Transform {
-  constructor() {
+  constructor(onResult) {
     super();
+    this.onResult = typeof onResult === "function" ? onResult : null;
     this.text = "";
     this.decoder = new StringDecoder("utf8");
   }
@@ -82,6 +89,13 @@ class ProtocolOutput extends Transform {
     for (const loc of [m.result, m.params?.update]) {
       for (const option of loc?.configOptions || [])
         if (option.type === "select" && option.options == null) option.options = [];
+    }
+    if (this.onResult && m.id != null && m.result && typeof m.result === "object") {
+      try {
+        this.onResult(m);
+      } catch (error) {
+        process.stderr.write(`[knot-metadata] result hook failed: ${error.message}\n`);
+      }
     }
     this.push(JSON.stringify(m) + "\n");
   }
@@ -134,6 +148,8 @@ async function launch(opts) {
   let capture;
   let child;
   let dir;
+  let fakeHome = null;
+  let trackedSessionId = null;
   let stopping = false;
   const cleanup = async () => {
     if (stopping) return;
@@ -150,6 +166,22 @@ async function launch(opts) {
     }
     await proxy?.close();
     await capture?.close();
+    if (fakeHome && trackedSessionId) {
+      // Final merge once the CLI has exited: persist the entry's last state
+      // (closed flag, mode_state) into the real registry before the private
+      // dir is deleted, so daemon-restart resume keeps working.
+      const mirror = await mirrorSessionEntry(fakeHome.bgDir, trackedSessionId, {
+        log: (message) => process.stderr.write(`${message}\n`),
+        waitForEntryMs: 0,
+      });
+      onEvent({
+        type: "registry-mirror",
+        stage: "exit",
+        sessionId: trackedSessionId,
+        ok: mirror.ok,
+        error: mirror.error ?? null,
+      });
+    }
     if (dir) fs.rmSync(dir, { recursive: true, force: true });
     audit.finished = new Date().toISOString();
     if (opts["--audit"]) fs.writeFileSync(opts["--audit"], JSON.stringify(audit, null, 2));
@@ -198,6 +230,33 @@ async function launch(opts) {
       });
     } else fs.chmodSync(dir, 0o700);
     writeOwnerPid(dir);
+    // Per-session HOME redirection (plan 1): the Knot CLI resolves all of its
+    // mutable state (<HOME>/.bg-agent: ACP session registry, browser profile,
+    // cron tasks, plugin registry) from HOME. Pointing HOME at a private fake
+    // user dir keeps concurrent CLI processes from overwriting each other's
+    // registry entries (the 2026-09-14 lost-update incident class).
+    if (homeIsolationEnabled()) {
+      fakeHome = createFakeUserDir(dir, {
+        log: (message) => process.stderr.write(`${message}\n`),
+      });
+      const resumeSessionId = process.env.PASEO_RESUME_SESSION_ID;
+      let seeded = false;
+      if (resumeSessionId) {
+        // Resume path: pre-seed the target's registry entry (read from the
+        // real registry) so this fresh CLI can session/load it.
+        const result = seedResumeRegistry(fakeHome.bgDir, resumeSessionId, {
+          log: (message) => process.stderr.write(`${message}\n`),
+        });
+        seeded = result.seeded;
+        trackedSessionId = resumeSessionId;
+      }
+      onEvent({
+        type: "home-isolation",
+        userDir: fakeHome.userDir,
+        copied: fakeHome.copied,
+        seededSessionId: seeded ? resumeSessionId : null,
+      });
+    }
     config.manager.server_url = proxy.url;
     const injected = mcpServersFromEnv();
     if (injected) {
@@ -219,14 +278,62 @@ async function launch(opts) {
     }
     const temporary = path.join(dir, "config.yaml");
     fs.writeFileSync(temporary, yaml.dump(config, { noRefs: true }), { mode: 0o600 });
+    // Tap the client->CLI stream (pure passthrough) to learn which JSON-RPC
+    // ids belong to session/new requests; the matching response then reveals
+    // this session's registry id for the post-create mirror.
+    const newRequestIds = new Set();
+    const inputTap = new Transform({
+      construct(done) {
+        this.decoder = new StringDecoder("utf8");
+        this.buffer = "";
+        done();
+      },
+      transform(chunk, _, done) {
+        this.buffer += this.decoder.write(chunk);
+        let index;
+        while ((index = this.buffer.indexOf("\n")) >= 0) {
+          const line = this.buffer.slice(0, index);
+          this.buffer = this.buffer.slice(index + 1);
+          try {
+            const request = JSON.parse(line);
+            if (request?.method === "session/new" && request.id != null)
+              newRequestIds.add(request.id);
+          } catch {
+            // Non-JSON noise is still forwarded untouched below.
+          }
+        }
+        done(null, chunk);
+      },
+    });
     child = spawn(opts["--cli"], ["acp", "--no-update", "--config", temporary], {
       windowsHide: true,
       stdio: ["pipe", "pipe", "pipe"],
+      env: fakeHome ? { ...process.env, HOME: fakeHome.userDir } : process.env,
     });
-    const output = new ProtocolOutput();
+    const output = new ProtocolOutput((message) => {
+      if (!fakeHome || !newRequestIds.has(message.id)) return;
+      newRequestIds.delete(message.id);
+      const sessionId = message.result?.sessionId;
+      if (typeof sessionId !== "string" || !sessionId) return;
+      trackedSessionId = sessionId;
+      // Fire-and-forget: never block the stdout stream on registry IO. This
+      // early mirror makes the entry survive force-kill/power loss (the exit
+      // merge below only runs on orderly shutdown).
+      mirrorSessionEntry(fakeHome.bgDir, sessionId, {
+        log: (msg) => process.stderr.write(`${msg}\n`),
+      }).then((mirror) => {
+        onEvent({
+          type: "registry-mirror",
+          stage: "created",
+          sessionId,
+          ok: mirror.ok,
+          error: mirror.error ?? null,
+        });
+      });
+    });
     output.on("error", () => child.kill());
     child.stdin.on("error", () => {});
-    process.stdin.pipe(child.stdin);
+    process.stdin.pipe(inputTap).pipe(child.stdin);
     child.stdout.pipe(output).pipe(process.stdout, { end: false });
     child.stderr.pipe(process.stderr, { end: false });
     const inputEnded = () => {

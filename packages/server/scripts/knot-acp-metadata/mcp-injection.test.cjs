@@ -34,7 +34,7 @@ const STUB_CLI = [
   "      files[name] = fs.statSync(p).isFile() ? fs.readFileSync(p, 'utf8') : '<dir>';",
   "    }",
   "  }",
-  "  fs.writeFileSync(process.env.STUB_SNAPSHOT_OUT, JSON.stringify({ script, argv, files }));",
+  "  fs.writeFileSync(process.env.STUB_SNAPSHOT_OUT, JSON.stringify({ script, argv, files, home: process.env.HOME || null }));",
   "} catch (error) {",
   "  process.stderr.write(String((error && error.stack) || error));",
   "}",
@@ -45,10 +45,11 @@ function makeDir(prefix) {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 }
 
-async function runLaunch(servers) {
+async function runLaunch(servers, extraEnv, realRegistryEntries) {
   const root = makeDir("mcp-inj-root-");
   const stubDir = makeDir("mcp-inj-stub-");
   const outDir = makeDir("mcp-inj-out-");
+  const realHome = makeDir("mcp-inj-realhome-");
   const prevEnv = { ...process.env };
   const prevCwd = process.cwd();
   try {
@@ -59,9 +60,24 @@ async function runLaunch(servers) {
       knot: { url: "https://knot.invalid/knot" },
     });
     fs.writeFileSync(fixture, sourceBody);
+    // Self-contained "real" home so home isolation never depends on (or
+    // writes to) the developer machine's actual ~/.bg-agent.
+    const realBg = path.join(realHome, ".bg-agent");
+    fs.mkdirSync(realBg, { recursive: true });
+    fs.writeFileSync(path.join(realBg, "auth.json"), '{"token":"stub"}');
+    fs.writeFileSync(path.join(realBg, "hooks.json"), "{}");
+    if (realRegistryEntries)
+      fs.writeFileSync(
+        path.join(realBg, ".knot_acp_sessions.json"),
+        JSON.stringify(realRegistryEntries),
+      );
     const snapshotPath = path.join(outDir, "snapshot.json");
     const auditPath = path.join(outDir, "audit.json");
     process.env.STUB_SNAPSHOT_OUT = snapshotPath;
+    process.env.KNOT_METADATA_REAL_HOME = realHome;
+    delete process.env.PASEO_RESUME_SESSION_ID;
+    delete process.env.KNOT_METADATA_HOME_ISOLATION;
+    if (extraEnv) for (const [key, value] of Object.entries(extraEnv)) process.env[key] = value;
     if (servers === undefined) delete process.env.PASEO_MCP_SERVERS_JSON;
     else process.env.PASEO_MCP_SERVERS_JSON = JSON.stringify(servers);
     process.chdir(stubDir);
@@ -81,6 +97,7 @@ async function runLaunch(servers) {
       audit,
       config,
       root,
+      realHome,
       sourceUnchanged: fs.readFileSync(fixture, "utf8") === sourceBody,
       runtimeSwept: !fs.readdirSync(root).some((name) => name.startsWith("knot-metadata-")),
     };
@@ -89,7 +106,8 @@ async function runLaunch(servers) {
     const keys = new Set(Object.keys(prevEnv));
     for (const key of Object.keys(process.env)) if (!keys.has(key)) delete process.env[key];
     for (const [key, value] of Object.entries(prevEnv)) process.env[key] = value;
-    for (const dir of [root, stubDir, outDir]) fs.rmSync(dir, { recursive: true, force: true });
+    for (const dir of [root, stubDir, outDir, realHome])
+      fs.rmSync(dir, { recursive: true, force: true });
   }
 }
 
@@ -123,11 +141,24 @@ test("launch converts and isolates injected MCP servers into the private runtime
       events: { type: "sse", transportType: "sse", url: "http://127.0.0.1:2/sse" },
     },
   });
-  assert.deepEqual(
-    Object.keys(r.snapshot.files).sort(),
-    ["config.yaml", "mcp-config.json", "owner.pid"],
-  );
+  assert.deepEqual(Object.keys(r.snapshot.files).sort(), [
+    "config.yaml",
+    "home",
+    "mcp-config.json",
+    "owner.pid",
+  ]);
   assert.match(r.snapshot.files["owner.pid"], /^\d+\s*$/);
+  // Home isolation: the child's HOME points at this launch's private fake
+  // user dir (so the CLI registry never touches the real ~/.bg-agent).
+  assert.ok(
+    r.snapshot.home && r.snapshot.home.startsWith(r.root),
+    `expected HOME inside runtime root, got ${r.snapshot.home}`,
+  );
+  const isolation = r.audit.events.find((e) => e.type === "home-isolation");
+  assert.ok(isolation, "home-isolation audit event expected");
+  assert.ok(isolation.userDir.startsWith(r.root));
+  assert.deepEqual(isolation.copied, ["auth.json", "hooks.json"]);
+  assert.equal(isolation.seededSessionId, null);
   const injection = r.audit.events.find((e) => e.type === "mcp-injection");
   assert.deepEqual(injection, {
     type: "mcp-injection",
@@ -142,8 +173,11 @@ test("launch without PASEO_MCP_SERVERS_JSON keeps the config free of MCP keys", 
   const r = await runLaunch(undefined);
   assert.equal(r.code, 0);
   assert.equal("mcp_config_path" in r.config, false);
-  assert.deepEqual(Object.keys(r.snapshot.files).sort(), ["config.yaml", "owner.pid"]);
-  assert.equal(r.audit.events.some((e) => e.type === "mcp-injection"), false);
+  assert.deepEqual(Object.keys(r.snapshot.files).sort(), ["config.yaml", "home", "owner.pid"]);
+  assert.equal(
+    r.audit.events.some((e) => e.type === "mcp-injection"),
+    false,
+  );
   assert.equal(r.runtimeSwept, true);
   assert.equal(r.sourceUnchanged, true);
 });
@@ -153,10 +187,54 @@ test("launch with an empty, unconvertible or non-object server map skips injecti
     const r = await runLaunch(servers);
     assert.equal(r.code, 0);
     assert.equal("mcp_config_path" in r.config, false);
-    assert.deepEqual(Object.keys(r.snapshot.files).sort(), ["config.yaml", "owner.pid"]);
-    assert.equal(r.audit.events.some((e) => e.type === "mcp-injection"), false);
+    assert.deepEqual(Object.keys(r.snapshot.files).sort(), ["config.yaml", "home", "owner.pid"]);
+    assert.equal(
+      r.audit.events.some((e) => e.type === "mcp-injection"),
+      false,
+    );
     assert.equal(r.sourceUnchanged, true);
   }
+});
+
+test("KNOT_METADATA_HOME_ISOLATION=0 restores the legacy shared-home behavior", async () => {
+  const r = await runLaunch(undefined, { KNOT_METADATA_HOME_ISOLATION: "0" });
+  assert.equal(r.code, 0);
+  assert.deepEqual(Object.keys(r.snapshot.files).sort(), ["config.yaml", "owner.pid"]);
+  assert.equal(
+    r.audit.events.some((e) => e.type === "home-isolation"),
+    false,
+  );
+  assert.ok(
+    !r.snapshot.home || !r.snapshot.home.startsWith(r.root),
+    "HOME must not be redirected when isolation is disabled",
+  );
+  assert.equal(r.runtimeSwept, true);
+  assert.equal(r.sourceUnchanged, true);
+});
+
+test("PASEO_RESUME_SESSION_ID seeds the resume entry into the fake home registry", async () => {
+  const resumeId = "acp-sess-resume-1";
+  const r = await runLaunch(undefined, { PASEO_RESUME_SESSION_ID: resumeId }, [
+    { session_id: resumeId, cwd: "C:/w" },
+    { session_id: "other" },
+  ]);
+  assert.equal(r.code, 0);
+  const isolation = r.audit.events.find((e) => e.type === "home-isolation");
+  assert.ok(isolation, "home-isolation audit event expected");
+  assert.equal(isolation.seededSessionId, resumeId);
+  assert.ok(r.snapshot.home && r.snapshot.home.startsWith(r.root));
+  assert.equal(r.runtimeSwept, true);
+});
+
+test("PASEO_RESUME_SESSION_ID with a missing entry records a failed seed without blocking", async () => {
+  const r = await runLaunch(undefined, { PASEO_RESUME_SESSION_ID: "acp-sess-not-in-registry" }, [
+    { session_id: "other" },
+  ]);
+  assert.equal(r.code, 0);
+  const isolation = r.audit.events.find((e) => e.type === "home-isolation");
+  assert.ok(isolation, "home-isolation audit event expected");
+  assert.equal(isolation.seededSessionId, null);
+  assert.equal(r.runtimeSwept, true);
 });
 
 test("sequential launches never share an MCP config path", async () => {

@@ -79,6 +79,10 @@ export class WithACPAgentClient extends GenericACPAgentClient {
       catalogModelResolver: resolveWithCatalogModels,
       // Knot CLI keeps loaded sessions closed until an explicit session/resume.
       resumeAfterLoad: true,
+      // The Knot CLI global ACP session registry can lose entries to
+      // concurrent-process write races; a lost session must not brick the
+      // agent, so recreate it (Paseo keeps the visible timeline).
+      recreateOnSessionLost: true,
       // Only the desktop bridge forwards permission requests. The official CLI
       // executes tools without ACP approval, so an Auto Accept toggle is misleading.
       supportsAutoAccept: options.providerId === "with-desktop",

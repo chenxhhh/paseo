@@ -198,6 +198,27 @@ function toACPRequestError(error: unknown): Error {
   return next;
 }
 
+/**
+ * Environment marker telling state-isolating adapters (knot-acp-metadata HOME
+ * redirection) which persisted session a resume is about to load, before any
+ * ACP traffic reveals it. Exported for unit tests.
+ */
+export function buildResumeSessionEnv(
+  sessionId: string | null | undefined,
+): Record<string, string> {
+  return sessionId ? { PASEO_RESUME_SESSION_ID: sessionId } : {};
+}
+
+/**
+ * The Knot CLI reports a registry miss on session/load or session/resume as
+ * "session not found: <id>". Only this provider wording may trigger the
+ * recreate-on-lost fallback; every other failure must keep failing the resume
+ * so real breakage is not masked by a fresh session.
+ */
+function isSessionLostError(error: unknown): boolean {
+  return error instanceof Error && /session not found/i.test(error.message);
+}
+
 function resolveTerminalCommand(
   command: string,
   args?: string[],
@@ -459,6 +480,13 @@ interface ACPAgentClientOptions {
    * the next turn. Only opt in providers verified to need it.
    */
   resumeAfterLoad?: boolean;
+  /**
+   * Recreate a fresh session instead of failing a resume whose error is a
+   * provider-side "session not found". Opt in only for providers whose local
+   * session records can be lost independently of Paseo's persisted timeline
+   * (e.g. the Knot CLI global registry).
+   */
+  recreateOnSessionLost?: boolean;
 }
 
 interface ACPAgentSessionOptions {
@@ -493,6 +521,15 @@ interface ACPAgentSessionOptions {
   initialCommandsWaitTimeoutMs?: number;
   terminateProcess?: ProcessTerminator;
   resumeAfterLoad?: boolean;
+  /**
+   * When a resume fails because the provider no longer knows the persisted
+   * session (e.g. the Knot CLI registry lost the entry), recreate a fresh
+   * session instead of failing the resume. Paseo keeps its own timeline, so
+   * the conversation history survives; only provider-side context is lost.
+   * describePersistence() reports the new session id, so the next persist
+   * re-anchors the handle. Only "session not found" style errors trigger it.
+   */
+  recreateOnSessionLost?: boolean;
 }
 
 export interface SpawnedACPProcess {
@@ -935,6 +972,7 @@ export class ACPAgentClient implements AgentClient {
   private readonly now: () => number;
   protected readonly terminateProcess: ProcessTerminator;
   private readonly resumeAfterLoad: boolean;
+  private readonly recreateOnSessionLost: boolean;
 
   constructor(options: ACPAgentClientOptions) {
     this.provider = options.provider;
@@ -964,6 +1002,7 @@ export class ACPAgentClient implements AgentClient {
     this.extensionCommandsParser = options.extensionCommandsParser;
     this.now = options.now ?? Date.now;
     this.resumeAfterLoad = options.resumeAfterLoad ?? false;
+    this.recreateOnSessionLost = options.recreateOnSessionLost ?? false;
   }
 
   async createSession(
@@ -1048,6 +1087,7 @@ export class ACPAgentClient implements AgentClient {
       waitForInitialCommands: this.waitForInitialCommands,
       initialCommandsWaitTimeoutMs: this.initialCommandsWaitTimeoutMs,
       resumeAfterLoad: this.resumeAfterLoad,
+      recreateOnSessionLost: this.recreateOnSessionLost,
     });
     await session.initializeResumedSession();
     return session;
@@ -1734,6 +1774,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   private initialCommandsWaitTimeoutMs: number;
   private readonly extensionCommandsParser?: ACPExtensionCommandsParser;
   private readonly resumeAfterLoad: boolean;
+  private readonly recreateOnSessionLost: boolean;
   private currentTurnUsage: AgentUsage | undefined;
   private activeForegroundTurnId: string | null = null;
   private lastTimelineItem: AgentTimelineItem | null = null;
@@ -1777,6 +1818,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     this.initialCommandsWaitTimeoutMs = options.initialCommandsWaitTimeoutMs ?? 1500;
     this.extensionCommandsParser = options.extensionCommandsParser;
     this.resumeAfterLoad = options.resumeAfterLoad ?? false;
+    this.recreateOnSessionLost = options.recreateOnSessionLost ?? false;
   }
 
   get id(): string | null {
@@ -1865,6 +1907,43 @@ export class ACPAgentSession implements AgentSession, ACPClient {
 
       await this.applyConfiguredOverrides();
     } catch (error) {
+      if (this.recreateOnSessionLost && isSessionLostError(error)) {
+        // The provider lost this session (e.g. the Knot CLI global registry
+        // dropped the entry). Paseo's persisted timeline keeps the visible
+        // history, so recreate a fresh session and keep the agent usable
+        // instead of failing every resume attempt forever. Provider-side
+        // context is lost; describePersistence() reports the new session id
+        // so the next persist re-anchors the handle.
+        const lostSessionId = this.initialHandle?.sessionId ?? null;
+        this.logger.warn(
+          { err: error, lostSessionId },
+          `${this.provider} no longer knows the persisted session; recreating a fresh session`,
+        );
+        // Tear down only the failed process and connection. close() would flip
+        // `closed` to true and drop every subscriber, leaving the recreated
+        // session unable to start turns or emit events.
+        try {
+          if (this.child) {
+            await this.terminateProcess(this.child, {
+              gracefulTimeoutMs: 2_000,
+              forceTimeoutMs: 2_000,
+            });
+          }
+        } catch (closeError) {
+          this.logger.warn(
+            { err: closeError, initializationError: error },
+            "Failed to close ACP process before session recreation",
+          );
+        }
+        this.connection = null;
+        this.child = null;
+        this.activeForegroundTurnId = null;
+        this.sessionId = null;
+        this.replayingHistory = false;
+        this.historyPending = false;
+        await this.initializeNewSession();
+        return;
+      }
       await this.closeAfterInitializationFailure(error);
     }
   }
@@ -2882,6 +2961,17 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     return { PASEO_MCP_SERVERS_JSON: JSON.stringify(servers) };
   }
 
+  /**
+   * Adapters that isolate provider state per session (e.g. the knot-acp-metadata
+   * HOME redirection) must learn which persisted session this process is about
+   * to load before any ACP traffic reveals it, so they can pre-seed the
+   * session's registry entry. Only resume sessions carry the handle; new
+   * sessions and catalog probes spawn without it.
+   */
+  private resumeSessionEnv(): Record<string, string> {
+    return buildResumeSessionEnv(this.initialHandle?.sessionId);
+  }
+
   private async spawnProcess(): Promise<SpawnedACPProcess> {
     const prefix = await resolveProviderLaunch({
       commandConfig: this.runtimeSettings?.command,
@@ -2898,7 +2988,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       cwd: this.config.cwd,
       ...createProviderEnvSpec({
         runtimeSettings: this.runtimeSettings,
-        overlays: [this.launchEnv, this.mcpServersEnv()],
+        overlays: [this.launchEnv, this.mcpServersEnv(), this.resumeSessionEnv()],
       }),
       stdio: ["pipe", "pipe", "pipe"],
     });
