@@ -1092,6 +1092,16 @@ export const fr: TranslationResources = {
       empty:
         "Aucun espace de travail pour l’instant. Créez-en un, puis glissez-le dans une colonne.",
       emptyLane: "Rien pour l’instant",
+      viewStatus: "Par statut",
+      viewProject: "Par projet",
+      searchPlaceholder: "Rechercher des espaces de travail",
+      clearSearch: "Effacer la recherche",
+      columns: "Colonnes",
+      collapseHint: "Afficher en colonne complète",
+      collapseColumn: "Réduire {{name}}",
+      expandColumn: "Développer {{name}}",
+      expandAll: "Tout développer",
+      collapsedRail: "{{count}} pliés",
     },
     manage: {
       title: "Gérer les colonnes",
