@@ -1904,14 +1904,28 @@ export class ACPAgentSession implements AgentSession, ACPClient {
           { err: error, lostSessionId },
           `${this.provider} no longer knows the persisted session; recreating a fresh session`,
         );
+        // Tear down only the failed process and connection. close() would flip
+        // `closed` to true and drop every subscriber, leaving the recreated
+        // session unable to start turns or emit events.
         try {
-          await this.close();
+          if (this.child) {
+            await this.terminateProcess(this.child, {
+              gracefulTimeoutMs: 2_000,
+              forceTimeoutMs: 2_000,
+            });
+          }
         } catch (closeError) {
           this.logger.warn(
             { err: closeError, initializationError: error },
             "Failed to close ACP process before session recreation",
           );
         }
+        this.connection = null;
+        this.child = null;
+        this.activeForegroundTurnId = null;
+        this.sessionId = null;
+        this.replayingHistory = false;
+        this.historyPending = false;
         await this.initializeNewSession();
         return;
       }

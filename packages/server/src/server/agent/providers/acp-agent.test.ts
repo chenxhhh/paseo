@@ -3864,7 +3864,7 @@ describe("ACP session/load invariant — cwd and mcpServers always passed", () =
         return {
           child: createProbeChildStub(),
           connection: {
-            prompt: vi.fn(),
+            prompt: vi.fn().mockResolvedValue({ stopReason: "end_turn" }),
             newSession,
             loadSession,
             unstable_resumeSession: unstableResumeSession,
@@ -4166,6 +4166,26 @@ describe("ACP session/load invariant — cwd and mcpServers always passed", () =
     });
     expect(session.id).toBe("session-recreated");
     expect(session.describePersistence()?.nativeHandle).toBe("session-recreated");
+  });
+
+  test("recreated session stays usable: turns start and pre-existing subscribers keep receiving events", async () => {
+    const { session } = makeTestSession({
+      capabilities: { loadSession: true },
+      handle: { sessionId: "session-lost", provider: "claude-acp" },
+      recreateOnSessionLost: true,
+      loadSession: vi.fn().mockRejectedValue(new Error("session not found: acp-sess-gone")),
+    });
+
+    // Regression: tearing the failed process down with close() flipped the
+    // session to closed and dropped every subscriber, so the fresh session
+    // could neither start turns nor emit events.
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    await session.initializeResumedSession();
+
+    await expect(session.startTurn("hello")).resolves.toEqual({ turnId: expect.any(String) });
+    expect(events.some((event) => event.type === "turn_started")).toBe(true);
   });
 
   test("session not found without the opt-in still fails the resume", async () => {
