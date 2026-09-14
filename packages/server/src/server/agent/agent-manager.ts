@@ -1179,6 +1179,16 @@ export class AgentManager {
     return this.timelineStore.getItems(id);
   }
 
+  async getPersistedTimeline(id: string): Promise<AgentTimelineItem[] | null> {
+    if (!(await this.registry?.get(id))) {
+      throw new Error(`Agent not found: ${id}`);
+    }
+    if (!this.durableTimelineStore) return null;
+    const rows = await this.durableTimelineStore.getCommittedRows(id);
+    // Legacy agents without local rows still need provider history hydration.
+    return rows.length > 0 ? rows.map((row) => row.item) : null;
+  }
+
   async getTimelineRows(id: string): Promise<AgentTimelineRow[]> {
     this.requireAgent(id);
     if (this.durableTimelineStore) {

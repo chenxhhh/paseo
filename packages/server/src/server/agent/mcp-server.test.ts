@@ -214,6 +214,7 @@ function buildAgentManagerSpies() {
     getAgent: vi.fn(),
     listAgents: vi.fn().mockReturnValue([]),
     getTimeline: vi.fn().mockReturnValue([]),
+    getPersistedTimeline: vi.fn().mockResolvedValue(null),
     resumeAgentFromPersistence: vi.fn(),
     hydrateTimelineFromProvider: vi.fn().mockResolvedValue(undefined),
     appendTimelineItem: vi.fn().mockResolvedValue(undefined),
@@ -6021,6 +6022,32 @@ describe("agent snapshot MCP serialization", () => {
     ]);
   });
 
+  it("reads persisted activity without resuming a missing native session", async () => {
+    const { agentManager, agentStorage, spies } = createTestDeps();
+    spies.agentManager.getAgent.mockReturnValue(null);
+    spies.agentStorage.get.mockResolvedValue(createStoredRecord({ id: "closed-activity-agent" }));
+    spies.agentManager.getPersistedTimeline.mockResolvedValue([
+      { type: "assistant_message", text: "Saved implementation result" },
+    ]);
+    spies.agentManager.resumeAgentFromPersistence.mockRejectedValue(
+      new Error("session not found: acp-sess-old"),
+    );
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      logger,
+      providerSnapshotManager: createClaudeOnlyManager(),
+    });
+    const response = await registeredTool(server, "get_agent_activity").handler({
+      agentId: "closed-activity-agent",
+    });
+    expect(response.structuredContent.updateCount).toBe(1);
+    expect(response.structuredContent.content).toContain("Saved implementation result");
+    expect(response.structuredContent.content).toContain("Provider runtime was not resumed");
+    expect(spies.agentManager.resumeAgentFromPersistence).not.toHaveBeenCalled();
+    expect(spies.agentManager.createAgent).not.toHaveBeenCalled();
+  });
+
   it("loads archived agents before reading get_agent_activity", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
     const record = createStoredRecord({ id: "archived-activity-agent" });
@@ -6030,7 +6057,7 @@ describe("agent snapshot MCP serialization", () => {
     } as ManagedAgent;
     spies.agentManager.getAgent
       .mockReturnValueOnce(null)
-      .mockReturnValue(snapshot)
+      .mockReturnValueOnce(null)
       .mockReturnValue(snapshot);
     spies.agentStorage.get.mockResolvedValue(record);
     spies.agentManager.resumeAgentFromPersistence.mockResolvedValue(snapshot);

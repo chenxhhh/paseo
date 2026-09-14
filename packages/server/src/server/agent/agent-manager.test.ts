@@ -663,6 +663,47 @@ async function startAndSteerThroughManager(
   return { manager, agentId: agent.id, workdir };
 }
 
+test("reads durable history after restart without opening a provider session", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-offline-history-"));
+  const registry = new AgentStorage(join(workdir, "agents"), logger);
+  const store = new RecordingTimelineStore();
+  const client = new TestAgentClient();
+  const manager = new AgentManager({
+    clients: { codex: client },
+    registry,
+    durableTimelineStore: store,
+    logger,
+  });
+  try {
+    const agent = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+      workspaceId: undefined,
+    });
+    await manager.appendTimelineItem(agent.id, { type: "assistant_message", text: "Saved result" });
+    await manager.flush();
+    await manager.closeAgent(agent.id);
+    await registry.flush();
+    const restarted = new AgentManager({
+      clients: {},
+      registry,
+      durableTimelineStore: store,
+      logger,
+    });
+    const history = await restarted.getPersistedTimeline(agent.id);
+    expect(history).toContainEqual({ type: "assistant_message", text: "Saved result" });
+    expect(restarted.getAgent(agent.id)).toBeNull();
+    await expect(restarted.getPersistedTimeline("unknown-agent")).rejects.toThrow(
+      "Agent not found",
+    );
+    const withoutStore = new AgentManager({ clients: {}, registry, logger });
+    await expect(withoutStore.getPersistedTimeline(agent.id)).resolves.toBeNull();
+  } finally {
+    for (const agent of manager.listAgents()) await manager.closeAgent(agent.id);
+    await manager.flush();
+    await registry.flush();
+    rmSync(workdir, { recursive: true, force: true });
+  }
+});
+
 test("uses an injected timeline store without making it a production requirement", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-timeline-store-"));
   const store = new RecordingTimelineStore();

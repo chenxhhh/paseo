@@ -3329,12 +3329,17 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
       },
     },
     async ({ agentId, limit }) => {
-      await ensureAgentLoaded(agentId, {
-        agentManager,
-        agentStorage,
-        logger: childLogger,
-      });
-      const timeline = agentManager.getTimeline(agentId);
+      const persistedTimeline = agentManager.getAgent(agentId)
+        ? null
+        : await agentManager.getPersistedTimeline(agentId);
+      if (persistedTimeline === null) {
+        await ensureAgentLoaded(agentId, {
+          agentManager,
+          agentStorage,
+          logger: childLogger,
+        });
+      }
+      const timeline = persistedTimeline ?? agentManager.getTimeline(agentId);
       const snapshot = agentManager.getAgent(agentId);
 
       const selection = selectItemsByProjectedLimit({
@@ -3351,7 +3356,10 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
           ? `Showing ${shownProjected} of ${totalProjected} ${noun} (limited to ${limit})`
           : `Showing all ${totalProjected} ${noun}`;
 
-      const contentWithCount = `${countHeader}\n\n${curatedContent}`;
+      const runtimeNotice = persistedTimeline
+        ? "\n\nSaved history only. Provider runtime was not resumed; this does not verify whether the native session can resume."
+        : "";
+      const contentWithCount = `${countHeader}${runtimeNotice}\n\n${curatedContent}`;
 
       return {
         content: [],
