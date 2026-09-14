@@ -21,6 +21,7 @@ import {
   type SpawnedACPProcess,
   type SessionStateResponse,
   buildACPClientCapabilities,
+  buildResumeSessionEnv,
   createLoggedNdJsonStream,
   deriveModelDefinitionsFromACP,
   deriveModesFromACP,
@@ -4133,5 +4134,19 @@ describe("ACP session/load invariant — cwd and mcpServers always passed", () =
 
     expect(loadSession).toHaveBeenCalledTimes(1);
     expect(unstableResumeSession).not.toHaveBeenCalled();
+  });
+});
+
+describe("buildResumeSessionEnv", () => {
+  test("marks resume sessions with the persisted session id", () => {
+    expect(buildResumeSessionEnv("acp-sess-1")).toEqual({
+      PASEO_RESUME_SESSION_ID: "acp-sess-1",
+    });
+  });
+
+  test("returns an empty env for new sessions and catalog probes", () => {
+    expect(buildResumeSessionEnv(null)).toEqual({});
+    expect(buildResumeSessionEnv(undefined)).toEqual({});
+    expect(buildResumeSessionEnv("")).toEqual({});
   });
 });

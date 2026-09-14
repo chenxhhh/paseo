@@ -47,6 +47,20 @@ On another machine, merge ONLY this entry into `agents.providers` using Node JSO
 
 Rolling back means removing only `agents.providers["with-metadata"]` and restarting the daemon.
 
+## Home isolation (2026-09-14)
+
+The CLI stores its ACP session registry at `<HOME>/.bg-agent/.knot_acp_sessions.json` with a read-all/modify/write-all strategy and no cross-process locking beyond tmp+rename. Concurrent CLI processes (Paseo agent sessions, catalog probes, the With desktop) overwrite each other's entries — the 2026-09-14 incident (`session not found: acp-sess-f716a0ee...` after a daemon restart) was exactly this lost-update race: a session written at 10:22 was silently dropped from the registry by a competing process holding an older snapshot.
+
+Each adapter launch now redirects the CLI's `HOME` to a private fake user directory inside the session's runtime dir (`<runtime dir>/home`). Verified against CLI v0.29 with live probes: the CLI bootstraps its own `node/`, `browser/`, `log/`, `.bg-client/` and `.gitconfig` there (the global `git config --global` the CLI runs no longer touches the real user config), keeps working with only `auth.json` + `hooks.json` copied in, and never reads or writes the real `~/.bg-agent` registry. `commands: []` and the empty initial model choices are native Knot ACP behavior (confirmed by a control probe against the real home), not a fake-home regression.
+
+Daemon-restart resume keeps working through a three-part mirror protocol:
+
+1. Paseo marks resume spawns with `PASEO_RESUME_SESSION_ID` (`buildResumeSessionEnv` in `acp-agent.ts`); the adapter pre-seeds that entry (read-only from the real registry) into the fake home registry so the fresh CLI can `session/load` it. Live-probe verified: a second fake home seeded with the entry restores via `session/load` + `session/resume` without touching the real registry.
+2. Right after `session/new`, the adapter upserts the CLI-written entry into the real registry (narrow retry window), so the session survives force-kill/power loss, which never reach the exit hooks.
+3. On orderly shutdown it merges the entry's final state once more. The mirror never replaces the real registry wholesale: an unreadable/corrupt real registry aborts the mirror, and entries owned by other sessions are preserved.
+
+Rollback: set `KNOT_METADATA_HOME_ISOLATION=0` in the daemon environment to restore the legacy shared-home behavior (no fake home, no registry mirroring). `KNOT_METADATA_REAL_HOME` is a test-only override for the real home location.
+
 ## Scope and safety
 
 - Supplements only same-name, official-catalog `ext-glm-5.3` and `gpt-6-astra`, with desktop `is_support_thinking=false`.
@@ -90,6 +104,16 @@ Rolling back means removing only `agents.providers["with-metadata"]` and restart
 | Remote MCP transports (live)                            | `verify-sse-mcp.cjs` PASSED: injected `paseo-sse` (legacy SSE), `paseo-http` (streamable HTTP) and a `route-a-stdio` control via `PASEO_MCP_SERVERS_JSON`; each server observed `initialize` -> `tools/list` -> `tools/call`, and one real turn returned all three markers in order. Report: `D:/UGit/Paseo/.with-connect/route-a-sse-result.json`                                           |
 | History replay (live)                                   | `verify-history-replay.cjs` PASSED: after `session/close`, a fresh adapter+CLI process saw `session/load` emit 0 replay updates (no duplicate timeline items for Paseo) while settings persisted; `session/resume` plus one prompt returned the exact token pinned in the first turn, proving context is preserved. Report: `D:/UGit/Paseo/.with-connect/route-a-history-result.json`        |
 | Images (live)                                           | `verify-image.cjs` PASSED: an ACP `image` content block (generated 1x1 solid red PNG, base64) was accepted at the protocol level by both models; `ext-glm-5.3` answered "Red"; `gpt-6-astra` accepted the block but answered "White" (per-model image perception varies on a 1x1 image). Report: `D:/UGit/Paseo/.with-connect/route-a-image-result.json`                                     |
+
+## Tests and results (2026-09-14)
+
+| Check                                                 | Result                                                                                                                                                                                                                         |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Home isolation unit tests                             | `home-isolation.test.cjs` 12/12 passed (node --test): opt-out switch, minimal file set copy, registry read safety (corrupt → abort, missing entry → untouched, lock retry, other entries preserved), seed and mirror semantics |
+| MCP injection regression with home isolation          | `mcp-injection.test.cjs` 8/8 passed (was 5): fake-home dir present, `HOME` redirected into the runtime root, `KNOT_METADATA_HOME_ISOLATION=0` legacy behavior, resume seed success and failure paths                           |
+| Provider + ACP session unit tests                     | acp-agent.test.ts 108/108 passed (vitest 4.1.7) incl. new `buildResumeSessionEnv` cases                                                                                                                                        |
+| Fake-home live probe (real CLI v0.29, no model quota) | `session/new` under a fake home works with auth.json+hooks.json only; registry written into the fake home; a second fake home pre-seeded with the entry restores via `session/load` + `session/resume`                         |
+| Real-home control probe                               | `commands: []`, empty initial model choices and full configOptions identical under the real home — no fake-home regression; probe adds exactly one registry entry                                                              |
 
 Metadata whitelist remains `ext-glm-5.3` + `gpt-6-astra` only. Coverage is deliberately limited to models whose merged reasoning/context options have been verified against real sessions; it is NOT a full-model capability backfill. To extend: add the model to `allowedModels` in `proxy.cjs`, probe its advertised options with `scripts/verify-with-options.mts`, confirm the gateway honors each value in a disposable session, then update this README.
 

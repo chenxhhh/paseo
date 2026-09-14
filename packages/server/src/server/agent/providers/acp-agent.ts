@@ -196,6 +196,17 @@ function toACPRequestError(error: unknown): Error {
   return next;
 }
 
+/**
+ * Environment marker telling state-isolating adapters (knot-acp-metadata HOME
+ * redirection) which persisted session a resume is about to load, before any
+ * ACP traffic reveals it. Exported for unit tests.
+ */
+export function buildResumeSessionEnv(
+  sessionId: string | null | undefined,
+): Record<string, string> {
+  return sessionId ? { PASEO_RESUME_SESSION_ID: sessionId } : {};
+}
+
 function resolveTerminalCommand(
   command: string,
   args?: string[],
@@ -2753,6 +2764,17 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     return { PASEO_MCP_SERVERS_JSON: JSON.stringify(servers) };
   }
 
+  /**
+   * Adapters that isolate provider state per session (e.g. the knot-acp-metadata
+   * HOME redirection) must learn which persisted session this process is about
+   * to load before any ACP traffic reveals it, so they can pre-seed the
+   * session's registry entry. Only resume sessions carry the handle; new
+   * sessions and catalog probes spawn without it.
+   */
+  private resumeSessionEnv(): Record<string, string> {
+    return buildResumeSessionEnv(this.initialHandle?.sessionId);
+  }
+
   private async spawnProcess(): Promise<SpawnedACPProcess> {
     const prefix = await resolveProviderLaunch({
       commandConfig: this.runtimeSettings?.command,
@@ -2769,7 +2791,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       cwd: this.config.cwd,
       ...createProviderEnvSpec({
         runtimeSettings: this.runtimeSettings,
-        overlays: [this.launchEnv, this.mcpServersEnv()],
+        overlays: [this.launchEnv, this.mcpServersEnv(), this.resumeSessionEnv()],
       }),
       stdio: ["pipe", "pipe", "pipe"],
     });
