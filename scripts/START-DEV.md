@@ -40,3 +40,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-paseo-dev.ps
 
 - 仅适用于 Windows 桌面调试；macOS/Linux 请使用仓库内对应脚本。
 - 若 6767 端口被其他程序占用且脚本提示确认，请先关闭对应进程再重跑。
+
+## 仓库外快捷入口（符号链接，勿放副本）
+
+如需在仓库外保留快捷入口（例如仓库的父目录），请放**符号链接**而非文件副本，避免出现两份漂移：
+
+```powershell
+New-Item -ItemType SymbolicLink -Path <外部目录>\start-paseo-dev.ps1 -Target <仓库根>\scripts\start-paseo-dev.ps1
+New-Item -ItemType SymbolicLink -Path <外部目录>\start-paseo-dev.bat -Target <仓库根>\scripts\start-paseo-dev.bat
+```
+
+注意：通过符号链接运行时，脚本以**链接所在目录**为 `$PSScriptRoot`（`MyInvocation.MyCommand.Path` 也解析为链接路径而非目标路径），因此定位走「兄弟目录 `<链接目录>\Paseo\paseo`」分支；若布局不满足，设置 `PASEO_ROOT` 环境变量即可。

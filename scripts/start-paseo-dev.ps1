@@ -53,7 +53,7 @@ if (-not $PaseoRoot) {
     Write-Host "This copy is run outside the repo and no sibling Paseo\paseo exists here." -ForegroundColor Yellow
     Write-Host ""
     Write-Host "Run the copy that ships inside the repo instead:" -ForegroundColor Yellow
-    Write-Host "    powershell -NoProfile -ExecutionPolicy Bypass -File D:\UGit\Paseo\paseo\scripts\start-paseo-dev.bat" -ForegroundColor Cyan
+    Write-Host "    powershell -NoProfile -ExecutionPolicy Bypass -File <Paseo repo root>\scripts\start-paseo-dev.bat" -ForegroundColor Cyan
     Write-Host "or set the PASEO_ROOT environment variable to the repo root and re-run this script." -ForegroundColor Yellow
     exit 1
 }
