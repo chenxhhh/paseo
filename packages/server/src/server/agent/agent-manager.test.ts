@@ -14,6 +14,7 @@ import {
   type ManagedAgent,
 } from "./agent-manager.js";
 import { AgentStorage } from "./agent-storage.js";
+import { FileAgentTimelineStore } from "./file-agent-timeline-store.js";
 import { InMemoryAgentTimelineStore } from "./agent-timeline-store.js";
 import { toAgentPayload } from "./agent-projections.js";
 import { projectTimelineRows } from "./timeline-projection.js";
@@ -568,6 +569,24 @@ class CloseRecordingTestAgentSession extends TestAgentSession {
   }
 }
 
+/**
+ * Mimics a server-side-history provider such as the Knot ACP shim: resuming
+ * replays nothing from streamHistory, so the daemon must persist and reseed
+ * its own timeline rows.
+ */
+class DurableTimelineTestSession extends TestAgentSession {
+  override readonly capabilities = {
+    ...TEST_CAPABILITIES,
+    requiresDurableTimeline: true,
+  };
+  streamHistoryCalls = 0;
+
+  override async *streamHistory(): AsyncGenerator<AgentStreamEvent> {
+    this.streamHistoryCalls += 1;
+    yield* [];
+  }
+}
+
 class SteeringTestSession extends TestAgentSession {
   interruptCount = 0;
   startCount = 0;
@@ -667,7 +686,14 @@ test("uses an injected timeline store without making it a production requirement
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-timeline-store-"));
   const store = new RecordingTimelineStore();
   const manager = new AgentManager({
-    clients: { codex: new TestAgentClient() },
+    clients: {
+      codex: new (class extends TestAgentClient {
+        override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+          this.createdConfigs.push(config);
+          return new DurableTimelineTestSession(config);
+        }
+      })(),
+    },
     durableTimelineStore: store,
     logger,
   });
@@ -688,6 +714,125 @@ test("uses an injected timeline store without making it a production requirement
     );
   } finally {
     if (agentId) await manager.closeAgent(agentId).catch(() => undefined);
+    rmSync(workdir, { recursive: true, force: true });
+  }
+});
+
+test("reseeds durable timeline rows when a server-side-history session resumes", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-durable-resume-"));
+  const resumedSessions: DurableTimelineTestSession[] = [];
+  const store = new FileAgentTimelineStore(join(workdir, "timeline-rows"));
+  const makeClient = () =>
+    new (class extends TestAgentClient {
+      override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+        this.createdConfigs.push(config);
+        return new DurableTimelineTestSession(config);
+      }
+
+      override async resumeSession(
+        _handle: AgentPersistenceHandle,
+        config?: Partial<AgentSessionConfig>,
+        _launchContext?: AgentLaunchContext,
+      ): Promise<AgentSession> {
+        this.resumeOverrides.push(config);
+        const session = new DurableTimelineTestSession({
+          provider: this.provider,
+          cwd: config?.cwd ?? workdir,
+          daemonAppendSystemPrompt: config?.daemonAppendSystemPrompt,
+        });
+        resumedSessions.push(session);
+        return session;
+      }
+    })();
+
+  const agentId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+  const firstManager = new AgentManager({
+    clients: { codex: makeClient() },
+    durableTimelineStore: store,
+    logger,
+  });
+  try {
+    await firstManager.createAgent({ provider: "codex", cwd: workdir }, agentId, {});
+    await firstManager.appendTimelineItem(agentId, {
+      type: "user_message",
+      text: "hello",
+      messageId: "m-1",
+    });
+    await firstManager.appendTimelineItem(agentId, {
+      type: "assistant_message",
+      text: "stored reply",
+      messageId: "m-2",
+    });
+    await firstManager.flush();
+  } finally {
+    await firstManager.closeAgent(agentId).catch(() => undefined);
+  }
+
+  // A fresh manager over the same store models a daemon restart: the in-memory
+  // timeline is gone and only durable rows can restore the transcript.
+  const secondManager = new AgentManager({
+    clients: { codex: makeClient() },
+    durableTimelineStore: store,
+    logger,
+  });
+  try {
+    await secondManager.resumeAgentFromPersistence(
+      { provider: "codex", sessionId: "native-1", nativeHandle: "native-1" },
+      { cwd: workdir },
+      agentId,
+    );
+    const rows = await secondManager.getTimelineRows(agentId);
+    expect(rows.map((row) => row.item)).toContainEqual(
+      expect.objectContaining({ type: "assistant_message", text: "stored reply" }),
+    );
+    expect(rows).toHaveLength(2);
+
+    // The seeded in-memory timeline serves live fetches without a provider round trip.
+    const live = secondManager.fetchTimeline(agentId);
+    expect(live.rows.map((row) => row.item)).toContainEqual(
+      expect.objectContaining({ type: "user_message", text: "hello" }),
+    );
+
+    // Durable rows mark history primed, so hydration must not call the provider.
+    await secondManager.hydrateTimelineFromProvider(agentId);
+    expect(resumedSessions[0]?.streamHistoryCalls).toBe(0);
+
+    // New rows continue the durable sequence without duplicating seeded rows.
+    await secondManager.appendTimelineItem(agentId, {
+      type: "assistant_message",
+      text: "after restart",
+      messageId: "m-3",
+    });
+    await secondManager.flush();
+    await expect(store.getCommittedRows(agentId)).resolves.toHaveLength(3);
+  } finally {
+    await secondManager.closeAgent(agentId).catch(() => undefined);
+    rmSync(workdir, { recursive: true, force: true });
+  }
+});
+
+test("keeps replay-capable providers off the durable timeline", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-durable-replay-"));
+  const store = new FileAgentTimelineStore(join(workdir, "timeline-rows"));
+  const manager = new AgentManager({
+    clients: { codex: new TestAgentClient() },
+    durableTimelineStore: store,
+    logger,
+  });
+  const agentId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+  try {
+    await manager.createAgent({ provider: "codex", cwd: workdir }, agentId, {});
+    await manager.appendTimelineItem(agentId, {
+      type: "assistant_message",
+      text: "memory only",
+      messageId: "m-1",
+    });
+    await manager.flush();
+
+    await expect(store.getCommittedRows(agentId)).resolves.toEqual([]);
+    await expect(manager.getTimelineRows(agentId)).resolves.toHaveLength(1);
+  } finally {
+    await manager.closeAgent(agentId).catch(() => undefined);
     rmSync(workdir, { recursive: true, force: true });
   }
 });

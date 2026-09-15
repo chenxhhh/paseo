@@ -21,6 +21,7 @@ import {
 export const GenericACPProviderParamsSchema = z
   .object({
     supportsMcpServers: z.boolean().optional(),
+    requiresDurableTimeline: z.boolean().optional(),
     clientCapabilities: z
       .object({
         fs: z
@@ -167,6 +168,7 @@ function buildGenericACPCapabilities(params: GenericACPProviderParams): AgentCap
   return {
     ...DEFAULT_ACP_CAPABILITIES,
     supportsMcpServers: params.supportsMcpServers ?? DEFAULT_ACP_CAPABILITIES.supportsMcpServers,
+    requiresDurableTimeline: params.requiresDurableTimeline ?? false,
   };
 }
 

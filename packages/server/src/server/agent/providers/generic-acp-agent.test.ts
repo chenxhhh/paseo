@@ -61,6 +61,7 @@ describe("GenericACPAgentClient", () => {
           supportsRewindConversation: false,
           supportsRewindFiles: false,
           supportsRewindBoth: false,
+          requiresDurableTimeline: false,
         },
       },
     ]);
@@ -79,6 +80,23 @@ describe("GenericACPAgentClient", () => {
     expect(mockState.superConstructorOptions.at(-1)).toMatchObject({
       capabilities: {
         supportsMcpServers: false,
+      },
+    });
+  });
+
+  test("exposes requiresDurableTimeline from provider params", () => {
+    const _client = new GenericACPAgentClient({
+      logger: createTestLogger(),
+      command: ["serverless-history-acp", "serve"],
+      providerParams: {
+        requiresDurableTimeline: true,
+      },
+    });
+    void _client;
+
+    expect(mockState.superConstructorOptions.at(-1)).toMatchObject({
+      capabilities: {
+        requiresDurableTimeline: true,
       },
     });
   });
