@@ -52,6 +52,8 @@ $PASEO_HOME/
 ├── agents/
 │   └── {sanitized-cwd}/
 │       └── {agentId}.json               # One file per agent
+├── timeline-rows/
+│   └── agent-{base64url(agentId)}.jsonl # Durable timeline rows; only for providers with requiresDurableTimeline
 ├── schedules/
 │   └── {scheduleId}.json                # One file per schedule
 ├── projects/

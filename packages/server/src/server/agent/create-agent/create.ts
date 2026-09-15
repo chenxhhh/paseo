@@ -58,6 +58,7 @@ export type EnsureWorkspaceForCreate = (
 
 export interface CreateAgentFromSessionInput {
   kind: "session";
+  onAgentReady?: (agent: ManagedAgent) => Promise<void>;
   agentId?: string;
   config: AgentSessionConfig;
   workspaceId: string;
@@ -192,6 +193,8 @@ export async function createAgentCommand(
   resolved.setupContinuation?.startAfterAgentCreate({
     agentId: snapshot.id,
   });
+
+  if (input.kind === "session") await input.onAgentReady?.(snapshot);
 
   let liveSnapshot = snapshot;
   let initialPromptStarted = false;

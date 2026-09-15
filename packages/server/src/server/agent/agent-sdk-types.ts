@@ -192,6 +192,13 @@ export interface AgentCapabilityFlags {
   supportsRewindConversation?: boolean;
   supportsRewindFiles?: boolean;
   supportsRewindBoth?: boolean;
+  /**
+   * The provider keeps conversation history server-side and replays nothing on
+   * session/load, so the daemon must persist its own timeline rows to restore
+   * the visible transcript after a restart. Providers that replay history on
+   * resume stay false and keep hydrating from provider history.
+   */
+  requiresDurableTimeline?: boolean;
 }
 
 export interface AgentPersistenceHandle {

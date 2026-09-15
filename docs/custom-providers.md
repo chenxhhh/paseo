@@ -503,6 +503,25 @@ Paseo tools such as subagent creation come from the shared internal tool catalog
 }
 ```
 
+Some ACP agents keep conversation history server-side and replay nothing on `session/load`, so after a daemon restart the chat view would come back empty even though the provider session resumes fine. Declare that shape with `params.requiresDurableTimeline: true` and Paseo persists its own timeline rows for those agents, reseeding the visible transcript on resume. Providers that replay history on resume (the default) must not set this flag — they keep hydrating from provider history:
+
+```json
+{
+  "agents": {
+    "providers": {
+      "serverless-history-agent": {
+        "extends": "acp",
+        "label": "Serverless History Agent",
+        "command": ["serverless-history-agent", "acp"],
+        "params": {
+          "requiresDurableTimeline": true
+        }
+      }
+    }
+  }
+}
+```
+
 ACP agents execute filesystem operations in their own environment by default,
 while terminal operations run through Paseo on the host. To customize which
 operations Paseo handles, configure client capabilities in provider params:
