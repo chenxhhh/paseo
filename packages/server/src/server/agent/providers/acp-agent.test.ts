@@ -3563,6 +3563,134 @@ describe("ACPAgentSession", () => {
       vi.useRealTimers();
     }
   });
+
+  test("a cancelled response no cancel targeted is re-dispatched instead of losing the prompt", async () => {
+    vi.useFakeTimers();
+    try {
+      const session = createSession();
+      const events: AgentStreamEvent[] = [];
+      const promptResolvers: Array<(value: PromptResponse) => void> = [];
+      const prompt = vi.fn(
+        () =>
+          new Promise<PromptResponse>((resolve) => {
+            promptResolvers.push(resolve);
+          }),
+      );
+      const cancel = vi.fn(async () => undefined);
+
+      asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+      asInternals<ACPSessionInternals>(session).connection = { prompt, cancel };
+
+      session.subscribe((event) => events.push(event));
+
+      // The interrupted turn settles through the manager's local settle path.
+      await session.startTurn("first");
+      const interrupted = session.interrupt();
+      await vi.advanceTimersByTimeAsync(5_000);
+      await interrupted;
+
+      // The replacement prompt races the agent's cancel wind-down.
+      const { turnId: secondTurnId } = await session.startTurn("replacement");
+      promptResolvers[1]({ stopReason: "cancelled" });
+      await flushPromptMicrotasks();
+
+      expect(prompt).toHaveBeenCalledTimes(3);
+      expect(events.filter((event) => event.type === "turn_canceled")).toHaveLength(1);
+
+      promptResolvers[2]({ stopReason: "end_turn" });
+      await flushPromptMicrotasks();
+
+      const completed = events.filter((event) => event.type === "turn_completed");
+      expect(completed).toHaveLength(1);
+      expect(completed[0]).toMatchObject({ turnId: secondTurnId });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("cross-talk re-dispatches stop after the retry cap and finish the turn", async () => {
+    vi.useFakeTimers();
+    try {
+      const session = createSession();
+      const events: AgentStreamEvent[] = [];
+      const promptResolvers: Array<(value: PromptResponse) => void> = [];
+      const prompt = vi.fn(
+        () =>
+          new Promise<PromptResponse>((resolve) => {
+            promptResolvers.push(resolve);
+          }),
+      );
+
+      asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+      asInternals<ACPSessionInternals>(session).connection = {
+        prompt,
+        cancel: vi.fn(async () => undefined),
+      };
+
+      session.subscribe((event) => events.push(event));
+
+      await session.startTurn("first");
+      const interrupted = session.interrupt();
+      await vi.advanceTimersByTimeAsync(5_000);
+      await interrupted;
+
+      const { turnId: secondTurnId } = await session.startTurn("replacement");
+      for (let i = 1; i <= 3; i += 1) {
+        promptResolvers[i]({ stopReason: "cancelled" });
+        await flushPromptMicrotasks();
+      }
+
+      // First turn + replacement dispatch + 2 re-dispatches, then the third
+      // cancellation sticks.
+      expect(prompt).toHaveBeenCalledTimes(4);
+      const canceled = events.filter((event) => event.type === "turn_canceled");
+      expect(canceled[canceled.length - 1]).toMatchObject({ turnId: secondTurnId });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("a cancelled response after this turn was cancelled is not re-dispatched", async () => {
+    vi.useFakeTimers();
+    try {
+      const session = createSession();
+      const events: AgentStreamEvent[] = [];
+      const promptResolvers: Array<(value: PromptResponse) => void> = [];
+      const prompt = vi.fn(
+        () =>
+          new Promise<PromptResponse>((resolve) => {
+            promptResolvers.push(resolve);
+          }),
+      );
+
+      asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+      asInternals<ACPSessionInternals>(session).connection = {
+        prompt,
+        cancel: vi.fn(async () => undefined),
+      };
+
+      session.subscribe((event) => events.push(event));
+
+      await session.startTurn("first");
+      const interrupted = session.interrupt();
+      await vi.advanceTimersByTimeAsync(5_000);
+      await interrupted;
+
+      const { turnId: secondTurnId } = await session.startTurn("replacement");
+      // The user cancels the replacement turn itself.
+      const secondInterrupt = session.interrupt();
+      promptResolvers[1]({ stopReason: "cancelled" });
+      await flushPromptMicrotasks();
+      await vi.advanceTimersByTimeAsync(5_000);
+      await secondInterrupt;
+
+      expect(prompt).toHaveBeenCalledTimes(2);
+      const canceled = events.filter((event) => event.type === "turn_canceled");
+      expect(canceled[canceled.length - 1]).toMatchObject({ turnId: secondTurnId });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 interface ACPCloseInternals {

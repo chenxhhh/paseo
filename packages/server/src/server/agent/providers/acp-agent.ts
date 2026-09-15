@@ -312,6 +312,9 @@ const ACP_IMPORT_HISTORY_BUDGET_MS = 60_000;
 // response. Keep it below the manager's own interrupt budget (2s) so a silent
 // agent still settles the run instead of being force-canceled.
 const ACP_CANCEL_SETTLE_TIMEOUT_MS = 1_000;
+// A prompt cancelled without any cancel targeting it is re-dispatched at most
+// this many times before accepting the cancellation and finishing the turn.
+const MAX_ACP_CANCEL_CROSS_TALK_REDELIVERIES = 2;
 
 function summarizeMalformedACPStdoutError(error: unknown): { type: string; message: string } {
   return {
@@ -1749,6 +1752,14 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   private submittedUserMessageTurnId: string | null = null;
   private pendingSteers: QueuedACPSteer[] = [];
   private turnSettledWaiters: Array<() => void> = [];
+  // Cancel cross-talk guard: some agents (CodeBuddy) still answer a prompt
+  // dispatched right after a session/cancel with stopReason "cancelled",
+  // silently dropping it. cancelEpoch distinguishes a cancelled response that
+  // targets this prompt from cross-talk left over from the previous one.
+  private cancelEpoch = 0;
+  private activePromptCancelEpoch = 0;
+  private activePromptRedeliveries = 0;
+  private activePrompt: AgentPromptInput | null = null;
   private readonly toolCalls = new Map<string, ACPToolSnapshot>();
   private readonly terminalEntries = new Map<string, TerminalEntry>();
   private readonly persistedHistory: AgentTimelineItem[] = [];
@@ -1997,6 +2008,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     this.activeForegroundTurnId = turnId;
     this.lastTimelineItem = null;
     this.planYieldContinues = 0;
+    this.activePromptRedeliveries = 0;
     this.fallbackAssistantMessageId = null;
     this.submittedUserMessageTurnId = null;
     this.emitBootstrapThreadEvent();
@@ -2615,6 +2627,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       return;
     }
     await this.connection.cancel({ sessionId: this.sessionId });
+    this.cancelEpoch += 1;
     if (await this.waitForTurnToSettle(ACP_CANCEL_SETTLE_TIMEOUT_MS)) {
       return;
     }
@@ -3365,6 +3378,23 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     this.currentTurnUsage = mapACPUsage(response.usage) ?? this.currentTurnUsage;
 
     if (response.stopReason === "cancelled") {
+      // No cancel was sent since this prompt was dispatched, so the agent is
+      // still flushing a cancel that targeted the previous prompt (CodeBuddy
+      // answers the freshly dispatched one with stopReason "cancelled" without
+      // ever processing it). Re-dispatch instead of losing the message.
+      if (
+        this.cancelEpoch === this.activePromptCancelEpoch &&
+        this.activePrompt &&
+        this.activePromptRedeliveries < MAX_ACP_CANCEL_CROSS_TALK_REDELIVERIES
+      ) {
+        this.activePromptRedeliveries += 1;
+        this.logger.warn(
+          { turnId, redelivery: this.activePromptRedeliveries },
+          `${this.provider} cancelled a prompt no cancel targeted (cancel cross-talk); re-dispatching`,
+        );
+        this.dispatchPrompt(turnId, this.activePrompt, randomUUID());
+        return;
+      }
       this.synthesizeCanceledToolCalls();
       this.finishTurn({
         type: "turn_canceled",
@@ -3414,6 +3444,8 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   }
 
   private dispatchPrompt(turnId: string, prompt: AgentPromptInput, messageId: string): void {
+    this.activePromptCancelEpoch = this.cancelEpoch;
+    this.activePrompt = prompt;
     if (!this.connection || !this.sessionId) {
       this.finishTurn({
         type: "turn_failed",
@@ -3517,6 +3549,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     this.deliverTranslatedEvents(this.flushPendingUserMessage());
     this.activeForegroundTurnId = null;
     this.fallbackAssistantMessageId = null;
+    this.activePrompt = null;
     // A steer is only deliverable inside the turn it was admitted to.
     this.pendingSteers.length = 0;
     this.settleTurnWaiters();
