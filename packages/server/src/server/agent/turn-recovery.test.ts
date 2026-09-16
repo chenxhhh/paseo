@@ -77,6 +77,65 @@ describe("classifyTurnEnding", () => {
     expect(decision.reason).toBe("rate_limit");
   });
 
+  test("completed turn whose long report merely contains a 5xx-shaped number is not retryable", () => {
+    // Wild-caught false positive: a finished QA report containing
+    // "index.html:519" / "880×560" matched the bare 5xx pattern, the turn was
+    // classified as a server error, and the agent was re-prompted into
+    // redoing the already-completed task.
+    const report =
+      `视口标定：880×560；规则见 index.html:519；样本 512 条已核对。审计结论：全部通过，507 与 528 两个行号仅是引用。`.repeat(
+        5,
+      );
+    expect(report.length).toBeGreaterThan(300);
+    expect(
+      classifyTurnEnding({
+        outcome: "completed",
+        lastTimelineItem: assistantItem(report),
+        hadToolActivity: true,
+      }).retryable,
+    ).toBe(false);
+  });
+
+  test("completed turn with a short answer containing a standalone 5xx number is not retryable", () => {
+    expect(
+      classifyTurnEnding({
+        outcome: "completed",
+        lastTimelineItem: assistantItem("表格里 507 行已核对，均无问题。"),
+        hadToolActivity: true,
+      }).retryable,
+    ).toBe(false);
+  });
+
+  test("429 embedded in a longer token is not a rate limit", () => {
+    expect(
+      classifyTurnEnding({
+        outcome: "completed",
+        lastTimelineItem: assistantItem("L1429 行的检查已通过"),
+        hadToolActivity: true,
+      }).retryable,
+    ).toBe(false);
+    expect(
+      classifyTurnEnding({
+        outcome: "failed",
+        error: "L1429 not found",
+        lastTimelineItem: null,
+        hadToolActivity: false,
+      }).retryable,
+    ).toBe(false);
+  });
+
+  test("completed turn whose final message is a short status-code error is retryable", () => {
+    for (const text of ["HTTP 503: Service Unavailable", "Request failed with status code 502"]) {
+      const decision = classifyTurnEnding({
+        outcome: "completed",
+        lastTimelineItem: assistantItem(text),
+        hadToolActivity: true,
+      });
+      expect(decision.retryable).toBe(true);
+      expect(decision.reason).toBe("server_error");
+    }
+  });
+
   test("tool call with running/failed status is retryable regardless of tool activity", () => {
     for (const status of ["running", "failed", "canceled"] as const) {
       const decision = classifyTurnEnding({
@@ -104,6 +163,31 @@ describe("classifyTurnEnding", () => {
       error: "429 too many requests (abc/def)",
       lastTimelineItem: null,
       hadToolActivity: false,
+    });
+    expect(decision.retryable).toBe(true);
+    expect(decision.reason).toBe("rate_limit");
+  });
+
+  test("failed turn that already closed with a real answer is not retryable", () => {
+    // The model finished speaking before the failure hit — re-prompting
+    // "continue the task" makes the agent redo delivered work.
+    const decision = classifyTurnEnding({
+      outcome: "failed",
+      error: "429 too many requests (abc/def)",
+      lastTimelineItem: assistantItem("审计完成：全部通过，507 个样本无回归。"),
+      hadToolActivity: true,
+    });
+    expect(decision.retryable).toBe(false);
+  });
+
+  test("failed turn whose last item is the system error envelope is still classified by error text", () => {
+    const decision = classifyTurnEnding({
+      outcome: "failed",
+      error: "429 too many requests (abc/def)",
+      lastTimelineItem: assistantItem(
+        "[System Error] 429 too many requests (abc/def)\n\nvery long diagnostic text ".repeat(20),
+      ),
+      hadToolActivity: true,
     });
     expect(decision.retryable).toBe(true);
     expect(decision.reason).toBe("rate_limit");

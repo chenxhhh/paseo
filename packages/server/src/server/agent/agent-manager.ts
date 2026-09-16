@@ -87,6 +87,7 @@ import { stripInternalPaseoMcpServer, withRuntimePaseoMcpServer } from "./runtim
 import {
   AUTO_CONTINUE_PROMPT,
   MAX_AUTO_CONTINUE_ATTEMPTS,
+  SYSTEM_ERROR_PREFIX,
   autoContinueDelayMs,
   classifyTurnEnding,
   formatRecoveryExhaustedNotice,
@@ -535,8 +536,6 @@ interface AgentMetadataPatch {
   title?: string;
   labels?: AgentLabelPatch;
 }
-
-const SYSTEM_ERROR_PREFIX = "[System Error]";
 
 interface TurnRecoveryState {
   /** Consecutive abnormal turn endings that scheduled an auto-continue. */
