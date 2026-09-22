@@ -19,6 +19,8 @@ Fetch [https://paseo.sh/llms.txt](https://paseo.sh/llms.txt) first. Select and f
 
 Use the deployed docs when they disagree with this skill. Do not send the user away to read them instead of completing the work.
 
+`https://paseo.sh/docs/plugins` is a version chooser, not a quickstart. It labels v0.7 "Current" because that tracks released versions; this daemon already requires v0.8 runtime entries and rejects a legacy `index.ts` root entry with "Plugin entry split is required", so the v0.7 pages describe a model this host cannot load.
+
 In the Paseo repository, use `public-docs/plugins/reference.md` for the checkout's API, including
 unreleased changes. Use `docs/plugins.md` for maintainer guidance. Complete contracts belong in the
 public docs; this skill indexes the references and examples.
@@ -69,6 +71,7 @@ my-plugin/
   index.client.tsx
   index.server.ts
   client/greeting.tsx
+  client/web.ts
   server/greeting.ts
   shared/greeting.ts
 ```

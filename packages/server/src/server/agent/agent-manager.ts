@@ -77,9 +77,23 @@ import {
   type PendingForegroundRun,
 } from "./agent-run-state.js";
 import { invokeRewindCapability, type RewindMode } from "./rewind/rewind.js";
-import { isSystemInjectedEnvelope } from "./agent-prompt.js";
+import {
+  formatSystemNotificationPrompt,
+  isSystemInjectedEnvelope,
+  startAgentRun,
+} from "./agent-prompt.js";
 import { isStaleProviderSessionError } from "./stale-provider-session-error.js";
 import { stripInternalPaseoMcpServer, withRuntimePaseoMcpServer } from "./runtime-mcp-config.js";
+import {
+  AUTO_CONTINUE_PROMPT,
+  MAX_AUTO_CONTINUE_ATTEMPTS,
+  SYSTEM_ERROR_PREFIX,
+  autoContinueDelayMs,
+  classifyTurnEnding,
+  formatRecoveryExhaustedNotice,
+  formatRecoveryScheduledNotice,
+  type TurnRecoveryDecision,
+} from "./turn-recovery.js";
 import { resolveCreateAgentTitles } from "./create-agent-title.js";
 import type { PaseoToolCatalogFactory } from "./tools/types.js";
 import { isPaseoToolPolicyEnabled } from "./paseo-tool-policy.js";
@@ -524,7 +538,19 @@ interface AgentMetadataPatch {
   labels?: AgentLabelPatch;
 }
 
-const SYSTEM_ERROR_PREFIX = "[System Error]";
+interface TurnRecoveryState {
+  /** Consecutive abnormal turn endings that scheduled an auto-continue. */
+  consecutive: number;
+  /** Pending continuation timer, if one is scheduled. */
+  timer: NodeJS.Timeout | null;
+  /**
+   * True between firing an auto-continue and the continuation turn's first
+   * turn_started event. Distinguishes our own continuation (echoed user
+   * message / turn_started) from a genuine user takeover that should cancel
+   * and reset the recovery loop.
+   */
+  awaitingStart: boolean;
+}
 
 function attachPersistenceCwd(
   handle: AgentPersistenceHandle | null,
@@ -715,6 +741,7 @@ export class AgentManager {
   private readonly reloadedSessionCloses = new WeakMap<AgentSession, Promise<void>>();
   private readonly lifecycleMutationTails = new Map<string, Promise<void>>();
   private readonly agentStreamCoalescer: AgentStreamCoalescer;
+  private readonly turnRecovery = new Map<string, TurnRecoveryState>();
   private mcpBaseUrl: string | null;
   private readonly mcpAuthToken: string | null;
   private paseoToolsEnabled = true;
@@ -1153,9 +1180,19 @@ export class AgentManager {
     return this.timelineStore.getItems(id);
   }
 
+  async getPersistedTimeline(id: string): Promise<AgentTimelineItem[] | null> {
+    if (!(await this.registry?.get(id))) {
+      throw new Error(`Agent not found: ${id}`);
+    }
+    if (!this.durableTimelineStore) return null;
+    const rows = await this.durableTimelineStore.getCommittedRows(id);
+    // Legacy agents without local rows still need provider history hydration.
+    return rows.length > 0 ? rows.map((row) => row.item) : null;
+  }
+
   async getTimelineRows(id: string): Promise<AgentTimelineRow[]> {
     this.requireAgent(id);
-    if (this.durableTimelineStore) {
+    if (this.durableTimelineStore && this.durableTimelineEnabled(id)) {
       return projectTimelineRows({
         rows: await this.durableTimelineStore.getCommittedRows(id),
         mode: "projected",
@@ -1663,6 +1700,7 @@ export class AgentManager {
 
   private async closeAgentRuntime(agentId: string): Promise<void> {
     const agent = this.requireAgent(agentId);
+    this.cancelScheduledTurnRecovery(agentId);
     this.logger.trace(
       {
         agentId,
@@ -1726,6 +1764,7 @@ export class AgentManager {
     requestedArchivedAt?: string,
   ): Promise<{ archivedAt: string }> {
     const agent = this.requireAgent(agentId);
+    this.cancelScheduledTurnRecovery(agentId);
     if (!this.registry) {
       throw new Error("Agent storage is not configured");
     }
@@ -3447,6 +3486,7 @@ export class AgentManager {
       const { durableTimelineHasRows } = await this.initializeAgentTimelineForRegister({
         agentId: resolvedAgentId,
         now,
+        capabilities: session.capabilities,
         options,
       });
 
@@ -3533,6 +3573,7 @@ export class AgentManager {
   private async initializeAgentTimelineForRegister(params: {
     agentId: string;
     now: Date;
+    capabilities?: AgentCapabilityFlags;
     options:
       | {
           timeline?: AgentTimelineItem[];
@@ -3544,11 +3585,13 @@ export class AgentManager {
         }
       | undefined;
   }): Promise<{ durableTimelineHasRows: boolean }> {
-    const { agentId, now, options } = params;
+    const { agentId, now, capabilities, options } = params;
     const timelineAlreadyPrimed = this.timelineStore.has(agentId);
     const explicitTimelineSeed = buildExplicitTimelineSeedForRegister(now, options);
     const shouldSeedFromDurable =
-      !explicitTimelineSeed && !this.timelineStore.has(agentId) && this.durableTimelineStore;
+      !explicitTimelineSeed &&
+      !this.timelineStore.has(agentId) &&
+      this.durableTimelineEnabled(agentId, capabilities);
     const durableTimelineSeed = shouldSeedFromDurable
       ? await this.loadCommittedTimelineSeed(agentId, now)
       : null;
@@ -3560,7 +3603,7 @@ export class AgentManager {
       this.timelineStore.initialize(agentId, timelineSeed ?? { timestamp: now.toISOString() });
     }
     if (options?.timelineRows?.length) {
-      this.enqueueDurableTimelineBulkInsert(agentId, options.timelineRows);
+      this.enqueueDurableTimelineBulkInsert(agentId, options.timelineRows, capabilities);
     }
     return { durableTimelineHasRows };
   }
@@ -3635,6 +3678,7 @@ export class AgentManager {
       return { timestamp: now.toISOString() };
     }
     return {
+      rows: await this.durableTimelineStore.getCommittedRows(agentId),
       nextSeq: (await this.durableTimelineStore.getLatestCommittedSeq(agentId)) + 1,
       timestamp: now.toISOString(),
     };
@@ -4092,6 +4136,12 @@ export class AgentManager {
     const eventTurnId = identified.turnId;
     const isForegroundEvent = agent.activeForegroundTurnId === eventTurnId;
     this.traceHandleStreamEventStart(agent, event, eventTurnId, isForegroundEvent);
+    if (!options?.fromHistory) {
+      // A new turn or real user message supersedes any pending auto-continue.
+      // Our own continuation turn (and the echoed system-envelope message it
+      // produces) must NOT cancel the loop — see TurnRecoveryState.awaitingStart.
+      this.cancelRecoveryOnNewTurn(agent.id, event);
+    }
     if (
       eventTurnId &&
       isTurnTerminalEvent(event) &&
@@ -4139,6 +4189,7 @@ export class AgentManager {
         this.runs.settleTerminalRun(agent.id, eventTurnId);
         if (isForegroundEvent) {
           this.finalizeForegroundTurn(agent, eventTurnId);
+          this.maybeScheduleTurnRecovery(agent, event);
         }
       }
 
@@ -4705,6 +4756,168 @@ export class AgentManager {
     return parts.join("\n\n");
   }
 
+  private cancelRecoveryOnNewTurn(agentId: string, event: AgentStreamEvent): void {
+    if (event.type === "turn_started") {
+      const state = this.turnRecovery.get(agentId);
+      if (state?.awaitingStart) {
+        state.awaitingStart = false;
+      } else {
+        this.cancelScheduledTurnRecovery(agentId);
+      }
+      return;
+    }
+    if (event.type === "timeline" && event.item.type === "user_message") {
+      if (!isSystemInjectedEnvelope(event.item.text)) {
+        const state = this.turnRecovery.get(agentId);
+        if (!state?.awaitingStart) {
+          this.cancelScheduledTurnRecovery(agentId);
+        }
+      }
+    }
+  }
+
+  /**
+   * After a foreground turn settles, decide whether it ended abnormally
+   * (rate limit / 5xx / network / silent stream death) and, if so, schedule an
+   * automatic continuation prompt with linear backoff. This lets unattended
+   * agents survive transient provider failures instead of stopping silently
+   * until the user manually nudges them.
+   */
+  private maybeScheduleTurnRecovery(agent: ActiveManagedAgent, terminal: AgentStreamEvent): void {
+    if (agent.pendingReplacement || agent.internal) {
+      return;
+    }
+    if (terminal.type === "turn_canceled") {
+      this.cancelScheduledTurnRecovery(agent.id);
+      return;
+    }
+    if (!agent.persistence?.sessionId) {
+      return;
+    }
+
+    const timeline = this.timelineStore.getItems(agent.id);
+    const lastItem = timeline.length > 0 ? timeline[timeline.length - 1] : null;
+    const hadToolActivity = timeline.some((item) => item.type === "tool_call");
+    const decision =
+      terminal.type === "turn_failed"
+        ? classifyTurnEnding({
+            outcome: "failed",
+            error: terminal.error,
+            lastTimelineItem: lastItem,
+            hadToolActivity,
+          })
+        : classifyTurnEnding({
+            outcome: "completed",
+            lastTimelineItem: lastItem,
+            hadToolActivity,
+          });
+
+    if (!decision.retryable) {
+      // A healthy turn (or one with a final assistant message) resets the loop.
+      const existing = this.turnRecovery.get(agent.id);
+      if (existing) {
+        existing.consecutive = 0;
+        existing.awaitingStart = false;
+      }
+      return;
+    }
+
+    const state = this.turnRecovery.get(agent.id) ?? {
+      consecutive: 0,
+      timer: null,
+      awaitingStart: false,
+    };
+    if (state.timer) {
+      return;
+    }
+    state.consecutive += 1;
+    if (state.consecutive > MAX_AUTO_CONTINUE_ATTEMPTS) {
+      this.exhaustTurnRecovery(agent, decision);
+      return;
+    }
+    const delayMs = autoContinueDelayMs(state.consecutive - 1);
+    this.turnRecovery.set(agent.id, state);
+    this.recordAndDispatchTimelineItem(
+      agent.id,
+      {
+        type: "assistant_message",
+        text: formatRecoveryScheduledNotice(decision, delayMs, state.consecutive),
+      },
+      agent.provider,
+    );
+    state.timer = setTimeout(() => {
+      state.timer = null;
+      state.awaitingStart = true;
+      void this.fireTurnRecovery(agent.id).catch((error) => {
+        this.logger.warn(
+          { err: error, agentId: agent.id },
+          "agent.manager.turn_recovery.fire_failed",
+        );
+      });
+    }, delayMs);
+  }
+
+  private async fireTurnRecovery(agentId: string): Promise<void> {
+    const state = this.turnRecovery.get(agentId);
+    if (!state) {
+      return;
+    }
+    const agent = this.agents.get(agentId);
+    if (!agent) {
+      this.turnRecovery.delete(agentId);
+      return;
+    }
+    // Safety re-check before injecting the continuation prompt:
+    if (
+      agent.pendingReplacement ||
+      agent.activeForegroundTurnId ||
+      agent.activeTurnId ||
+      this.runs.hasRun(agentId) ||
+      !agent.persistence?.sessionId
+    ) {
+      // Someone took over (new user message / autonomous turn / close / another
+      // run). Drop the loop.
+      this.cancelScheduledTurnRecovery(agentId);
+      return;
+    }
+    await startAgentRun(
+      this,
+      agentId,
+      formatSystemNotificationPrompt(AUTO_CONTINUE_PROMPT),
+      this.logger,
+      // Steer covers the race between the guard above and dispatch: a turn
+      // started in between absorbs the continuation instead of racing it.
+      { replaceRunning: false, activeTurnBehavior: "steer" },
+    );
+  }
+
+  private cancelScheduledTurnRecovery(agentId: string): void {
+    const state = this.turnRecovery.get(agentId);
+    if (state?.timer) {
+      clearTimeout(state.timer);
+    }
+    this.turnRecovery.delete(agentId);
+  }
+
+  private exhaustTurnRecovery(agent: ActiveManagedAgent, decision: TurnRecoveryDecision): void {
+    const mutableAgent = agent as ManagedAgent;
+    mutableAgent.attention = {
+      requiresAttention: true,
+      attentionReason: "error",
+      attentionTimestamp: new Date(),
+    };
+    this.broadcastAgentAttention(agent, "error");
+    this.emitState(agent);
+    this.recordAndDispatchTimelineItem(
+      agent.id,
+      {
+        type: "assistant_message",
+        text: formatRecoveryExhaustedNotice(decision),
+      },
+      agent.provider,
+    );
+  }
+
   private recordTimeline(
     agentId: string,
     item: AgentTimelineItem,
@@ -4802,8 +5015,19 @@ export class AgentManager {
     this.trackBackgroundTask(task);
   }
 
+  /**
+   * Durable rows are only written and replayed for providers that cannot
+   * rehydrate history themselves (`requiresDurableTimeline`); providers with
+   * history replay keep hydrating from provider history.
+   */
+  private durableTimelineEnabled(agentId: string, capabilities?: AgentCapabilityFlags): boolean {
+    if (this.durableTimelineStore == null) return false;
+    const flags = capabilities ?? this.agents.get(agentId)?.session.capabilities;
+    return flags?.requiresDurableTimeline === true;
+  }
+
   private enqueueDurableTimelineAppend(agentId: string, row: AgentTimelineRow): void {
-    if (!this.durableTimelineStore) {
+    if (!this.durableTimelineStore || !this.durableTimelineEnabled(agentId)) {
       return;
     }
     const task = this.durableTimelineStore.bulkInsert(agentId, [row]).catch((err) => {
@@ -4818,10 +5042,12 @@ export class AgentManager {
   private enqueueDurableTimelineBulkInsert(
     agentId: string,
     rows: readonly AgentTimelineRow[],
+    capabilities?: AgentCapabilityFlags,
   ): void {
     if (!this.durableTimelineStore || rows.length === 0) {
       return;
     }
+    if (!this.durableTimelineEnabled(agentId, capabilities)) return;
     const task = this.durableTimelineStore.bulkInsert(agentId, rows).catch((err) => {
       this.logger.error(
         { err, agentId, rowCount: rows.length },
@@ -4832,7 +5058,7 @@ export class AgentManager {
   }
 
   private enqueueDurableTimelineUpdate(agentId: string, row: AgentTimelineRow): void {
-    if (!this.durableTimelineStore) return;
+    if (!this.durableTimelineStore || !this.durableTimelineEnabled(agentId)) return;
     const task = this.durableTimelineStore.updateCommittedRow(agentId, row).catch((err) => {
       this.logger.error(
         { err, agentId, seq: row.seq, itemType: row.item.type },

@@ -1,5 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { expect } from "@playwright/test";
 import { test as base } from "../support/fixtures";
 import {
   beginWorkspaceFromProject,
@@ -84,6 +85,7 @@ const test = base.extend<{
   rootAndSubdirectoryProjects: ProjectDirectoryScenario;
   crossHostSubdirectoryProject: ProjectDirectoryScenario;
   sameHostClones: ProjectDirectoryScenario;
+  projectWithWorktrees: ProjectDirectoryScenario;
 }>({
   crossHostProject: async ({ page: _page }, provide) => {
     const secondaryHost = await startIsolatedHostDaemon("project-grouping-secondary");
@@ -316,6 +318,54 @@ const test = base.extend<{
       await secondRepo.cleanup().catch(() => undefined);
     }
   },
+
+  projectWithWorktrees: async ({ page: _page }, provide) => {
+    const repo = await createTempGitRepo("grouped-worktrees-");
+    const client = await connectSeedClient();
+    let project: CreatedProject | null = null;
+
+    try {
+      project = await createProject(client, {
+        projectPath: repo.path,
+        serverId: getServerId(),
+        workspaceName: "Main checkout",
+        projectName: "Worktree grouping project",
+      });
+      const first = await client.createWorkspace({
+        source: {
+          kind: "worktree",
+          cwd: repo.path,
+          projectId: project.projectId,
+          action: "branch-off",
+          worktreeSlug: "feature-alpha",
+          baseBranch: "main",
+        },
+        title: "Alpha workspace",
+      });
+      if (!first.workspace) {
+        throw new Error(first.error ?? "Failed to create feature-alpha worktree");
+      }
+      const second = await client.createWorkspace({
+        source: {
+          kind: "worktree",
+          cwd: repo.path,
+          projectId: project.projectId,
+          action: "branch-off",
+          worktreeSlug: "feature-beta",
+          baseBranch: "main",
+        },
+        title: "Beta workspace",
+      });
+      if (!second.workspace) {
+        throw new Error(second.error ?? "Failed to create feature-beta worktree");
+      }
+      await provide({ hosts: [] });
+    } finally {
+      if (project) await client.removeProject(project.projectId).catch(() => undefined);
+      await client.close().catch(() => undefined);
+      await repo.cleanup().catch(() => undefined);
+    }
+  },
 });
 
 async function openScenario(
@@ -417,5 +467,25 @@ test.describe("Sidebar project grouping", () => {
       hostName: SECONDARY_HOST_LABEL,
       count: 2,
     });
+  });
+
+  test("groups worktrees under collapsible headers inside a project", async ({
+    page,
+    projectWithWorktrees,
+  }) => {
+    await openScenario(page, projectWithWorktrees);
+    const group = page.getByRole("group", { name: "Worktree grouping project", exact: true });
+    await expect(group).toBeVisible({ timeout: 30_000 });
+    const headers = group.locator('[data-testid^="sidebar-worktree-group-"]');
+    await expect(headers).toHaveCount(2, { timeout: 30_000 });
+    await expect(headers.filter({ hasText: "feature-alpha" })).toBeVisible();
+    await expect(headers.filter({ hasText: "feature-beta" })).toBeVisible();
+    await expect(group.getByRole("button").filter({ hasText: "Alpha workspace" })).toBeVisible();
+    await expect(group.getByRole("button").filter({ hasText: "Main checkout" })).toBeVisible();
+
+    await headers.filter({ hasText: "feature-alpha" }).click();
+    await expect(group.getByRole("button").filter({ hasText: "Alpha workspace" })).toBeHidden();
+    await expect(group.getByRole("button").filter({ hasText: "Beta workspace" })).toBeVisible();
+    await expect(group.getByRole("button").filter({ hasText: "Main checkout" })).toBeVisible();
   });
 });

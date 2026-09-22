@@ -238,10 +238,9 @@ export function DraggableList<T>({
   );
 
   return (
-    <View style={wrapperStyle}>
+    <View style={wrapperStyle} testID={testID}>
       {scrollEnabled ? (
         <ScrollView
-          testID={testID}
           style={style}
           contentContainerStyle={contentContainerStyle}
           showsVerticalScrollIndicator={showsVerticalScrollIndicator}

@@ -72,9 +72,8 @@ export function MobilePanelOverlay({
       {/* Fabric needs an always-mounted native host to attach the close handler while the
           retained panel content is hidden. nativeID keeps that host registered. */}
       <View
-        accessibilityElementsHidden={!isOpen}
+        aria-hidden={!isOpen}
         collapsable={false}
-        importantForAccessibility={isOpen ? "auto" : "no-hide-descendants"}
         nativeID={`${panel}-gesture-host`}
         pointerEvents={overlayPointerEvents}
         style={styles.overlay}
@@ -85,8 +84,7 @@ export function MobilePanelOverlay({
         >
           <Pressable
             accessible={false}
-            accessibilityElementsHidden
-            importantForAccessibility="no-hide-descendants"
+            aria-hidden
             onPress={showMobileAgent}
             pointerEvents={isOpen ? "auto" : "none"}
             style={StyleSheet.absoluteFillObject}

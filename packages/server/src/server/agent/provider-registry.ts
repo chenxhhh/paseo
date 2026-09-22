@@ -40,6 +40,7 @@ import { CopilotACPAgentClient } from "./providers/copilot-acp-agent.js";
 import { CursorACPAgentClient } from "./providers/cursor-acp-agent.js";
 import { GenericACPAgentClient } from "./providers/generic-acp-agent.js";
 import { KimiACPAgentClient } from "./providers/kimi-acp-agent.js";
+import { WithACPAgentClient } from "./providers/with-acp-agent.js";
 import { KiroACPAgentClient } from "./providers/kiro-acp-agent.js";
 import { OpenCodeAgentClient } from "./providers/opencode-agent.js";
 import type { OpenCodeBridge } from "./providers/opencode/bridge.js";
@@ -473,6 +474,7 @@ export function wrapSessionProvider(provider: AgentProvider, inner: AgentSession
     revertConversation: inner.revertConversation?.bind(inner),
     revertFiles: inner.revertFiles?.bind(inner),
     revertBoth: inner.revertBoth?.bind(inner),
+    steerActiveTurn: inner.steerActiveTurn?.bind(inner),
     tryHandleOutOfBand: inner.tryHandleOutOfBand?.bind(inner),
   };
 }
@@ -806,6 +808,13 @@ function addDerivedProviders(
           }
           if (providerId === "kimi") {
             return new KimiACPAgentClient(acpOptions);
+          }
+          if (
+            providerId === "with" ||
+            providerId === "with-desktop" ||
+            providerId === "with-metadata"
+          ) {
+            return new WithACPAgentClient(acpOptions);
           }
           if (providerId === "kiro") {
             return new KiroACPAgentClient(acpOptions);

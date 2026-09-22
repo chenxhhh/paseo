@@ -81,6 +81,7 @@ import { ComposerControlLayoutProvider } from "@/composer/agent-controls/layout-
 import { ComposerToolbarGlyph } from "@/composer/agent-controls/glyph";
 import { AgentControlTrigger } from "@/composer/agent-controls/control";
 import { CompactModelSheet } from "@/composer/agent-controls/model-sheet";
+import { knotCliPermissionNotice, visiblePermissionFeatures } from "./with-permissions";
 import {
   useAgentProfileEditor,
   useAgentProfilePicker,
@@ -491,7 +492,7 @@ function ControlledAgentControls({
   onEditAgentProfiles,
   onCreateAgentProfile,
   onEditAgentProfile,
-  features,
+  features: rawFeatures,
   onSetFeature,
   onDropdownClose,
   onModelSelectorOpen,
@@ -502,7 +503,12 @@ function ControlledAgentControls({
   isCompactLayout,
 }: ControlledAgentControlsProps) {
   const { theme } = useUnistyles();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const features = useMemo(
+    () => visiblePermissionFeatures(provider, rawFeatures),
+    [provider, rawFeatures],
+  );
+  const permissionNotice = knotCliPermissionNotice(provider, i18n.language);
   const isCompactFormFactor = useIsCompactFormFactor();
   const isCompact = isCompactLayout ?? isCompactFormFactor;
   const { fontScale } = useWindowDimensions();
@@ -725,104 +731,111 @@ function ControlledAgentControls({
     [onSelectModel, onSelectProvider, onSelectProviderAndModel, provider],
   );
 
-  if (!hasAnyControl) {
+  if (!hasAnyControl && !permissionNotice) {
     return null;
   }
 
   return (
     <ComposerControlLayoutProvider value={layoutContextValue}>
-      <View style={styles.container} onLayout={handleLayout}>
-        {!isCompact ? (
-          <DesktopAgentControlsContent
-            provider={provider}
-            providerOptions={providerOptions}
-            selectedProviderId={selectedProviderId}
-            modelOptions={modelOptions}
-            selectedModelId={selectedModelId}
-            thinkingOptions={formattedThinkingOptions}
-            selectedThinkingOptionId={selectedThinkingOptionId}
-            features={features}
-            onSetFeature={onSetFeature}
-            onApplyAgentProfile={onApplyAgentProfile}
-            onEditAgentProfiles={onEditAgentProfiles}
-            onCreateAgentProfile={onCreateAgentProfile}
-            onEditAgentProfile={onEditAgentProfile}
-            onDropdownClose={onDropdownClose}
-            onModelSelectorOpen={onModelSelectorOpen}
-            onRetryModelProvider={onRetryModelProvider}
-            isRetryingModelProvider={isRetryingModelProvider}
-            agentProfiles={agentProfiles}
-            disabled={disabled}
-            isModelLoading={isModelLoading}
-            canSelectProvider={canSelectProvider}
-            canSelectModel={canSelectModel}
-            canSelectThinking={canSelectThinking}
-            modelSelectorProviders={effectiveModelSelectorProviders}
-            modelDisabled={modelDisabled}
-            comboboxProviderOptions={comboboxProviderOptions}
-            comboboxThinkingOptions={comboboxThinkingOptions}
-            displayProvider={displayProvider}
-            displayThinking={displayThinking}
-            openSelector={openSelector}
-            providerAnchorRef={providerAnchorRef}
-            thinkingAnchorRef={thinkingAnchorRef}
-            providerPressableStyle={providerPressableStyle}
-            handleProviderPress={handleProviderPress}
-            handleThinkingPress={handleThinkingPress}
-            handleProviderSelect={handleProviderSelect}
-            handleThinkingSelect={handleThinkingSelect}
-            handleDesktopModelSelect={handleDesktopModelSelect}
-            handleProviderOpenChange={handleProviderOpenChange}
-            handleThinkingOpenChange={handleThinkingOpenChange}
-            handleOpenChange={handleOpenChange}
-            handleNestedOpenChange={handleSheetOpenChange}
-            renderThinkingOption={renderThinkingOption}
-            modeControl={modeControl}
-            presentation={presentation}
-            glyphSize={layoutContextValue.glyphSize}
-            activeSheet={activeSheet}
-            handleOpenSheet={handleOpenSheet}
-            handleCloseSheet={handleCloseSheet}
-            modelSelectorServerId={modelSelectorServerId}
-          />
-        ) : (
-          <SheetAgentControlsContent
-            provider={provider}
-            selectedModelId={selectedModelId}
-            selectedThinkingOptionId={selectedThinkingOptionId}
-            features={features}
-            onSetFeature={onSetFeature}
-            onApplyAgentProfile={onApplyAgentProfile}
-            onEditAgentProfiles={onEditAgentProfiles}
-            onCreateAgentProfile={onCreateAgentProfile}
-            onEditAgentProfile={onEditAgentProfile}
-            onDropdownClose={onDropdownClose}
-            onModelSelectorOpen={onModelSelectorOpen}
-            onRetryModelProvider={onRetryModelProvider}
-            isRetryingModelProvider={isRetryingModelProvider}
-            agentProfiles={agentProfiles}
-            disabled={disabled}
-            isModelLoading={isModelLoading}
-            canSelectModel={canSelectModel}
-            canSelectThinking={canSelectThinking}
-            modelSelectorProviders={effectiveModelSelectorProviders}
-            modelDisabled={modelDisabled}
-            comboboxThinkingOptions={comboboxThinkingOptions}
-            openSelector={openSelector}
-            displayThinking={displayThinking}
-            activeSheet={activeSheet}
-            handleOpenSheet={handleOpenSheet}
-            handleCloseSheet={handleCloseSheet}
-            handleSheetModelSelect={handleSheetModelSelect}
-            handleSelectThinkingAndClose={handleSelectThinkingAndClose}
-            handleOpenChange={handleSheetOpenChange}
-            renderThinkingOption={renderThinkingOption}
-            modeControl={modeControl}
-            glyphSize={layoutContextValue.glyphSize}
-            modelSelectorServerId={modelSelectorServerId}
-            canSwitchProvider={Boolean(onSelectProviderAndModel)}
-          />
-        )}
+      <View style={styles.controlsWithNotice}>
+        {permissionNotice ? (
+          <Text style={styles.permissionNotice} testID="agent-permission-notice">
+            {permissionNotice}
+          </Text>
+        ) : null}
+        <View style={styles.container} onLayout={handleLayout}>
+          {!isCompact ? (
+            <DesktopAgentControlsContent
+              provider={provider}
+              providerOptions={providerOptions}
+              selectedProviderId={selectedProviderId}
+              modelOptions={modelOptions}
+              selectedModelId={selectedModelId}
+              thinkingOptions={formattedThinkingOptions}
+              selectedThinkingOptionId={selectedThinkingOptionId}
+              features={features}
+              onSetFeature={onSetFeature}
+              onApplyAgentProfile={onApplyAgentProfile}
+              onEditAgentProfiles={onEditAgentProfiles}
+              onCreateAgentProfile={onCreateAgentProfile}
+              onEditAgentProfile={onEditAgentProfile}
+              onDropdownClose={onDropdownClose}
+              onModelSelectorOpen={onModelSelectorOpen}
+              onRetryModelProvider={onRetryModelProvider}
+              isRetryingModelProvider={isRetryingModelProvider}
+              agentProfiles={agentProfiles}
+              disabled={disabled}
+              isModelLoading={isModelLoading}
+              canSelectProvider={canSelectProvider}
+              canSelectModel={canSelectModel}
+              canSelectThinking={canSelectThinking}
+              modelSelectorProviders={effectiveModelSelectorProviders}
+              modelDisabled={modelDisabled}
+              comboboxProviderOptions={comboboxProviderOptions}
+              comboboxThinkingOptions={comboboxThinkingOptions}
+              displayProvider={displayProvider}
+              displayThinking={displayThinking}
+              openSelector={openSelector}
+              providerAnchorRef={providerAnchorRef}
+              thinkingAnchorRef={thinkingAnchorRef}
+              providerPressableStyle={providerPressableStyle}
+              handleProviderPress={handleProviderPress}
+              handleThinkingPress={handleThinkingPress}
+              handleProviderSelect={handleProviderSelect}
+              handleThinkingSelect={handleThinkingSelect}
+              handleDesktopModelSelect={handleDesktopModelSelect}
+              handleProviderOpenChange={handleProviderOpenChange}
+              handleThinkingOpenChange={handleThinkingOpenChange}
+              handleOpenChange={handleOpenChange}
+              handleNestedOpenChange={handleSheetOpenChange}
+              renderThinkingOption={renderThinkingOption}
+              modeControl={modeControl}
+              presentation={presentation}
+              glyphSize={layoutContextValue.glyphSize}
+              activeSheet={activeSheet}
+              handleOpenSheet={handleOpenSheet}
+              handleCloseSheet={handleCloseSheet}
+              modelSelectorServerId={modelSelectorServerId}
+            />
+          ) : (
+            <SheetAgentControlsContent
+              provider={provider}
+              selectedModelId={selectedModelId}
+              selectedThinkingOptionId={selectedThinkingOptionId}
+              features={features}
+              onSetFeature={onSetFeature}
+              onApplyAgentProfile={onApplyAgentProfile}
+              onEditAgentProfiles={onEditAgentProfiles}
+              onCreateAgentProfile={onCreateAgentProfile}
+              onEditAgentProfile={onEditAgentProfile}
+              onDropdownClose={onDropdownClose}
+              onModelSelectorOpen={onModelSelectorOpen}
+              onRetryModelProvider={onRetryModelProvider}
+              isRetryingModelProvider={isRetryingModelProvider}
+              agentProfiles={agentProfiles}
+              disabled={disabled}
+              isModelLoading={isModelLoading}
+              canSelectModel={canSelectModel}
+              canSelectThinking={canSelectThinking}
+              modelSelectorProviders={effectiveModelSelectorProviders}
+              modelDisabled={modelDisabled}
+              comboboxThinkingOptions={comboboxThinkingOptions}
+              openSelector={openSelector}
+              displayThinking={displayThinking}
+              activeSheet={activeSheet}
+              handleOpenSheet={handleOpenSheet}
+              handleCloseSheet={handleCloseSheet}
+              handleSheetModelSelect={handleSheetModelSelect}
+              handleSelectThinkingAndClose={handleSelectThinkingAndClose}
+              handleOpenChange={handleSheetOpenChange}
+              renderThinkingOption={renderThinkingOption}
+              modeControl={modeControl}
+              glyphSize={layoutContextValue.glyphSize}
+              modelSelectorServerId={modelSelectorServerId}
+              canSwitchProvider={Boolean(onSelectProviderAndModel)}
+            />
+          )}
+        </View>
       </View>
     </ComposerControlLayoutProvider>
   );
@@ -1927,6 +1940,16 @@ export function DraftAgentControls({
 }
 
 const styles = StyleSheet.create((theme) => ({
+  controlsWithNotice: {
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    gap: theme.spacing[1],
+  },
+  permissionNotice: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.base,
+  },
   container: {
     minWidth: 0,
     flexGrow: 1,

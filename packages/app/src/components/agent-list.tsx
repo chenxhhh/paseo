@@ -477,6 +477,22 @@ export function AgentList({
     () => [styles.sheetArchiveText, isActionDaemonUnavailable && styles.sheetArchiveTextDisabled],
     [isActionDaemonUnavailable],
   );
+  const sheetCancelButtonStyle = useCallback(
+    ({ pressed }: PressableStateCallbackType) => [
+      styles.sheetButton,
+      styles.sheetCancelButton,
+      pressed && styles.sheetButtonPressed,
+    ],
+    [],
+  );
+  const sheetArchiveButtonStyle = useCallback(
+    ({ pressed }: PressableStateCallbackType) => [
+      styles.sheetButton,
+      styles.sheetArchiveButton,
+      pressed && styles.sheetButtonPressed,
+    ],
+    [],
+  );
 
   const refreshControl = useMemo(
     () =>
@@ -522,7 +538,7 @@ export function AgentList({
             </Text>
             <View style={styles.sheetButtonRow}>
               <Pressable
-                style={[styles.sheetButton, styles.sheetCancelButton]}
+                style={sheetCancelButtonStyle}
                 onPress={handleCloseActionSheet}
                 testID="agent-action-cancel"
               >
@@ -530,7 +546,7 @@ export function AgentList({
               </Pressable>
               <Pressable
                 disabled={isActionDaemonUnavailable}
-                style={[styles.sheetButton, styles.sheetArchiveButton]}
+                style={sheetArchiveButtonStyle}
                 onPress={handleArchiveAgent}
                 testID="agent-action-archive"
               >
@@ -720,6 +736,10 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing[4],
     alignItems: "center",
     justifyContent: "center",
+  },
+  // Same press dip as <Button> so sheet buttons acknowledge a touch.
+  sheetButtonPressed: {
+    opacity: 0.85,
   },
   sheetArchiveButton: {
     backgroundColor: theme.colors.primary,

@@ -89,13 +89,7 @@ function ButtonIcon({ view, icon }: { view: ButtonView; icon: PluginButtonIcon }
   const color = view.props.theme.colors.foregroundMuted;
   const size = view.entry.placement === "composer" ? 14 : 16;
   return (
-    <View
-      style={styles.icon}
-      pointerEvents="none"
-      accessible={false}
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
-    >
+    <View style={styles.icon} pointerEvents="none" accessible={false} aria-hidden>
       {typeof icon === "string" ? (
         <Icon name={icon} size={size} color={color} />
       ) : (

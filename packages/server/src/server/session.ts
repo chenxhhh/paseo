@@ -174,6 +174,7 @@ import {
   createGitMetadataGenerator,
 } from "./session/checkout/git-metadata-generator.js";
 import { ScheduleSession } from "./session/schedule/schedule-session.js";
+import { TaskSession } from "./session/tasks/task-session.js";
 import { ProviderCatalogSession } from "./session/provider/provider-catalog-session.js";
 import { WorkspaceFilesSession } from "./session/files/workspace-files-session.js";
 import { AgentConfigSession } from "./session/agent-config/agent-config-session.js";
@@ -461,6 +462,7 @@ export interface SessionOptions {
   workspaceLabelService?: WorkspaceLabelService;
   filesystem?: SessionFileSystem;
   scheduleService: ScheduleService;
+  taskService?: import("./tasks/service.js").TaskService;
   checkoutDiffManager: CheckoutDiffManager;
   github?: ForgeService;
   createAgentMcpTransport?: AgentMcpTransportFactory;
@@ -777,6 +779,7 @@ export class Session {
   private readonly voiceSessions: VoiceSessions;
   private readonly checkoutSession: CheckoutSession;
   private readonly scheduleSession: ScheduleSession;
+  private readonly taskSession: TaskSession;
   private readonly providerCatalogSession: ProviderCatalogSession;
   private readonly workspaceFilesSession: WorkspaceFilesSession;
   private readonly agentConfigSession: AgentConfigSession;
@@ -949,6 +952,11 @@ export class Session {
     this.scheduleSession = new ScheduleSession({
       host: { emit: (msg) => this.emit(msg) },
       scheduleService,
+      logger: this.sessionLogger,
+    });
+    this.taskSession = new TaskSession({
+      host: { emit: (msg) => this.emit(msg) },
+      taskService: options.taskService,
       logger: this.sessionLogger,
     });
     this.providerCatalogSession = new ProviderCatalogSession({
@@ -2873,29 +2881,62 @@ export class Session {
         return this.handlePaseoWorktreeArchiveRequest(msg);
       case "create_paseo_worktree_request":
         return this.handleCreatePaseoWorktreeRequest(msg);
+      case "workspace.user-status.set.request":
+        return this.handleWorkspaceUserStatusSetRequest(
+          msg.workspaceId,
+          msg.userStatus,
+          msg.requestId,
+        );
       // COMPAT(desktopEditorBridge): added in v0.1.88, remove after 2026-12-03 once old clients no longer call daemon editor RPCs.
+      case "list_available_editors_request":
+      case "open_in_editor_request":
+      case "open_project_request":
+        return this.dispatchEditorBridgeMessage(msg);
+      case "project.add.request":
+      case "project.create_directory.request":
+      case "project.github.clone.request":
+      case "project.remove.request":
+        return this.dispatchProjectLifecycleMessage(msg);
+      case "workspace.github.search_repositories.request":
+        return this.handleWorkspaceGithubSearchRepositoriesRequest(msg);
+      case "archive_workspace_request":
+        return this.handleArchiveWorkspaceRequest(msg);
+      case "workspace.title.set.request":
+        return this.handleWorkspaceTitleSetRequest(msg.workspaceId, msg.title, msg.requestId);
+      case "workspace.pin.set.request":
+        return this.handleWorkspacePinSetRequest(msg.workspaceId, msg.pinned, msg.requestId);
+      default:
+        return undefined;
+    }
+  }
+
+  // COMPAT(desktopEditorBridge): grouped dispatch for the legacy editor/open
+  // bridge RPCs; see the note on the parent switch cases.
+  private dispatchEditorBridgeMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
       case "list_available_editors_request":
         return this.handleLegacyListAvailableEditorsRequest(msg);
       case "open_in_editor_request":
         return this.handleLegacyOpenInEditorRequest(msg);
       case "open_project_request":
         return this.handleOpenProjectRequest(msg);
+      default:
+        return undefined;
+    }
+  }
+
+  // The project add/create/clone/remove family shares a dispatch group so the
+  // parent switch stays under the complexity budget.
+  private dispatchProjectLifecycleMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
       case "project.add.request":
         return this.handleProjectAddRequest(msg);
       case "project.create_directory.request":
         return this.handleProjectCreateDirectoryRequest(msg);
-      case "workspace.github.search_repositories.request":
-        return this.handleWorkspaceGithubSearchRepositoriesRequest(msg);
       case "project.github.clone.request":
         return this.handleProjectGithubCloneRequest(msg);
-      case "archive_workspace_request":
-        return this.handleArchiveWorkspaceRequest(msg);
       case "project.remove.request":
         return this.handleProjectRemoveRequest(msg);
-      case "workspace.title.set.request":
-        return this.handleWorkspaceTitleSetRequest(msg.workspaceId, msg.title, msg.requestId);
-      case "workspace.pin.set.request":
-        return this.handleWorkspacePinSetRequest(msg.workspaceId, msg.pinned, msg.requestId);
       default:
         return undefined;
     }
@@ -3036,8 +3077,41 @@ export class Session {
         return this.scheduleSession.handleScheduleRunOnceRequest(msg);
       case "schedule/update":
         return this.scheduleSession.handleScheduleUpdateRequest(msg);
+      case "task/list":
+      case "task/inspect":
+      case "task/resolve-gate":
+      case "task/answer-question":
+      case "task/questions":
+        return this.handleTaskMessage(msg);
       default:
         return undefined;
+    }
+  }
+
+  private async handleTaskMessage(
+    msg: Extract<
+      SessionInboundMessage,
+      {
+        type:
+          | "task/list"
+          | "task/inspect"
+          | "task/resolve-gate"
+          | "task/answer-question"
+          | "task/questions";
+      }
+    >,
+  ): Promise<void> {
+    switch (msg.type) {
+      case "task/list":
+        return this.taskSession.handleTaskListRequest(msg);
+      case "task/inspect":
+        return this.taskSession.handleTaskInspectRequest(msg);
+      case "task/resolve-gate":
+        return this.taskSession.handleTaskResolveGateRequest(msg);
+      case "task/answer-question":
+        return this.taskSession.handleTaskAnswerQuestionRequest(msg);
+      case "task/questions":
+        return this.taskSession.handleTaskQuestionsRequest(msg);
     }
   }
 
@@ -3771,6 +3845,52 @@ export class Session {
         },
       });
       emitResponse(false, null, getErrorMessageOr(error, "Failed to pin workspace"));
+    }
+  }
+
+  private async handleWorkspaceUserStatusSetRequest(
+    workspaceId: string,
+    userStatus: string | null,
+    requestId: string,
+  ): Promise<void> {
+    const logContext = { workspaceId, userStatus, requestId };
+    this.sessionLogger.info(logContext, "session: workspace.user-status.set.request");
+    const emitResponse = (accepted: boolean, error: string | null) => {
+      this.emit({
+        type: "workspace.user-status.set.response",
+        payload: { requestId, workspaceId, accepted, userStatus, error },
+      });
+    };
+
+    try {
+      const nextUserStatus = userStatus === null ? null : userStatus.trim() || null;
+      const updatedAt = new Date().toISOString();
+      const updated = await this.workspaceRegistry.update(workspaceId, (existing) => ({
+        ...existing,
+        userStatus: nextUserStatus,
+        updatedAt,
+      }));
+      if (!updated) {
+        emitResponse(false, "Workspace not found");
+        return;
+      }
+      emitResponse(true, null);
+      await this.emitWorkspaceUpdatesForWorkspaceIds([workspaceId]);
+    } catch (error) {
+      this.sessionLogger.error(
+        { ...logContext, err: error },
+        "session: workspace.user-status.set.request error",
+      );
+      this.emit({
+        type: "activity_log",
+        payload: {
+          id: uuidv4(),
+          timestamp: new Date(),
+          type: "error",
+          content: `Failed to set workspace status: ${getErrorMessage(error)}`,
+        },
+      });
+      emitResponse(false, getErrorMessageOr(error, "Failed to set workspace status"));
     }
   }
 
@@ -5524,6 +5644,8 @@ export class Session {
       title: workspace.title,
       pinnedAt: workspace.pinnedAt,
       ...(workspace.labels && workspace.labels.length > 0 ? { labels: workspace.labels } : {}),
+      // COMPAT(workspaceUserStatus): omitted when null so old clients keep parsing.
+      ...(workspace.userStatus ? { userStatus: workspace.userStatus } : {}),
       archivingAt: null,
       status: "done",
       statusEnteredAt: null,
@@ -5618,6 +5740,7 @@ export class Session {
       ...(result.workspace.labels && result.workspace.labels.length > 0
         ? { labels: result.workspace.labels }
         : {}),
+      ...(result.workspace.userStatus ? { userStatus: result.workspace.userStatus } : {}),
       archivingAt: null,
       status: "done",
       statusEnteredAt: result.workspace.createdAt,

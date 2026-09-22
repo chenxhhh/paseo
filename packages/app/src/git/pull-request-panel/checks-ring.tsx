@@ -1,5 +1,6 @@
 import Svg, { Circle } from "react-native-svg";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import { decorativeSvgProps } from "@/utils/decorative-svg";
 import type { Theme } from "@/styles/theme";
 import type { CheckPresentation } from "@/git/check-presentation";
 import type { ChecksSummary } from "./checks-summary";
@@ -75,8 +76,7 @@ function ChecksRingSvg({
       height={size}
       viewBox={`0 0 ${VIEW_BOX} ${VIEW_BOX}`}
       style={ringStyles.svg}
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
+      {...decorativeSvgProps}
     >
       <Circle
         cx={CENTER}

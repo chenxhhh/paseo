@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { hasVisibleOrderChanged, mergeWithRemainder } from "./sidebar-reorder";
+import { hasVisibleOrderChanged, mergeSubgroupOrder, mergeWithRemainder } from "./sidebar-reorder";
 
 describe("hasVisibleOrderChanged", () => {
   it("returns false when visible order is unchanged", () => {
@@ -48,5 +48,43 @@ describe("mergeWithRemainder", () => {
         reorderedVisibleKeys: [],
       }),
     ).toEqual(["stale", "hidden"]);
+  });
+});
+
+describe("mergeSubgroupOrder", () => {
+  it("replaces subgroup keys in place and leaves the rest untouched", () => {
+    expect(
+      mergeSubgroupOrder({
+        currentOrder: ["main", "a", "other", "b", "tail"],
+        reorderedSubgroupKeys: ["b", "a"],
+      }),
+    ).toEqual(["main", "b", "other", "a", "tail"]);
+  });
+
+  it("appends subgroup keys that were not in the current order", () => {
+    expect(
+      mergeSubgroupOrder({
+        currentOrder: ["main", "a", "tail"],
+        reorderedSubgroupKeys: ["a", "new"],
+      }),
+    ).toEqual(["main", "a", "tail", "new"]);
+  });
+
+  it("is a no-op when the subgroup relative order is unchanged", () => {
+    expect(
+      mergeSubgroupOrder({
+        currentOrder: ["main", "a", "other", "b"],
+        reorderedSubgroupKeys: ["a", "b"],
+      }),
+    ).toEqual(["main", "a", "other", "b"]);
+  });
+
+  it("returns the current order when no subgroup keys are reordered", () => {
+    expect(
+      mergeSubgroupOrder({
+        currentOrder: ["main", "a"],
+        reorderedSubgroupKeys: [],
+      }),
+    ).toEqual(["main", "a"]);
   });
 });

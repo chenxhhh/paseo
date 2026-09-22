@@ -189,6 +189,35 @@ export const fr: TranslationResources = {
       archiveAgent: "Archiver l'agent actuel",
       freshDraft: "Archivez cet agent et démarrez un nouveau brouillon",
     },
+    quickCommands: {
+      trigger: "Commandes rapides",
+      empty: "Aucune commande rapide pour le moment",
+      sectionProject: "Ce projet",
+      sectionGlobal: "Global",
+      newCommand: "Nouvelle commande rapide",
+      manage: "Gérer les commandes rapides",
+      sheetTitle: "Commandes rapides",
+      editCommand: "Modifier la commande rapide",
+      add: "Ajouter une commande",
+      save: "Enregistrer",
+      delete: "Supprimer",
+      deleteTitle: "Supprimer la commande rapide",
+      deleteMessage: '"{{label}}" sera définitivement supprimée.',
+      emptyManage:
+        "Aucune commande rapide pour le moment. Ajoutez-en une pour insérer un prompt prédéfini en un clic.",
+      labelLabel: "Libellé",
+      labelPlaceholder: "Affiché dans le menu des commandes rapides",
+      promptLabel: "Prompt",
+      promptPlaceholder: "Texte inséré dans la zone de message",
+      scopeLabel: "Disponibilité",
+      scopeProject: "Ce projet",
+      scopeGlobal: "Tous les projets",
+      scopeProjectHint: "Disponible uniquement dans {{project}}",
+      scopeProjectFallback: "ce projet",
+      scopeGlobalHint: "Disponible dans tous les projets",
+      labelRequired: "Le libellé est requis",
+      promptRequired: "Le prompt est requis",
+    },
     github: {
       searching: "Recherche...",
       noResults: "Aucun résultat trouvé.",
@@ -385,6 +414,19 @@ export const fr: TranslationResources = {
         added: "Ajoutée",
         started: "Commencée",
         completed: "Terminée",
+        addedTasks: {
+          one: "{{count}} tâche ajoutée",
+          other: "{{count}} tâches ajoutées",
+        },
+        startedTasks: {
+          one: "{{count}} tâche commencée",
+          other: "{{count}} tâches commencées",
+        },
+        completedTasks: {
+          one: "{{count}} tâche terminée",
+          other: "{{count}} tâches terminées",
+        },
+        batchSeparator: " · ",
       },
     },
     compaction: {
@@ -393,6 +435,11 @@ export const fr: TranslationResources = {
       manual: "Contexte compacté manuellement",
       withTokens: "Contexte compacté (jetons{{tokens}}K)",
       completed: "Contexte compacté",
+    },
+    turn: {
+      openArtifact: "Ouvrir {{name}}",
+      filesChanged_one: "{{count}} fichier modifié",
+      filesChanged_other: "{{count}} fichiers modifiés",
     },
   },
   importSession: {
@@ -1064,6 +1111,38 @@ export const fr: TranslationResources = {
       },
     },
   },
+  workspaceStatus: {
+    moveTitle: "Déplacer vers le statut",
+    clear: "Effacer le statut",
+    updateHost: "Mettez à jour cet hôte pour assigner des statuts.",
+    board: {
+      title: "Tableau des espaces de travail",
+      empty:
+        "Aucun espace de travail pour l’instant. Créez-en un, puis glissez-le dans une colonne.",
+      emptyLane: "Rien pour l’instant",
+      viewStatus: "Par statut",
+      viewProject: "Par projet",
+      searchPlaceholder: "Rechercher des espaces de travail",
+      clearSearch: "Effacer la recherche",
+      columns: "Colonnes",
+      collapseHint: "Afficher en colonne complète",
+      collapseColumn: "Réduire {{name}}",
+      expandColumn: "Développer {{name}}",
+      expandAll: "Tout développer",
+      collapsedRail: "{{count}} pliés",
+    },
+    manage: {
+      title: "Gérer les colonnes",
+      add: "Ajouter une colonne",
+      addTitle: "Nouvelle colonne",
+      namePlaceholder: "Nom de la colonne",
+      renameTitle: "Renommer la colonne",
+      moveLeft: "Déplacer à gauche",
+      moveRight: "Déplacer à droite",
+      remove: "Supprimer la colonne",
+      done: "Terminé",
+    },
+  },
   workspaceLabels: {
     title: "Étiquettes",
     unlabelled: "Sans étiquette",
@@ -1128,6 +1207,7 @@ export const fr: TranslationResources = {
         project: "Projet",
         status: "Statut",
         labels: "Libellés",
+        userStatus: "Statut du tableau",
       },
       titleSource: {
         label: "Titre",
@@ -1143,6 +1223,7 @@ export const fr: TranslationResources = {
         checks: "Vérifications",
         services: "Services",
         labels: "Libellés",
+        status: "Statut",
         diff: "Statistiques de diff",
         timestamp: "Dernière activité",
       },
@@ -1196,6 +1277,7 @@ export const fr: TranslationResources = {
       sessions: "Historique",
       search: "Rechercher",
       schedules: "Planifications",
+      board: "Tableau",
     },
     worktreeSetup: {
       title: "Configurer les scripts d'arbre de travail",
@@ -1257,6 +1339,8 @@ export const fr: TranslationResources = {
         pin: "Épingler en haut",
         unpin: "Désépingler",
         archive: "Archive",
+        archiveConfirm: "Archiver",
+        archiveCancel: "Annuler",
         archiveWorkspace: "Archiver l’espace de travail",
         hideFromSidebar: "Masquer de la barre latérale",
         archiving: "Archivage...",
@@ -1290,6 +1374,7 @@ export const fr: TranslationResources = {
     isolation: {
       local: "Local",
       worktree: "Nouveau worktree",
+      existingWorktree: "Worktree existant",
       label: "Isolation",
     },
     fields: {
@@ -1303,11 +1388,13 @@ export const fr: TranslationResources = {
       createWorktreeFailed: "Échec de la création de l'arbre de travail",
       composerStateRequired: "L'état du compositeur est requis",
       selectModel: "Sélectionnez un modèle",
+      chooseWorktree: "Choisissez un worktree",
     },
     tooltips: {
       project: "Choose the project",
       host: "Choose the host",
       isolation: "Choose the isolation level",
+      existingWorktree: "Choisissez un worktree existant",
       startingRef: "Choisissez par où commencer",
       launch: "Choose what to launch",
     },
@@ -1318,6 +1405,13 @@ export const fr: TranslationResources = {
       noMatchingRefs: "Aucune référence correspondante.",
       searchPlaceholder: "Rechercher des succursales et des PR",
       title: "Commencer à partir de",
+    },
+    worktreePicker: {
+      title: "Worktree",
+      searchPlaceholder: "Rechercher des worktrees",
+      noWorktrees: "Aucun worktree disponible.",
+      inUse: "utilisé",
+      chooseWorktree: "Choisir un worktree",
     },
     launch: {
       title: "What to launch",
@@ -1927,6 +2021,10 @@ export const fr: TranslationResources = {
     output: "Sortir",
   },
   toolCallGroup: {
+    thinking: {
+      one: "a réfléchi {{count}} fois",
+      other: "a réfléchi {{count}} fois",
+    },
     editedFiles: {
       one: "a modifié {{count}} fichier",
       other: "a modifié {{count}} fichiers",
@@ -2110,11 +2208,12 @@ export const fr: TranslationResources = {
       },
       toolCallDetail: {
         label: "Affichage des appels d’outils",
-        description: "Comment les appels d’outils apparaissent dans la chronologie",
+        description: "Comment les appels d’outils et la réflexion apparaissent dans la chronologie",
         accessibilityLabel: "Sélectionner l’affichage des appels d’outils ({{value}})",
         options: {
           overview: "Résumé",
           detailed: "Détails complets",
+          drawer: "Tiroir",
         },
       },
       language: {

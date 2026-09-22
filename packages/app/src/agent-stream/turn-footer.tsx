@@ -17,6 +17,8 @@ import {
   type AssistantForkTarget,
 } from "@/components/message";
 import type { TurnFooterHost } from "./layout";
+import { TurnArtifactsSection, type TurnArtifactsMeta } from "./turn-summary";
+import { deriveTurnArtifactsSummary } from "./turn-artifacts";
 import { AssistantForkMenu } from "@/components/assistant-fork-menu";
 import { SyncedLoader } from "@/components/synced-loader";
 import { useRetainedPanelActive } from "@/components/retained-panel";
@@ -50,6 +52,7 @@ export const TurnFooter = memo(function TurnFooter({
   supportsTimelineCursor,
   onForkAssistantTurn,
   onForkInFlightTurn,
+  meta,
 }: {
   isRunning: boolean;
   inFlightTurnStartedAt: Date | null;
@@ -58,6 +61,7 @@ export const TurnFooter = memo(function TurnFooter({
   supportsTimelineCursor: boolean;
   onForkAssistantTurn?: AssistantTurnForkHandler;
   onForkInFlightTurn?: InFlightTurnForkHandler;
+  meta?: TurnArtifactsMeta;
 }) {
   if (isRunning) {
     return (
@@ -80,6 +84,7 @@ export const TurnFooter = memo(function TurnFooter({
       startIndex={host.startIndex}
       supportsTimelineCursor={supportsTimelineCursor}
       onForkAssistantTurn={onForkAssistantTurn}
+      meta={meta}
     />
   );
 });
@@ -91,6 +96,7 @@ export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
   startIndex,
   supportsTimelineCursor,
   onForkAssistantTurn,
+  meta,
 }: {
   strategy: TurnContentStrategy;
   items: StreamItem[];
@@ -98,6 +104,7 @@ export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
   startIndex: number;
   supportsTimelineCursor: boolean;
   onForkAssistantTurn?: AssistantTurnForkHandler;
+  meta?: TurnArtifactsMeta;
 }) {
   return (
     <TurnFooterRow>
@@ -108,6 +115,7 @@ export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
         startIndex={startIndex}
         supportsTimelineCursor={supportsTimelineCursor}
         onForkAssistantTurn={onForkAssistantTurn}
+        meta={meta}
       />
     </TurnFooterRow>
   );
@@ -164,6 +172,7 @@ function CompletedTurnFooter({
   startIndex,
   supportsTimelineCursor,
   onForkAssistantTurn,
+  meta,
 }: {
   strategy: TurnContentStrategy;
   items: StreamItem[];
@@ -171,6 +180,7 @@ function CompletedTurnFooter({
   startIndex: number;
   supportsTimelineCursor: boolean;
   onForkAssistantTurn?: AssistantTurnForkHandler;
+  meta?: TurnArtifactsMeta;
 }) {
   const getContent = useCallback(
     () =>
@@ -178,6 +188,15 @@ function CompletedTurnFooter({
         strategy,
         items,
         startIndex,
+      }),
+    [strategy, items, startIndex],
+  );
+  const artifactsSummary = useMemo(
+    () =>
+      deriveTurnArtifactsSummary({
+        items,
+        startIndex,
+        getNeighborIndex: (index, relation) => strategy.getNeighborIndex(index, relation),
       }),
     [strategy, items, startIndex],
   );
@@ -196,13 +215,16 @@ function CompletedTurnFooter({
     [boundary, onForkAssistantTurn],
   );
   return (
-    <View style={stylesheet.turnFooterSlot}>
-      <AssistantTurnFooter
-        getContent={getContent}
-        completedAt={timing?.completedAt}
-        durationMs={timing?.durationMs}
-        onFork={boundary && onForkAssistantTurn ? handleFork : undefined}
-      />
+    <View style={stylesheet.turnFooterColumn}>
+      <TurnArtifactsSection summary={artifactsSummary} meta={meta} />
+      <View style={stylesheet.turnFooterSlot}>
+        <AssistantTurnFooter
+          getContent={getContent}
+          completedAt={timing?.completedAt}
+          durationMs={timing?.durationMs}
+          onFork={boundary && onForkAssistantTurn ? handleFork : undefined}
+        />
+      </View>
     </View>
   );
 }
@@ -221,6 +243,12 @@ const stylesheet = StyleSheet.create((theme) => ({
   },
   turnFooterRow: {
     marginTop: theme.spacing[2] + 5,
+  },
+  turnFooterColumn: {
+    flexDirection: "column",
+    alignItems: "flex-start",
+    alignSelf: "stretch",
+    gap: theme.spacing[2],
   },
   turnFooterSlot: {
     flexDirection: "row",

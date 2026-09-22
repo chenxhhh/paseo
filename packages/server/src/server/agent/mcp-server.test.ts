@@ -214,6 +214,7 @@ function buildAgentManagerSpies() {
     getAgent: vi.fn(),
     listAgents: vi.fn().mockReturnValue([]),
     getTimeline: vi.fn().mockReturnValue([]),
+    getPersistedTimeline: vi.fn().mockResolvedValue(null),
     resumeAgentFromPersistence: vi.fn(),
     hydrateTimelineFromProvider: vi.fn().mockResolvedValue(undefined),
     appendTimelineItem: vi.fn().mockResolvedValue(undefined),
@@ -2667,6 +2668,222 @@ describe("create_agent MCP tool", () => {
         title: "Project workspace",
       }),
     ]);
+  });
+
+  describe("inherits projectId for agent-scoped worktree creates", () => {
+    const CALLER_PROJECT_ID = "prj_caller";
+    const CALLER_WORKSPACE_ID = "ws-caller";
+    const EXPLICIT_PROJECT_ID = "prj_explicit";
+
+    function callerWorkspace(overrides?: { archivedAt?: string; cwd?: string }) {
+      return createPersistedWorkspaceRecord({
+        workspaceId: CALLER_WORKSPACE_ID,
+        projectId: CALLER_PROJECT_ID,
+        cwd: overrides?.cwd ?? REPO_CWD,
+        kind: "local_checkout",
+        displayName: "caller",
+        createdAt: "2026-07-18T00:00:00.000Z",
+        updatedAt: "2026-07-18T00:00:00.000Z",
+        ...(overrides?.archivedAt ? { archivedAt: overrides.archivedAt } : {}),
+      });
+    }
+
+    function stubWorktreeCreate() {
+      const receivedInputs: CreatePaseoWorktreeInput[] = [];
+      const createPaseoWorktree: CreatePaseoWorktreeWorkflowFn = async (input) => {
+        receivedInputs.push(input);
+        return {
+          worktree: { branchName: "inherited", worktreePath: TARGET_CWD },
+          intent: { kind: "branch-off", branchName: "inherited", baseBranch: "main" },
+          workspace: createPersistedWorkspaceRecord({
+            workspaceId: "ws-inherited",
+            projectId: input.projectId ?? "prj_fallback",
+            cwd: TARGET_CWD,
+            kind: "worktree",
+            displayName: "inherited",
+            createdAt: "2026-07-18T00:00:00.000Z",
+            updatedAt: "2026-07-18T00:00:00.000Z",
+          }),
+          repoRoot: REPO_CWD,
+          created: true,
+        };
+      };
+      return { receivedInputs, createPaseoWorktree };
+    }
+
+    async function createScopedServer(input: {
+      callerAgentId?: string;
+      workspaceId?: string;
+      workspace?: PersistedWorkspaceRecord | null;
+      createPaseoWorktree: CreatePaseoWorktreeWorkflowFn;
+    }) {
+      const { agentManager, agentStorage, spies } = createTestDeps();
+      if (input.callerAgentId) {
+        spies.agentManager.getAgent.mockReturnValue({
+          id: input.callerAgentId,
+          cwd: REPO_CWD,
+          workspaceId: input.workspaceId,
+          provider: "codex",
+          currentModeId: "full-access",
+          config: { title: "Caller" },
+        } as ManagedAgent);
+      }
+      spies.agentManager.createAgent.mockResolvedValue({
+        id: "created-agent",
+        cwd: TARGET_CWD,
+        workspaceId: "ws-inherited",
+        lifecycle: "idle",
+        currentModeId: null,
+        availableModes: [],
+        config: { title: "Created" },
+      } as ManagedAgent);
+      const workspace = input.workspace;
+      const server = await createAgentMcpServer({
+        agentManager,
+        agentStorage,
+        providerSnapshotManager: createOpenCodeManager().manager,
+        ...(input.callerAgentId ? { callerAgentId: input.callerAgentId } : {}),
+        workspaceRegistry: {
+          get: async (workspaceId) =>
+            workspace && workspace.workspaceId === workspaceId ? workspace : null,
+          list: async () => (workspace ? [workspace] : []),
+          upsert: async () => undefined,
+        },
+        createPaseoWorktree: input.createPaseoWorktree,
+        logger,
+      });
+      return { server, spies };
+    }
+
+    it("does not inherit for top-level create_workspace calls", async () => {
+      const { receivedInputs, createPaseoWorktree } = stubWorktreeCreate();
+      const { server } = await createScopedServer({
+        workspace: callerWorkspace(),
+        createPaseoWorktree,
+      });
+
+      await invokeToolWithParsedInput(registeredTool(server, "create_workspace"), {
+        isolation: "worktree",
+        path: REPO_CWD,
+        worktreeSlug: "inherited",
+      });
+
+      expect(receivedInputs[0]?.projectId).toBeUndefined();
+    });
+
+    it("inherits the caller workspace project when create_workspace omits projectId", async () => {
+      const { receivedInputs, createPaseoWorktree } = stubWorktreeCreate();
+      const { server } = await createScopedServer({
+        callerAgentId: "caller-agent",
+        workspaceId: CALLER_WORKSPACE_ID,
+        workspace: callerWorkspace(),
+        createPaseoWorktree,
+      });
+
+      await invokeToolWithParsedInput(registeredTool(server, "create_workspace"), {
+        isolation: "worktree",
+        path: REPO_CWD,
+        worktreeSlug: "inherited",
+      });
+
+      expect(receivedInputs[0]?.projectId).toBe(CALLER_PROJECT_ID);
+    });
+
+    it("does not inherit when the caller workspace is archived", async () => {
+      const { receivedInputs, createPaseoWorktree } = stubWorktreeCreate();
+      const { server } = await createScopedServer({
+        callerAgentId: "caller-agent",
+        workspaceId: CALLER_WORKSPACE_ID,
+        workspace: callerWorkspace({ archivedAt: "2026-07-18T00:00:00.000Z" }),
+        createPaseoWorktree,
+      });
+
+      await invokeToolWithParsedInput(registeredTool(server, "create_workspace"), {
+        isolation: "worktree",
+        path: REPO_CWD,
+        worktreeSlug: "inherited",
+      });
+
+      expect(receivedInputs[0]?.projectId).toBeUndefined();
+    });
+
+    it("does not inherit when the caller has no workspaceId", async () => {
+      const { receivedInputs, createPaseoWorktree } = stubWorktreeCreate();
+      const { server } = await createScopedServer({
+        callerAgentId: "caller-agent",
+        workspace: callerWorkspace(),
+        createPaseoWorktree,
+      });
+
+      await invokeToolWithParsedInput(registeredTool(server, "create_workspace"), {
+        isolation: "worktree",
+        path: REPO_CWD,
+        worktreeSlug: "inherited",
+      });
+
+      expect(receivedInputs[0]?.projectId).toBeUndefined();
+    });
+
+    it("lets an explicit projectId override the inherited project", async () => {
+      const { receivedInputs, createPaseoWorktree } = stubWorktreeCreate();
+      const { server } = await createScopedServer({
+        callerAgentId: "caller-agent",
+        workspaceId: CALLER_WORKSPACE_ID,
+        workspace: callerWorkspace(),
+        createPaseoWorktree,
+      });
+
+      await invokeToolWithParsedInput(registeredTool(server, "create_workspace"), {
+        isolation: "worktree",
+        path: REPO_CWD,
+        projectId: EXPLICIT_PROJECT_ID,
+        worktreeSlug: "inherited",
+      });
+
+      expect(receivedInputs[0]?.projectId).toBe(EXPLICIT_PROJECT_ID);
+    });
+
+    it("does not inherit when path sits outside the caller workspace", async () => {
+      const { receivedInputs, createPaseoWorktree } = stubWorktreeCreate();
+      const { server } = await createScopedServer({
+        callerAgentId: "caller-agent",
+        workspaceId: CALLER_WORKSPACE_ID,
+        workspace: callerWorkspace(),
+        createPaseoWorktree,
+      });
+
+      await invokeToolWithParsedInput(registeredTool(server, "create_workspace"), {
+        isolation: "worktree",
+        path: TARGET_CWD,
+        worktreeSlug: "inherited",
+      });
+
+      expect(receivedInputs[0]?.projectId).toBeUndefined();
+    });
+
+    it("inherits the caller workspace project when create_agent cuts a worktree", async () => {
+      const { receivedInputs, createPaseoWorktree } = stubWorktreeCreate();
+      const { server } = await createScopedServer({
+        callerAgentId: "caller-agent",
+        workspaceId: CALLER_WORKSPACE_ID,
+        workspace: callerWorkspace(),
+        createPaseoWorktree,
+      });
+
+      await registeredTool(server, "create_agent").handler({
+        ...detachedWorktreeWorkspace(REPO_CWD, {
+          kind: "branch-off",
+          worktreeSlug: "inherited",
+          branchName: "feature/inherited",
+          baseBranch: "main",
+        }),
+        title: "Inherited worktree agent",
+        provider: "codex/gpt-5.4",
+        initialPrompt: "Do work",
+      });
+
+      expect(receivedInputs[0]?.projectId).toBe(CALLER_PROJECT_ID);
+    });
   });
 
   it("preserves branch checkout and pull request checkout workspace modes", async () => {
@@ -5805,6 +6022,32 @@ describe("agent snapshot MCP serialization", () => {
     ]);
   });
 
+  it("reads persisted activity without resuming a missing native session", async () => {
+    const { agentManager, agentStorage, spies } = createTestDeps();
+    spies.agentManager.getAgent.mockReturnValue(null);
+    spies.agentStorage.get.mockResolvedValue(createStoredRecord({ id: "closed-activity-agent" }));
+    spies.agentManager.getPersistedTimeline.mockResolvedValue([
+      { type: "assistant_message", text: "Saved implementation result" },
+    ]);
+    spies.agentManager.resumeAgentFromPersistence.mockRejectedValue(
+      new Error("session not found: acp-sess-old"),
+    );
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      logger,
+      providerSnapshotManager: createClaudeOnlyManager(),
+    });
+    const response = await registeredTool(server, "get_agent_activity").handler({
+      agentId: "closed-activity-agent",
+    });
+    expect(response.structuredContent.updateCount).toBe(1);
+    expect(response.structuredContent.content).toContain("Saved implementation result");
+    expect(response.structuredContent.content).toContain("Provider runtime was not resumed");
+    expect(spies.agentManager.resumeAgentFromPersistence).not.toHaveBeenCalled();
+    expect(spies.agentManager.createAgent).not.toHaveBeenCalled();
+  });
+
   it("loads archived agents before reading get_agent_activity", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
     const record = createStoredRecord({ id: "archived-activity-agent" });
@@ -5814,7 +6057,7 @@ describe("agent snapshot MCP serialization", () => {
     } as ManagedAgent;
     spies.agentManager.getAgent
       .mockReturnValueOnce(null)
-      .mockReturnValue(snapshot)
+      .mockReturnValueOnce(null)
       .mockReturnValue(snapshot);
     spies.agentStorage.get.mockResolvedValue(record);
     spies.agentManager.resumeAgentFromPersistence.mockResolvedValue(snapshot);

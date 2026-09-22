@@ -11,6 +11,7 @@ import {
   PermissionOption,
   PromptResponse,
   RequestPermissionRequest,
+  RequestPermissionResponse,
   SessionConfigOption,
   SessionUpdate,
 } from "@agentclientprotocol/sdk";
@@ -21,6 +22,7 @@ import {
   type SpawnedACPProcess,
   type SessionStateResponse,
   buildACPClientCapabilities,
+  buildResumeSessionEnv,
   createLoggedNdJsonStream,
   deriveModelDefinitionsFromACP,
   deriveModesFromACP,
@@ -47,6 +49,7 @@ import { transformPiModels } from "./pi/agent.js";
 import type { AgentStreamEvent } from "../agent-sdk-types.js";
 import type {
   AgentCapabilityFlags,
+  AgentPermissionRequest,
   AgentPersistenceHandle,
   ProviderRefreshContext,
 } from "../agent-sdk-types.js";
@@ -90,11 +93,36 @@ describe("buildACPClientCapabilities", () => {
 
 interface ACPSessionInternals {
   sessionId: string | null;
-  connection: { prompt: (...args: unknown[]) => Promise<PromptResponse> };
+  connection: {
+    prompt: (...args: unknown[]) => Promise<PromptResponse>;
+    cancel?: (input: { sessionId: string }) => Promise<void>;
+  };
   activeForegroundTurnId: string | null;
   configOptions: SessionConfigOption[];
+  pendingPermissions: Map<string, PendingPermissionInternals>;
   translateSessionUpdate(update: SessionUpdate): AgentStreamEvent[];
   acpMcpServers(): unknown[];
+}
+
+interface PendingPermissionInternals {
+  request: AgentPermissionRequest;
+  options: PermissionOption[];
+  resolve: (response: RequestPermissionResponse) => void;
+  reject: (error: Error) => void;
+  turnId: string | null;
+}
+
+function submittedUserMessageTexts(events: AgentStreamEvent[]): string[] {
+  return events.flatMap((event) =>
+    event.type === "timeline" && event.item.type === "user_message" ? [event.item.text] : [],
+  );
+}
+
+/** Drives the fire-and-forget session/prompt promise chains to completion. */
+async function flushPromptMicrotasks(): Promise<void> {
+  for (let index = 0; index < 5; index += 1) {
+    await Promise.resolve();
+  }
 }
 
 interface ACPModelSelectionInternals {
@@ -2799,6 +2827,63 @@ describe("ACPAgentSession", () => {
     expect(asInternals<ACPSessionInternals>(session).activeForegroundTurnId).toBeNull();
   });
 
+  test("keeps the turn open when ACP end_turn arrives after an incomplete task list", async () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    const resolvers: Array<(value: PromptResponse) => void> = [];
+    const prompt = vi.fn(
+      () =>
+        new Promise<PromptResponse>((resolve) => {
+          resolvers.push(resolve);
+        }),
+    );
+
+    asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+    asInternals<ACPSessionInternals>(session).connection = { prompt };
+
+    session.subscribe((event) => {
+      events.push(event);
+    });
+
+    const { turnId } = await session.startTurn("plan the work");
+    await session.sessionUpdate({
+      sessionId: "session-1",
+      update: {
+        sessionUpdate: "plan",
+        entries: [
+          { content: "Compare the two plans", status: "pending", priority: "medium" },
+          { content: "Write the canvas", status: "pending", priority: "medium" },
+        ],
+      },
+    });
+
+    resolvers[0]!({ stopReason: "end_turn" });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(prompt).toHaveBeenCalledTimes(2);
+    expect(prompt).toHaveBeenLastCalledWith({
+      sessionId: "session-1",
+      messageId: expect.any(String),
+      prompt: [{ type: "text", text: "Continue." }],
+    });
+    expect(events.find((event) => event.type === "turn_completed")).toBeUndefined();
+    expect(asInternals<ACPSessionInternals>(session).activeForegroundTurnId).toBe(turnId);
+    expect(
+      events.filter((event) => event.type === "timeline" && event.item.type === "user_message"),
+    ).toHaveLength(1);
+
+    resolvers[1]!({ stopReason: "end_turn" });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(events.find((event) => event.type === "turn_completed")).toMatchObject({
+      type: "turn_completed",
+      turnId,
+    });
+    expect(asInternals<ACPSessionInternals>(session).activeForegroundTurnId).toBeNull();
+  });
+
   test("startTurn emits the submitted user message even when ACP does not echo it", async () => {
     const session = createSession();
     const events: AgentStreamEvent[] = [];
@@ -3270,6 +3355,341 @@ describe("ACPAgentSession", () => {
     await expect(turnFailed).resolves.toMatchObject({
       error: expect.not.stringContaining("[object Object]"),
     });
+  });
+
+  test("steerActiveTurn queues the message and sends it as the next prompt when the current one settles", async () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    const promptResolvers: Array<(value: PromptResponse) => void> = [];
+    const prompt = vi.fn(
+      () =>
+        new Promise<PromptResponse>((resolve) => {
+          promptResolvers.push(resolve);
+        }),
+    );
+
+    asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+    asInternals<ACPSessionInternals>(session).connection = { prompt };
+
+    session.subscribe((event) => events.push(event));
+
+    const { turnId } = await session.startTurn("first", { clientMessageId: "msg-first" });
+
+    const steer = await session.steerActiveTurn("focus on the tests", {
+      expectedTurnId: turnId,
+      clientMessageId: "msg-steer",
+    });
+
+    expect(steer).toEqual({ status: "accepted" });
+    expect(prompt).toHaveBeenCalledTimes(1);
+    expect(submittedUserMessageTexts(events)).toEqual(["first"]);
+
+    promptResolvers[0]({ stopReason: "end_turn" });
+    await flushPromptMicrotasks();
+
+    expect(prompt).toHaveBeenCalledTimes(2);
+    expect(prompt).toHaveBeenLastCalledWith({
+      sessionId: "session-1",
+      messageId: "msg-steer",
+      prompt: [{ type: "text", text: "focus on the tests" }],
+    });
+    expect(asInternals<ACPSessionInternals>(session).activeForegroundTurnId).toBe(turnId);
+    expect(events.filter((event) => event.type === "turn_started")).toHaveLength(1);
+    expect(submittedUserMessageTexts(events)).toEqual(["first", "focus on the tests"]);
+    expect(events.filter((event) => event.type === "turn_completed")).toHaveLength(0);
+
+    promptResolvers[1]({ stopReason: "end_turn" });
+    await flushPromptMicrotasks();
+
+    expect(events.filter((event) => event.type === "turn_completed")).toHaveLength(1);
+    expect(asInternals<ACPSessionInternals>(session).activeForegroundTurnId).toBeNull();
+  });
+
+  test("queued steers deliver in order, one per settled prompt", async () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    const promptResolvers: Array<(value: PromptResponse) => void> = [];
+    const prompt = vi.fn(
+      () =>
+        new Promise<PromptResponse>((resolve) => {
+          promptResolvers.push(resolve);
+        }),
+    );
+
+    asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+    asInternals<ACPSessionInternals>(session).connection = { prompt };
+
+    session.subscribe((event) => events.push(event));
+
+    const { turnId } = await session.startTurn("first");
+    await session.steerActiveTurn("one", { expectedTurnId: turnId, clientMessageId: "msg-one" });
+    await session.steerActiveTurn("two", { expectedTurnId: turnId, clientMessageId: "msg-two" });
+
+    promptResolvers[0]({ stopReason: "end_turn" });
+    await flushPromptMicrotasks();
+    expect(prompt).toHaveBeenCalledTimes(2);
+    expect(prompt).toHaveBeenLastCalledWith(expect.objectContaining({ messageId: "msg-one" }));
+    expect(submittedUserMessageTexts(events)).toEqual(["first", "one"]);
+
+    promptResolvers[1]({ stopReason: "end_turn" });
+    await flushPromptMicrotasks();
+    expect(prompt).toHaveBeenCalledTimes(3);
+    expect(prompt).toHaveBeenLastCalledWith(expect.objectContaining({ messageId: "msg-two" }));
+    expect(submittedUserMessageTexts(events)).toEqual(["first", "one", "two"]);
+    expect(asInternals<ACPSessionInternals>(session).activeForegroundTurnId).toBe(turnId);
+
+    promptResolvers[2]({ stopReason: "end_turn" });
+    await flushPromptMicrotasks();
+    expect(events.filter((event) => event.type === "turn_completed")).toHaveLength(1);
+  });
+
+  test("steerActiveTurn requires clearPendingPermissions while a permission blocks the prompt", async () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    const prompt = vi.fn(() => new Promise<PromptResponse>(() => {}));
+
+    asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+    asInternals<ACPSessionInternals>(session).connection = { prompt };
+    session.subscribe((event) => events.push(event));
+
+    const { turnId } = await session.startTurn("first");
+    const internals = asInternals<ACPSessionInternals>(session);
+    const resolvedOutcomes: RequestPermissionResponse[] = [];
+    internals.pendingPermissions.set("perm-1", {
+      request: {
+        id: "perm-1",
+        provider: "claude-acp",
+        name: "run command",
+        kind: "tool",
+      },
+      options: [{ optionId: "reject", name: "Reject", kind: "reject_once" }],
+      resolve: (value) => resolvedOutcomes.push(value),
+      reject: () => undefined,
+      turnId,
+    });
+
+    const refused = await session.steerActiveTurn("answer while blocked", {
+      expectedTurnId: turnId,
+    });
+    expect(refused).toEqual({ status: "unavailable" });
+
+    const accepted = await session.steerActiveTurn("answer while blocked", {
+      expectedTurnId: turnId,
+      clearPendingPermissions: true,
+    });
+    expect(accepted).toEqual({ status: "accepted" });
+    expect(internals.pendingPermissions.size).toBe(0);
+    expect(resolvedOutcomes).toEqual([{ outcome: { outcome: "selected", optionId: "reject" } }]);
+    expect(events.find((event) => event.type === "permission_resolved")).toMatchObject({
+      requestId: "perm-1",
+      resolution: { behavior: "deny" },
+    });
+  });
+
+  test("interrupt discards queued steers and settles the turn when the agent never answers the cancel", async () => {
+    vi.useFakeTimers();
+    try {
+      const session = createSession();
+      const events: AgentStreamEvent[] = [];
+      const prompt = vi.fn(() => new Promise<PromptResponse>(() => {}));
+      const cancel = vi.fn(async () => undefined);
+
+      asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+      asInternals<ACPSessionInternals>(session).connection = { prompt, cancel };
+
+      session.subscribe((event) => events.push(event));
+
+      const { turnId } = await session.startTurn("first");
+      await session.steerActiveTurn("never delivered", { expectedTurnId: turnId });
+
+      const interrupted = session.interrupt();
+      await vi.advanceTimersByTimeAsync(5_000);
+      await interrupted;
+
+      expect(cancel).toHaveBeenCalledWith({ sessionId: "session-1" });
+      expect(events.find((event) => event.type === "turn_canceled")).toMatchObject({ turnId });
+      expect(asInternals<ACPSessionInternals>(session).activeForegroundTurnId).toBeNull();
+
+      // The steer died with the turn, so a fresh prompt starts cleanly instead of
+      // being refused with "A foreground turn is already active".
+      await session.startTurn("continue");
+      expect(prompt).toHaveBeenCalledTimes(2);
+      expect(submittedUserMessageTexts(events)).toEqual(["first", "continue"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("a late answer to the abandoned prompt cannot finish the turn that replaced it", async () => {
+    vi.useFakeTimers();
+    try {
+      const session = createSession();
+      const events: AgentStreamEvent[] = [];
+      const promptResolvers: Array<(value: PromptResponse) => void> = [];
+      const prompt = vi.fn(
+        () =>
+          new Promise<PromptResponse>((resolve) => {
+            promptResolvers.push(resolve);
+          }),
+      );
+      const cancel = vi.fn(async () => undefined);
+
+      asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+      asInternals<ACPSessionInternals>(session).connection = { prompt, cancel };
+
+      session.subscribe((event) => events.push(event));
+
+      await session.startTurn("first");
+      const interrupted = session.interrupt();
+      await vi.advanceTimersByTimeAsync(5_000);
+      await interrupted;
+
+      const { turnId: secondTurnId } = await session.startTurn("continue");
+
+      // The agent finally answers the cancelled prompt long after it was abandoned.
+      promptResolvers[0]({ stopReason: "cancelled" });
+      await flushPromptMicrotasks();
+
+      expect(asInternals<ACPSessionInternals>(session).activeForegroundTurnId).toBe(secondTurnId);
+      expect(events.filter((event) => event.type === "turn_canceled")).toHaveLength(1);
+
+      promptResolvers[1]({ stopReason: "end_turn" });
+      await flushPromptMicrotasks();
+
+      const completed = events.filter((event) => event.type === "turn_completed");
+      expect(completed).toHaveLength(1);
+      expect(completed[0]).toMatchObject({ turnId: secondTurnId });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("a cancelled response no cancel targeted is re-dispatched instead of losing the prompt", async () => {
+    vi.useFakeTimers();
+    try {
+      const session = createSession();
+      const events: AgentStreamEvent[] = [];
+      const promptResolvers: Array<(value: PromptResponse) => void> = [];
+      const prompt = vi.fn(
+        () =>
+          new Promise<PromptResponse>((resolve) => {
+            promptResolvers.push(resolve);
+          }),
+      );
+      const cancel = vi.fn(async () => undefined);
+
+      asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+      asInternals<ACPSessionInternals>(session).connection = { prompt, cancel };
+
+      session.subscribe((event) => events.push(event));
+
+      // The interrupted turn settles through the manager's local settle path.
+      await session.startTurn("first");
+      const interrupted = session.interrupt();
+      await vi.advanceTimersByTimeAsync(5_000);
+      await interrupted;
+
+      // The replacement prompt races the agent's cancel wind-down.
+      const { turnId: secondTurnId } = await session.startTurn("replacement");
+      promptResolvers[1]({ stopReason: "cancelled" });
+      await flushPromptMicrotasks();
+
+      expect(prompt).toHaveBeenCalledTimes(3);
+      expect(events.filter((event) => event.type === "turn_canceled")).toHaveLength(1);
+
+      promptResolvers[2]({ stopReason: "end_turn" });
+      await flushPromptMicrotasks();
+
+      const completed = events.filter((event) => event.type === "turn_completed");
+      expect(completed).toHaveLength(1);
+      expect(completed[0]).toMatchObject({ turnId: secondTurnId });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("cross-talk re-dispatches stop after the retry cap and finish the turn", async () => {
+    vi.useFakeTimers();
+    try {
+      const session = createSession();
+      const events: AgentStreamEvent[] = [];
+      const promptResolvers: Array<(value: PromptResponse) => void> = [];
+      const prompt = vi.fn(
+        () =>
+          new Promise<PromptResponse>((resolve) => {
+            promptResolvers.push(resolve);
+          }),
+      );
+
+      asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+      asInternals<ACPSessionInternals>(session).connection = {
+        prompt,
+        cancel: vi.fn(async () => undefined),
+      };
+
+      session.subscribe((event) => events.push(event));
+
+      await session.startTurn("first");
+      const interrupted = session.interrupt();
+      await vi.advanceTimersByTimeAsync(5_000);
+      await interrupted;
+
+      const { turnId: secondTurnId } = await session.startTurn("replacement");
+      for (let i = 1; i <= 3; i += 1) {
+        promptResolvers[i]({ stopReason: "cancelled" });
+        await flushPromptMicrotasks();
+      }
+
+      // First turn + replacement dispatch + 2 re-dispatches, then the third
+      // cancellation sticks.
+      expect(prompt).toHaveBeenCalledTimes(4);
+      const canceled = events.filter((event) => event.type === "turn_canceled");
+      expect(canceled[canceled.length - 1]).toMatchObject({ turnId: secondTurnId });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("a cancelled response after this turn was cancelled is not re-dispatched", async () => {
+    vi.useFakeTimers();
+    try {
+      const session = createSession();
+      const events: AgentStreamEvent[] = [];
+      const promptResolvers: Array<(value: PromptResponse) => void> = [];
+      const prompt = vi.fn(
+        () =>
+          new Promise<PromptResponse>((resolve) => {
+            promptResolvers.push(resolve);
+          }),
+      );
+
+      asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+      asInternals<ACPSessionInternals>(session).connection = {
+        prompt,
+        cancel: vi.fn(async () => undefined),
+      };
+
+      session.subscribe((event) => events.push(event));
+
+      await session.startTurn("first");
+      const interrupted = session.interrupt();
+      await vi.advanceTimersByTimeAsync(5_000);
+      await interrupted;
+
+      const { turnId: secondTurnId } = await session.startTurn("replacement");
+      // The user cancels the replacement turn itself.
+      const secondInterrupt = session.interrupt();
+      promptResolvers[1]({ stopReason: "cancelled" });
+      await flushPromptMicrotasks();
+      await vi.advanceTimersByTimeAsync(5_000);
+      await secondInterrupt;
+
+      expect(prompt).toHaveBeenCalledTimes(2);
+      const canceled = events.filter((event) => event.type === "turn_canceled");
+      expect(canceled[canceled.length - 1]).toMatchObject({ turnId: secondTurnId });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -3772,6 +4192,9 @@ describe("ACP session/load invariant — cwd and mcpServers always passed", () =
     handle: AgentPersistenceHandle;
     loadSession?: ReturnType<typeof vi.fn>;
     unstableResumeSession?: ReturnType<typeof vi.fn>;
+    newSession?: ReturnType<typeof vi.fn>;
+    resumeAfterLoad?: boolean;
+    recreateOnSessionLost?: boolean;
   }) {
     const loadSession =
       args.loadSession ??
@@ -3789,13 +4212,22 @@ describe("ACP session/load invariant — cwd and mcpServers always passed", () =
         models: null,
         configOptions: [],
       });
+    const newSession =
+      args.newSession ??
+      vi.fn().mockResolvedValue({
+        sessionId: "session-recreated",
+        modes: null,
+        models: null,
+        configOptions: [],
+      });
 
     class TestSession extends ACPAgentSession {
       protected override async spawnProcess(): Promise<SpawnedACPProcess> {
         return {
           child: createProbeChildStub(),
           connection: {
-            prompt: vi.fn(),
+            prompt: vi.fn().mockResolvedValue({ stopReason: "end_turn" }),
+            newSession,
             loadSession,
             unstable_resumeSession: unstableResumeSession,
           } as unknown as ClientSideConnection,
@@ -3822,10 +4254,12 @@ describe("ACP session/load invariant — cwd and mcpServers always passed", () =
           ...args.capabilities,
         },
         handle: args.handle,
+        resumeAfterLoad: args.resumeAfterLoad,
+        recreateOnSessionLost: args.recreateOnSessionLost,
       },
     );
 
-    return { session, loadSession, unstableResumeSession };
+    return { session, loadSession, unstableResumeSession, newSession };
   }
 
   test("loadSession is always called with sessionId, cwd, and mcpServers even when mcpServers is empty", async () => {
@@ -4031,5 +4465,125 @@ describe("ACP session/load invariant — cwd and mcpServers always passed", () =
       cwd: "/tmp/paseo-acp-test",
       mcpServers: [],
     });
+  });
+
+  test("resumeAfterLoad issues unstable_resumeSession after loadSession", async () => {
+    const { session, loadSession, unstableResumeSession } = makeTestSession({
+      capabilities: { loadSession: true, sessionCapabilities: { resume: {} } },
+      handle: { sessionId: "session-1", provider: "claude-acp" },
+      resumeAfterLoad: true,
+    });
+
+    await session.initializeResumedSession();
+
+    expect(loadSession).toHaveBeenCalledTimes(1);
+    expect(unstableResumeSession).toHaveBeenCalledTimes(1);
+    expect(unstableResumeSession).toHaveBeenCalledWith({
+      sessionId: "session-1",
+      cwd: "/tmp/paseo-acp-test",
+      mcpServers: [],
+    });
+  });
+
+  test("resumeAfterLoad without session resume capability only loads", async () => {
+    const { session, loadSession, unstableResumeSession } = makeTestSession({
+      capabilities: { loadSession: true },
+      handle: { sessionId: "session-1", provider: "claude-acp" },
+      resumeAfterLoad: true,
+    });
+
+    await session.initializeResumedSession();
+
+    expect(loadSession).toHaveBeenCalledTimes(1);
+    expect(unstableResumeSession).not.toHaveBeenCalled();
+  });
+
+  test("default behavior keeps loadSession only even with resume capability", async () => {
+    const { session, loadSession, unstableResumeSession } = makeTestSession({
+      capabilities: { loadSession: true, sessionCapabilities: { resume: {} } },
+      handle: { sessionId: "session-1", provider: "claude-acp" },
+    });
+
+    await session.initializeResumedSession();
+
+    expect(loadSession).toHaveBeenCalledTimes(1);
+    expect(unstableResumeSession).not.toHaveBeenCalled();
+  });
+
+  test("recreateOnSessionLost rebuilds a fresh session when loadSession reports session not found", async () => {
+    const { session, loadSession, newSession } = makeTestSession({
+      capabilities: { loadSession: true },
+      handle: { sessionId: "session-lost", provider: "claude-acp" },
+      recreateOnSessionLost: true,
+      loadSession: vi.fn().mockRejectedValue(new Error("session not found: acp-sess-gone")),
+    });
+
+    await session.initializeResumedSession();
+
+    expect(loadSession).toHaveBeenCalledTimes(1);
+    expect(newSession).toHaveBeenCalledTimes(1);
+    expect(newSession).toHaveBeenCalledWith({
+      cwd: "/tmp/paseo-acp-test",
+      mcpServers: [],
+    });
+    expect(session.id).toBe("session-recreated");
+    expect(session.describePersistence()?.nativeHandle).toBe("session-recreated");
+  });
+
+  test("recreated session stays usable: turns start and pre-existing subscribers keep receiving events", async () => {
+    const { session } = makeTestSession({
+      capabilities: { loadSession: true },
+      handle: { sessionId: "session-lost", provider: "claude-acp" },
+      recreateOnSessionLost: true,
+      loadSession: vi.fn().mockRejectedValue(new Error("session not found: acp-sess-gone")),
+    });
+
+    // Regression: tearing the failed process down with close() flipped the
+    // session to closed and dropped every subscriber, so the fresh session
+    // could neither start turns nor emit events.
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    await session.initializeResumedSession();
+
+    await expect(session.startTurn("hello")).resolves.toEqual({ turnId: expect.any(String) });
+    expect(events.some((event) => event.type === "turn_started")).toBe(true);
+  });
+
+  test("session not found without the opt-in still fails the resume", async () => {
+    const { session, newSession } = makeTestSession({
+      capabilities: { loadSession: true },
+      handle: { sessionId: "session-lost", provider: "claude-acp" },
+      loadSession: vi.fn().mockRejectedValue(new Error("session not found: acp-sess-gone")),
+    });
+
+    await expect(session.initializeResumedSession()).rejects.toThrow("session not found");
+    expect(newSession).not.toHaveBeenCalled();
+  });
+
+  test("recreateOnSessionLost does not mask other load failures", async () => {
+    const { session, newSession } = makeTestSession({
+      capabilities: { loadSession: true },
+      handle: { sessionId: "session-1", provider: "claude-acp" },
+      recreateOnSessionLost: true,
+      loadSession: vi.fn().mockRejectedValue(new Error("session/load failed")),
+    });
+
+    await expect(session.initializeResumedSession()).rejects.toThrow("session/load failed");
+    expect(newSession).not.toHaveBeenCalled();
+  });
+});
+
+describe("buildResumeSessionEnv", () => {
+  test("marks resume sessions with the persisted session id", () => {
+    expect(buildResumeSessionEnv("acp-sess-1")).toEqual({
+      PASEO_RESUME_SESSION_ID: "acp-sess-1",
+    });
+  });
+
+  test("returns an empty env for new sessions and catalog probes", () => {
+    expect(buildResumeSessionEnv(null)).toEqual({});
+    expect(buildResumeSessionEnv(undefined)).toEqual({});
+    expect(buildResumeSessionEnv("")).toEqual({});
   });
 });

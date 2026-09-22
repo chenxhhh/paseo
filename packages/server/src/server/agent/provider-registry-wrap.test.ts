@@ -25,6 +25,7 @@ const OPTIONAL_AGENT_SESSION_METHOD_NAMES = [
   "revertConversation",
   "revertFiles",
   "revertBoth",
+  "steerActiveTurn",
   "tryHandleOutOfBand",
 ] as const satisfies readonly OptionalAgentSessionMethodName[];
 
@@ -151,6 +152,11 @@ class FakeSession implements AgentSession {
     this.recordedCalls.push("revertBoth");
   }
 
+  async steerActiveTurn() {
+    this.recordedCalls.push("steerActiveTurn");
+    return { status: "accepted" as const };
+  }
+
   tryHandleOutOfBand(_prompt: AgentPromptInput) {
     this.recordedCalls.push("tryHandleOutOfBand");
     return {
@@ -179,9 +185,13 @@ describe("wrapSessionProvider", () => {
     await wrapped.revertConversation?.({ messageId: "message-1" });
     await wrapped.revertFiles?.({ messageId: "message-1" });
     await wrapped.revertBoth?.({ messageId: "message-1" });
+    const steer = await wrapped.steerActiveTurn?.("steer this", {
+      expectedTurnId: "turn-1",
+    });
     const handler = wrapped.tryHandleOutOfBand?.("/compact");
     await handler?.run({ emit: () => {} });
 
+    expect(steer).toEqual({ status: "accepted" });
     expect(session.recordedCalls).toEqual([
       "listCommands",
       "setModel",
@@ -190,6 +200,7 @@ describe("wrapSessionProvider", () => {
       "revertConversation",
       "revertFiles",
       "revertBoth",
+      "steerActiveTurn",
       "tryHandleOutOfBand",
       "tryHandleOutOfBand.run",
     ]);

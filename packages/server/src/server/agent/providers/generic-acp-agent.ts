@@ -21,6 +21,7 @@ import {
 export const GenericACPProviderParamsSchema = z
   .object({
     supportsMcpServers: z.boolean().optional(),
+    requiresDurableTimeline: z.boolean().optional(),
     clientCapabilities: z
       .object({
         fs: z
@@ -51,6 +52,9 @@ interface GenericACPAgentClientOptions {
   configFeatureOptions?: ACPConfigFeatureOption[];
   extensionCommandsParser?: ACPExtensionCommandsParser;
   catalogModelResolver?: ACPCatalogModelResolver;
+  resumeAfterLoad?: boolean;
+  recreateOnSessionLost?: boolean;
+  supportsAutoAccept?: boolean;
   now?: () => number;
 }
 
@@ -69,7 +73,12 @@ export class GenericACPAgentClient extends ACPAgentClient {
         env: options.env,
       },
       defaultCommand: options.command,
-      capabilities: buildGenericACPCapabilities(providerParams),
+      capabilities: {
+        ...buildGenericACPCapabilities(providerParams),
+        ...(options.supportsAutoAccept === undefined
+          ? {}
+          : { supportsAutoAccept: options.supportsAutoAccept }),
+      },
       waitForInitialCommands: options.waitForInitialCommands,
       initialCommandsWaitTimeoutMs: options.initialCommandsWaitTimeoutMs,
       clientCapabilities: providerParams.clientCapabilities,
@@ -77,6 +86,8 @@ export class GenericACPAgentClient extends ACPAgentClient {
       configFeatureOptions: options.configFeatureOptions,
       extensionCommandsParser: options.extensionCommandsParser,
       catalogModelResolver: options.catalogModelResolver,
+      resumeAfterLoad: options.resumeAfterLoad,
+      recreateOnSessionLost: options.recreateOnSessionLost,
       now: options.now,
     });
 
@@ -167,6 +178,7 @@ function buildGenericACPCapabilities(params: GenericACPProviderParams): AgentCap
   return {
     ...DEFAULT_ACP_CAPABILITIES,
     supportsMcpServers: params.supportsMcpServers ?? DEFAULT_ACP_CAPABILITIES.supportsMcpServers,
+    requiresDurableTimeline: params.requiresDurableTimeline ?? false,
   };
 }
 

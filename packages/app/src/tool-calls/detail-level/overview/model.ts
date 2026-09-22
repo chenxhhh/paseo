@@ -5,6 +5,7 @@ const DIRECT_PASEO_TOOL_PREFIX = "paseo_";
 const DIRECT_SEARCH_TOOL_SUFFIX_PATTERN = /(?:^|[_.:/])(?:web_search|llm_context)$/;
 
 export interface OverviewSummary {
+  thinkingCount: number;
   editedFileCount: number;
   commandCount: number;
   readFileCount: number;
@@ -32,13 +33,19 @@ export function buildOverviewGroup(run: ToolCallRun): OverviewToolCallGroup {
   const editedFiles = new Set<string>();
   const readFiles = new Set<string>();
   let isLoading = false;
+  let thinkingCount = 0;
   let commandCount = 0;
   let searchCount = 0;
   let otherToolCount = 0;
   let paseoCallCount = 0;
 
-  for (const call of run.calls) {
-    const descriptor = describeToolCall(call);
+  for (const item of run.calls) {
+    if (item.kind === "thought") {
+      thinkingCount += 1;
+      isLoading ||= item.status !== "ready";
+      continue;
+    }
+    const descriptor = describeToolCall(item);
     const normalizedName = descriptor.name.trim().toLowerCase();
     isLoading ||= descriptor.status === "running" || descriptor.status === "executing";
     if (isPaseoCall(descriptor.name, normalizedName)) {
@@ -57,6 +64,7 @@ export function buildOverviewGroup(run: ToolCallRun): OverviewToolCallGroup {
   }
 
   const summary = {
+    thinkingCount,
     editedFileCount: editedFiles.size,
     commandCount,
     readFileCount: readFiles.size,

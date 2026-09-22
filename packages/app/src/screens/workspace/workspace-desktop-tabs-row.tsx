@@ -1320,12 +1320,7 @@ function ResolvedWorkspaceDesktopTabsRow({
       testID="workspace-tabs-row"
       onLayout={handleTabsContainerLayout}
     >
-      <View
-        style={styles.tabLabelMeasurements}
-        pointerEvents="none"
-        accessibilityElementsHidden
-        importantForAccessibility="no-hide-descendants"
-      >
+      <View style={styles.tabLabelMeasurements} pointerEvents="none" aria-hidden>
         {tabLabels.map(({ key, label }) => (
           <TabLabelMeasurement
             key={`${key}:${label}`}

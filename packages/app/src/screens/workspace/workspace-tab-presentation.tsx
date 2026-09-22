@@ -1,11 +1,15 @@
 import { useCallback, useMemo, type ReactElement, type ReactNode } from "react";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
-import { Check, CircleAlert } from "lucide-react-native";
+import { Check, CircleAlert, CircleCheck } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import invariant from "tiny-invariant";
 import { ensurePanelsRegistered } from "@/panels/register-panels";
-import { getPanelRegistration, type PanelIconProps } from "@/panels/panel-registry";
+import {
+  getPanelRegistration,
+  type PanelIconProps,
+  type PanelTerminalStatus,
+} from "@/panels/panel-registry";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
 import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
 import type { SurfaceBackdrop } from "@/styles/surface-backdrop";
@@ -29,6 +33,7 @@ export interface WorkspaceTabPresentation {
   titleState: "ready" | "loading";
   icon: React.ComponentType<PanelIconProps>;
   statusBucket: SidebarStateBucket | null;
+  terminalStatus?: PanelTerminalStatus;
 }
 
 const DEFAULT_STATUS_DOT_OFFSET = -2;
@@ -93,12 +98,14 @@ function WorkspaceTabPresentationResolverInner({
       titleState: descriptor.titleState,
       icon: descriptor.icon,
       statusBucket: descriptor.statusBucket,
+      terminalStatus: descriptor.terminalStatus,
     }),
     [
       descriptor.icon,
       descriptor.label,
       descriptor.tooltip,
       descriptor.statusBucket,
+      descriptor.terminalStatus,
       descriptor.subtitle,
       descriptor.titleState,
       tab.key,
@@ -127,10 +134,17 @@ interface WorkspaceTabIconProps {
 
 const ThemedCheckIcon = withUnistyles(Check);
 const ThemedCircleAlert = withUnistyles(CircleAlert);
+const ThemedCircleCheck = withUnistyles(CircleCheck);
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 const needsInputAlertMapping = (theme: Theme) => ({
   color: theme.colors.surface0,
   fill: getStatusDotColor({ theme, bucket: "needs_input" }) ?? undefined,
+});
+// A filled success badge with a knock-out check, mirroring the needs-input alert badge: the done
+// mark must read as "finished cleanly" at a glance and stay distinct from the attention dot.
+const doneCheckMapping = (theme: Theme) => ({
+  color: theme.colors.surface0,
+  fill: theme.colors.statusSuccess,
 });
 
 export function WorkspaceTabIcon({
@@ -148,6 +162,8 @@ export function WorkspaceTabIcon({
   if (bucket === "failed") statusDotColor = styles.statusDotFailed.color;
   else if (bucket === "attention") statusDotColor = styles.statusDotAttention.color;
   const showNeedsInputAlert = bucket === "needs_input";
+  // A canceled provider child is terminal but did not succeed, so it stays unmarked.
+  const showDoneCheck = bucket === "done" && presentation.terminalStatus !== "canceled";
   const Icon = presentation.icon;
   const agentIconWrapperStyle = useMemo(
     () => [styles.agentIconWrapper, { width: size, height: size }],
@@ -178,8 +194,13 @@ export function WorkspaceTabIcon({
       ) : null}
       {statusDotColor ? <View style={statusDotStyle} /> : null}
       {showNeedsInputAlert ? (
-        <View style={styles.statusAlertOverlay}>
+        <View style={styles.statusGlyphOverlay}>
           <ThemedCircleAlert size={STATUS_INDICATOR_ALERT_SIZE} uniProps={needsInputAlertMapping} />
+        </View>
+      ) : null}
+      {showDoneCheck ? (
+        <View style={styles.statusGlyphOverlay} accessibilityLabel="Agent done">
+          <ThemedCircleCheck size={STATUS_INDICATOR_ALERT_SIZE} uniProps={doneCheckMapping} />
         </View>
       ) : null}
     </View>
@@ -282,7 +303,7 @@ const styles = StyleSheet.create((theme) => ({
   statusDotBorderDefault: {
     borderColor: theme.colors.surface0,
   },
-  statusAlertOverlay: {
+  statusGlyphOverlay: {
     position: "absolute",
     right: STATUS_ALERT_OFFSET,
     bottom: STATUS_ALERT_OFFSET,

@@ -487,12 +487,19 @@ function ModelBrowserPressable({
   );
 
   if (!independentScrollGesture) {
+    // Selectable rows must not render as a native <button> on web: they carry
+    // inline action buttons (e.g. the profile edit action on a model row) and
+    // <button> cannot contain <button> — that markup fails hydration. They
+    // already carry aria-selected, so role="option" is the accurate role.
+    // Native keeps role="button" (no HTML nesting rules there).
+    const isSelectableRow = isWeb && accessibilitySelected !== undefined;
     return (
       <Pressable
         onPress={handlePress}
         hitSlop={hitSlop}
         style={style}
-        accessibilityRole="button"
+        accessibilityRole={isSelectableRow ? undefined : "button"}
+        role={isSelectableRow ? "option" : undefined}
         accessibilityLabel={accessibilityLabel}
         accessibilityState={accessibilityState}
         aria-selected={accessibilitySelected}

@@ -104,6 +104,10 @@ function useProviderSubagentDescriptor(
           requiresAttention: descriptor.status === "failed",
         })
       : null,
+    terminalStatus:
+      descriptor?.status === "completed" || descriptor?.status === "canceled"
+        ? descriptor.status
+        : undefined,
   };
 }
 

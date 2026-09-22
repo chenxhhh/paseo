@@ -11,6 +11,7 @@ import { projectDisplayNameFromProjectId } from "@/utils/project-display-name";
 import { aggregateSidebarStateBuckets } from "@/utils/sidebar-agent-state";
 import { shortenPath } from "@/utils/shorten-path";
 import type { WorkspaceAgentActivity } from "@/utils/workspace-agent-activity";
+import type { WorkspaceAgentRowSummary } from "@/utils/workspace-agent-rows";
 import { resolveWorkspaceMapKeyByIdentity } from "@/utils/workspace-identity";
 
 const EMPTY_PROJECTS: SidebarProjectEntry[] = [];
@@ -43,8 +44,12 @@ export interface SidebarWorkspaceEntry extends SidebarStatusWorkspacePlacement {
   title: string | null;
   pinnedAt?: string | null;
   labels?: string[];
+  // COMPAT(workspaceUserStatus): old daemons omit the assignment.
+  userStatus: string | null;
   // Checkout branch (null when not a git checkout or detached HEAD).
   currentBranch: string | null;
+  // Root agents currently worth a row under this workspace (running/blocked/asking).
+  activeAgents: readonly WorkspaceAgentRowSummary[];
   archivingAt: string | null;
   diffStat: { additions: number; deletions: number } | null;
   prHint: PrHint | null;
@@ -73,11 +78,13 @@ export interface SidebarWorkspaceSession {
   serverId: string;
   workspaces: Map<string, WorkspaceDescriptor>;
   workspaceAgentActivity: Map<string, WorkspaceAgentActivity>;
+  workspaceAgentRows: ReadonlyMap<string, readonly WorkspaceAgentRowSummary[]>;
 }
 
 interface SidebarWorkspaceSessionSource {
   workspaces: Map<string, WorkspaceDescriptor>;
   workspaceAgentActivity: Map<string, WorkspaceAgentActivity>;
+  workspaceAgentRows: ReadonlyMap<string, readonly WorkspaceAgentRowSummary[]>;
 }
 
 export function selectSidebarWorkspaceSessions(
@@ -94,6 +101,7 @@ export function selectSidebarWorkspaceSessions(
       serverId,
       workspaces: session.workspaces,
       workspaceAgentActivity: session.workspaceAgentActivity,
+      workspaceAgentRows: session.workspaceAgentRows,
     });
   }
   return selected;
@@ -114,7 +122,8 @@ export function areSidebarWorkspaceSessionsEqual(
       !rightSession ||
       leftSession.serverId !== rightSession.serverId ||
       leftSession.workspaces !== rightSession.workspaces ||
-      leftSession.workspaceAgentActivity !== rightSession.workspaceAgentActivity
+      leftSession.workspaceAgentActivity !== rightSession.workspaceAgentActivity ||
+      leftSession.workspaceAgentRows !== rightSession.workspaceAgentRows
     ) {
       return false;
     }
@@ -149,6 +158,7 @@ export function createSidebarWorkspaceEntry(input: {
   projectViewKey?: string;
   pendingCreateAttempts?: Record<string, PendingCreateAttempt>;
   workspaceAgentActivity?: ReadonlyMap<string, WorkspaceAgentActivity>;
+  workspaceAgentRows?: ReadonlyMap<string, readonly WorkspaceAgentRowSummary[]>;
 }): SidebarWorkspaceEntry {
   const projectViewKey = input.projectViewKey ?? input.workspace.projectId;
   const effectiveStatus = deriveEffectiveWorkspaceStatus(input);
@@ -168,6 +178,7 @@ export function createSidebarWorkspaceEntry(input: {
     title: input.workspace.title ?? null,
     pinnedAt: input.workspace.pinnedAt,
     labels: input.workspace.labels ?? EMPTY_WORKSPACE_LABELS,
+    userStatus: input.workspace.userStatus ?? null,
     currentBranch: normalizeCurrentBranch(input.workspace.gitRuntime?.currentBranch),
     statusBucket: effectiveStatus.status,
     statusEnteredAt: effectiveStatus.enteredAt,
@@ -181,10 +192,12 @@ export function createSidebarWorkspaceEntry(input: {
     archiveUnpushedCommitCount: input.workspace.gitRuntime?.aheadOfOrigin ?? null,
     scripts: input.workspace.scripts,
     hasRunningScripts: input.workspace.scripts.some((script) => script.lifecycle === "running"),
+    activeAgents: input.workspaceAgentRows?.get(input.workspace.id) ?? EMPTY_WORKSPACE_AGENT_ROWS,
   };
 }
 
 const EMPTY_WORKSPACE_LABELS: string[] = [];
+const EMPTY_WORKSPACE_AGENT_ROWS: readonly WorkspaceAgentRowSummary[] = [];
 
 function deriveEffectiveWorkspaceStatus(input: {
   serverId: string;
@@ -234,6 +247,8 @@ function getPendingInitialAgentCreateStartedAt(input: {
 export interface ProjectStatusSession {
   workspaces: Map<string, WorkspaceDescriptor>;
   workspaceAgentActivity: Map<string, WorkspaceAgentActivity>;
+  /** Present on real sessions; the status dot has no use for the row list. */
+  workspaceAgentRows?: ReadonlyMap<string, readonly WorkspaceAgentRowSummary[]>;
 }
 
 /**
@@ -391,6 +406,7 @@ export function buildSidebarWorkspaceEntries(input: {
       projectViewKey: placement.projectViewKey,
       pendingCreateAttempts: input.pendingCreateAttempts,
       workspaceAgentActivity: session.workspaceAgentActivity,
+      workspaceAgentRows: session.workspaceAgentRows,
     });
     const previousEntry = input.previousEntries?.get(placement.workspaceKey);
     entries.set(
@@ -408,7 +424,7 @@ function areSidebarWorkspaceEntriesEqual(
   left: SidebarWorkspaceEntry,
   right: SidebarWorkspaceEntry,
 ): boolean {
-  const keys = Object.keys(left) as Array<keyof SidebarWorkspaceEntry>;
+  const keys = Object.keys(left) as (keyof SidebarWorkspaceEntry)[];
   if (keys.length !== Object.keys(right).length) return false;
   return keys.every((key) => {
     if (key !== "prHint") return Object.is(left[key], right[key]);
@@ -563,7 +579,7 @@ export function prependMissingOrderKeys(input: {
 
 export interface SidebarOrderUpdates {
   projectOrder: string[] | null;
-  workspaceOrders: Array<{ projectViewKey: string; order: string[] }>;
+  workspaceOrders: { projectViewKey: string; order: string[] }[];
 }
 
 export function computeSidebarOrderUpdates(input: {
@@ -581,7 +597,7 @@ export function computeSidebarOrderUpdates(input: {
   });
   const projectOrder = nextProjectOrder === input.persistedProjectOrder ? null : nextProjectOrder;
 
-  const workspaceOrders: Array<{ projectViewKey: string; order: string[] }> = [];
+  const workspaceOrders: { projectViewKey: string; order: string[] }[] = [];
   for (const project of input.projects) {
     const persistedWorkspaceOrder = input.getWorkspaceOrder(project.viewKey);
     const nextWorkspaceOrder = prependMissingOrderKeys({
@@ -614,4 +630,142 @@ export function deriveSidebarLoadingState(input: {
   const isLoading = input.isActive && hasRegisteredHosts && !allHydrated;
   const isInitialLoad = isLoading && !input.hasProjects;
   return { isLoading, isInitialLoad, isRevalidating: false };
+}
+
+function normalizeWorkspaceDirectoryKey(value: string): string {
+  return value.replace(/\\/g, "/").replace(/\/+$/, "");
+}
+
+function areEquivalentWorkspaceDirectories(
+  left: string | undefined,
+  right: string | undefined,
+): boolean {
+  if (!left || !right) {
+    return false;
+  }
+  const compareAsWindows = /^[a-zA-Z]:[\\/]/.test(left) || /^[a-zA-Z]:[\\/]/.test(right);
+  const normalize = (value: string) => {
+    const normalized = normalizeWorkspaceDirectoryKey(value);
+    return compareAsWindows ? normalized.toLowerCase() : normalized;
+  };
+  return normalize(left) === normalize(right);
+}
+
+interface SidebarWorkspaceSubgroupBase {
+  key: string;
+  label: string;
+  branch: string | null;
+  workspaces: SidebarWorkspacePlacement[];
+}
+
+export interface SidebarBranchGroup extends SidebarWorkspaceSubgroupBase {
+  kind: "branch";
+}
+
+export interface SidebarWorktreeGroup extends SidebarWorkspaceSubgroupBase {
+  kind: "worktree";
+  directory: string;
+}
+
+export type SidebarWorkspaceSubgroup = SidebarBranchGroup | SidebarWorktreeGroup;
+
+export interface ProjectWorkspaceGrouping {
+  ungrouped: SidebarWorkspacePlacement[];
+  branchGroups: SidebarBranchGroup[];
+  worktreeGroups: SidebarWorktreeGroup[];
+}
+
+export function worktreeGroupCollapseKey(projectViewKey: string, directory: string): string {
+  return `${projectViewKey}::worktree::${normalizeWorkspaceDirectoryKey(directory)}`;
+}
+
+export function branchGroupCollapseKey(projectViewKey: string, branch: string): string {
+  return `${projectViewKey}::branch::${branch}`;
+}
+
+function isWorktreeSubgroupMember(entry: SidebarWorkspaceEntry): boolean {
+  if (entry.workspaceKind !== "worktree" || !entry.workspaceDirectory) {
+    return false;
+  }
+  return !areEquivalentWorkspaceDirectories(entry.workspaceDirectory, entry.projectRootPath);
+}
+
+function isBranchSubgroupMember(
+  entry: SidebarWorkspaceEntry,
+): entry is SidebarWorkspaceEntry & { currentBranch: string } {
+  if (!entry.currentBranch) {
+    return false;
+  }
+  if (entry.workspaceKind !== "worktree") {
+    return true;
+  }
+  return areEquivalentWorkspaceDirectories(entry.workspaceDirectory, entry.projectRootPath);
+}
+
+export function groupProjectWorkspaces(input: {
+  projectViewKey: string;
+  workspaces: readonly SidebarWorkspacePlacement[];
+  workspaceEntriesByKey: ReadonlyMap<string, SidebarWorkspaceEntry>;
+}): ProjectWorkspaceGrouping {
+  const ungrouped: SidebarWorkspacePlacement[] = [];
+  const branchGroupsByName = new Map<string, SidebarBranchGroup>();
+  const branchGroupOrder: string[] = [];
+  const worktreeGroupsByDirectory = new Map<string, SidebarWorktreeGroup>();
+  const worktreeGroupOrder: string[] = [];
+
+  for (const workspace of input.workspaces) {
+    const entry = input.workspaceEntriesByKey.get(workspace.workspaceKey);
+    if (!entry) {
+      ungrouped.push(workspace);
+      continue;
+    }
+    if (isWorktreeSubgroupMember(entry)) {
+      const directoryKey = normalizeWorkspaceDirectoryKey(entry.workspaceDirectory);
+      const existing = worktreeGroupsByDirectory.get(directoryKey);
+      if (existing) {
+        existing.workspaces.push(workspace);
+        continue;
+      }
+      worktreeGroupsByDirectory.set(directoryKey, {
+        kind: "worktree",
+        key: worktreeGroupCollapseKey(input.projectViewKey, entry.workspaceDirectory),
+        directory: entry.workspaceDirectory,
+        label: entry.workspaceDirectoryLabel,
+        branch: entry.currentBranch,
+        workspaces: [workspace],
+      });
+      worktreeGroupOrder.push(directoryKey);
+      continue;
+    }
+    if (isBranchSubgroupMember(entry)) {
+      const branchName = entry.currentBranch;
+      const existing = branchGroupsByName.get(branchName);
+      if (existing) {
+        existing.workspaces.push(workspace);
+        continue;
+      }
+      branchGroupsByName.set(branchName, {
+        kind: "branch",
+        key: branchGroupCollapseKey(input.projectViewKey, branchName),
+        label: branchName,
+        branch: branchName,
+        workspaces: [workspace],
+      });
+      branchGroupOrder.push(branchName);
+      continue;
+    }
+    ungrouped.push(workspace);
+  }
+
+  return {
+    ungrouped,
+    branchGroups: branchGroupOrder.flatMap((branchName) => {
+      const group = branchGroupsByName.get(branchName);
+      return group ? [group] : [];
+    }),
+    worktreeGroups: worktreeGroupOrder.flatMap((directoryKey) => {
+      const group = worktreeGroupsByDirectory.get(directoryKey);
+      return group ? [group] : [];
+    }),
+  };
 }

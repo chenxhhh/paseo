@@ -94,6 +94,8 @@ import {
   type ProviderCatalog,
   type ResolveAgentCreateConfigInput,
   type ResolveAgentCreateConfigResult,
+  type SteerActiveTurnOptions,
+  type SteerResult,
   type ToolCallDetail,
   type ToolCallTimelineItem,
 } from "../agent-sdk-types.js";
@@ -196,6 +198,27 @@ function toACPRequestError(error: unknown): Error {
   return next;
 }
 
+/**
+ * Environment marker telling state-isolating adapters (knot-acp-metadata HOME
+ * redirection) which persisted session a resume is about to load, before any
+ * ACP traffic reveals it. Exported for unit tests.
+ */
+export function buildResumeSessionEnv(
+  sessionId: string | null | undefined,
+): Record<string, string> {
+  return sessionId ? { PASEO_RESUME_SESSION_ID: sessionId } : {};
+}
+
+/**
+ * The Knot CLI reports a registry miss on session/load or session/resume as
+ * "session not found: <id>". Only this provider wording may trigger the
+ * recreate-on-lost fallback; every other failure must keep failing the resume
+ * so real breakage is not masked by a fresh session.
+ */
+function isSessionLostError(error: unknown): boolean {
+  return error instanceof Error && /session not found/i.test(error.message);
+}
+
 function resolveTerminalCommand(
   command: string,
   args?: string[],
@@ -277,9 +300,21 @@ export function buildACPClientCapabilities(
 // NO_BROWSER is honored by Gemini CLI; other ACP agents ignore it.
 const PROBE_ENV: Record<string, string> = { NO_BROWSER: "true" };
 const ACP_DIAGNOSTIC_PHASE_TIMEOUT_MS = 20_000;
+// Cursor ACP often resolves session/prompt after Create Plan while listed
+// tasks are still pending. Finishing the Paseo turn there drops the rest of
+// the work; re-prompt on the same turn instead.
+const MAX_ACP_PLAN_YIELD_CONTINUES = 3;
+const ACP_PLAN_YIELD_CONTINUE_PROMPT = "Continue.";
 const ACP_PROBE_CLOSE_TIMEOUT_MS = 2_000;
 const ACP_IMPORT_HISTORY_LOAD_TIMEOUT_MS = 30_000;
 const ACP_IMPORT_HISTORY_BUDGET_MS = 60_000;
+// Grace period for an agent to answer session/cancel with a cancelled prompt
+// response. Keep it below the manager's own interrupt budget (2s) so a silent
+// agent still settles the run instead of being force-canceled.
+const ACP_CANCEL_SETTLE_TIMEOUT_MS = 1_000;
+// A prompt cancelled without any cancel targeting it is re-dispatched at most
+// this many times before accepting the cancellation and finishing the turn.
+const MAX_ACP_CANCEL_CROSS_TALK_REDELIVERIES = 2;
 
 function summarizeMalformedACPStdoutError(error: unknown): { type: string; message: string } {
   return {
@@ -442,6 +477,19 @@ interface ACPAgentClientOptions {
   initialCommandsWaitTimeoutMs?: number;
   terminateProcess?: ProcessTerminator;
   now?: () => number;
+  /**
+   * Some providers (Knot CLI) return settings from session/load while keeping the
+   * session closed for prompting; they require an explicit session/resume before
+   * the next turn. Only opt in providers verified to need it.
+   */
+  resumeAfterLoad?: boolean;
+  /**
+   * Recreate a fresh session instead of failing a resume whose error is a
+   * provider-side "session not found". Opt in only for providers whose local
+   * session records can be lost independently of Paseo's persisted timeline
+   * (e.g. the Knot CLI global registry).
+   */
+  recreateOnSessionLost?: boolean;
 }
 
 interface ACPAgentSessionOptions {
@@ -475,6 +523,16 @@ interface ACPAgentSessionOptions {
   waitForInitialCommands?: boolean;
   initialCommandsWaitTimeoutMs?: number;
   terminateProcess?: ProcessTerminator;
+  resumeAfterLoad?: boolean;
+  /**
+   * When a resume fails because the provider no longer knows the persisted
+   * session (e.g. the Knot CLI registry lost the entry), recreate a fresh
+   * session instead of failing the resume. Paseo keeps its own timeline, so
+   * the conversation history survives; only provider-side context is lost.
+   * describePersistence() reports the new session id, so the next persist
+   * re-anchors the handle. Only "session not found" style errors trigger it.
+   */
+  recreateOnSessionLost?: boolean;
 }
 
 export interface SpawnedACPProcess {
@@ -592,6 +650,13 @@ interface PendingUserMessage {
   messageId?: string;
 }
 
+/** A steer waiting for the in-flight session/prompt to settle. */
+interface QueuedACPSteer {
+  prompt: AgentPromptInput;
+  messageId: string;
+  clientMessageId?: string;
+}
+
 export type SessionStateResponse = NewSessionResponse | LoadSessionResponse | ResumeSessionResponse;
 
 interface TerminalExit {
@@ -628,6 +693,8 @@ export interface ACPConfigFeatureOption {
   tooltip?: string;
   icon?: string;
   emptyOptionLabel?: string;
+  hideWhenEmpty?: boolean;
+  skipUnsupportedOnRestore?: boolean;
 }
 
 export type SelectConfigOption = Extract<SessionConfigOption, { type: "select" }>;
@@ -795,7 +862,10 @@ export function deriveFeaturesFromACP(
 ): AgentFeature[] {
   return featureOptions.flatMap((featureOption) => {
     const option = findSelectConfigFeatureOption(configOptions, featureOption);
-    if (!option) {
+    if (
+      !option ||
+      (featureOption.hideWhenEmpty && flattenSelectOptions(option.options).length === 0)
+    ) {
       return [];
     }
 
@@ -904,6 +974,8 @@ export class ACPAgentClient implements AgentClient {
   private readonly importPromptCache = new Map<string, ACPImportPromptCacheEntry>();
   private readonly now: () => number;
   protected readonly terminateProcess: ProcessTerminator;
+  private readonly resumeAfterLoad: boolean;
+  private readonly recreateOnSessionLost: boolean;
 
   constructor(options: ACPAgentClientOptions) {
     this.provider = options.provider;
@@ -932,6 +1004,8 @@ export class ACPAgentClient implements AgentClient {
     this.initialCommandsWaitTimeoutMs = options.initialCommandsWaitTimeoutMs ?? 1500;
     this.extensionCommandsParser = options.extensionCommandsParser;
     this.now = options.now ?? Date.now;
+    this.resumeAfterLoad = options.resumeAfterLoad ?? false;
+    this.recreateOnSessionLost = options.recreateOnSessionLost ?? false;
   }
 
   async createSession(
@@ -1015,6 +1089,8 @@ export class ACPAgentClient implements AgentClient {
       extensionCommandsParser: this.extensionCommandsParser,
       waitForInitialCommands: this.waitForInitialCommands,
       initialCommandsWaitTimeoutMs: this.initialCommandsWaitTimeoutMs,
+      resumeAfterLoad: this.resumeAfterLoad,
+      recreateOnSessionLost: this.recreateOnSessionLost,
     });
     await session.initializeResumedSession();
     return session;
@@ -1120,9 +1196,10 @@ export class ACPAgentClient implements AgentClient {
   }
 
   async listFeatures(config: AgentSessionConfig): Promise<AgentFeature[]> {
-    const autoAcceptFeature = buildACPAutoAcceptFeature(config);
+    const permissionFeatures =
+      this.capabilities.supportsAutoAccept === false ? [] : [buildACPAutoAcceptFeature(config)];
     if (this.configFeatureOptions.length === 0) {
-      return [autoAcceptFeature];
+      return permissionFeatures;
     }
 
     this.assertProvider(config);
@@ -1138,12 +1215,29 @@ export class ACPAgentClient implements AgentClient {
       probeSessionId = response.sessionId;
       const transformed = this.transformSessionResponse(response);
       return [
-        autoAcceptFeature,
-        ...deriveFeaturesFromACP(transformed.configOptions, this.configFeatureOptions),
+        ...permissionFeatures,
+        ...deriveFeaturesFromACP(
+          await this.resolveFeatureConfigOptions(
+            probe,
+            response.sessionId,
+            transformed.configOptions ?? [],
+            config,
+          ),
+          this.configFeatureOptions,
+        ),
       ];
     } finally {
       await this.closeProbe(probe, probeSessionId);
     }
+  }
+
+  protected async resolveFeatureConfigOptions(
+    _probe: SpawnedACPProcess,
+    _sessionId: string,
+    configOptions: SessionConfigOption[],
+    _config: AgentSessionConfig,
+  ): Promise<SessionConfigOption[]> {
+    return configOptions;
   }
 
   async listImportableSessions(
@@ -1656,6 +1750,16 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   private readonly pendingPermissions = new Map<string, PendingPermission>();
   private pendingUserMessage: PendingUserMessage | null = null;
   private submittedUserMessageTurnId: string | null = null;
+  private pendingSteers: QueuedACPSteer[] = [];
+  private turnSettledWaiters: Array<() => void> = [];
+  // Cancel cross-talk guard: some agents (CodeBuddy) still answer a prompt
+  // dispatched right after a session/cancel with stopReason "cancelled",
+  // silently dropping it. cancelEpoch distinguishes a cancelled response that
+  // targets this prompt from cross-talk left over from the previous one.
+  private cancelEpoch = 0;
+  private activePromptCancelEpoch = 0;
+  private activePromptRedeliveries = 0;
+  private activePrompt: AgentPromptInput | null = null;
   private readonly toolCalls = new Map<string, ACPToolSnapshot>();
   private readonly terminalEntries = new Map<string, TerminalEntry>();
   private readonly persistedHistory: AgentTimelineItem[] = [];
@@ -1680,8 +1784,12 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   private waitForInitialCommands: boolean;
   private initialCommandsWaitTimeoutMs: number;
   private readonly extensionCommandsParser?: ACPExtensionCommandsParser;
+  private readonly resumeAfterLoad: boolean;
+  private readonly recreateOnSessionLost: boolean;
   private currentTurnUsage: AgentUsage | undefined;
   private activeForegroundTurnId: string | null = null;
+  private lastTimelineItem: AgentTimelineItem | null = null;
+  private planYieldContinues = 0;
   private fallbackAssistantMessageId: string | null = null;
   private closed = false;
   private historyPending = false;
@@ -1720,6 +1828,8 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     this.waitForInitialCommands = options.waitForInitialCommands ?? false;
     this.initialCommandsWaitTimeoutMs = options.initialCommandsWaitTimeoutMs ?? 1500;
     this.extensionCommandsParser = options.extensionCommandsParser;
+    this.resumeAfterLoad = options.resumeAfterLoad ?? false;
+    this.recreateOnSessionLost = options.recreateOnSessionLost ?? false;
   }
 
   get id(): string | null {
@@ -1783,6 +1893,16 @@ export class ACPAgentSession implements AgentSession, ACPClient {
         this.replayingHistory = false;
         this.historyPending = this.persistedHistory.length > 0;
         this.applySessionState(response);
+        if (this.resumeAfterLoad && sessionCapabilities?.resume) {
+          const resumed = await this.runACPRequest(() =>
+            this.connection!.unstable_resumeSession({
+              sessionId: handle.sessionId,
+              cwd: this.config.cwd,
+              mcpServers: this.acpMcpServers(),
+            }),
+          );
+          this.applySessionState(resumed);
+        }
       } else if (sessionCapabilities?.resume) {
         const response = await this.runACPRequest(() =>
           this.connection!.unstable_resumeSession({
@@ -1798,6 +1918,43 @@ export class ACPAgentSession implements AgentSession, ACPClient {
 
       await this.applyConfiguredOverrides();
     } catch (error) {
+      if (this.recreateOnSessionLost && isSessionLostError(error)) {
+        // The provider lost this session (e.g. the Knot CLI global registry
+        // dropped the entry). Paseo's persisted timeline keeps the visible
+        // history, so recreate a fresh session and keep the agent usable
+        // instead of failing every resume attempt forever. Provider-side
+        // context is lost; describePersistence() reports the new session id
+        // so the next persist re-anchors the handle.
+        const lostSessionId = this.initialHandle?.sessionId ?? null;
+        this.logger.warn(
+          { err: error, lostSessionId },
+          `${this.provider} no longer knows the persisted session; recreating a fresh session`,
+        );
+        // Tear down only the failed process and connection. close() would flip
+        // `closed` to true and drop every subscriber, leaving the recreated
+        // session unable to start turns or emit events.
+        try {
+          if (this.child) {
+            await this.terminateProcess(this.child, {
+              gracefulTimeoutMs: 2_000,
+              forceTimeoutMs: 2_000,
+            });
+          }
+        } catch (closeError) {
+          this.logger.warn(
+            { err: closeError, initializationError: error },
+            "Failed to close ACP process before session recreation",
+          );
+        }
+        this.connection = null;
+        this.child = null;
+        this.activeForegroundTurnId = null;
+        this.sessionId = null;
+        this.replayingHistory = false;
+        this.historyPending = false;
+        await this.initializeNewSession();
+        return;
+      }
       await this.closeAfterInitializationFailure(error);
     }
   }
@@ -1849,35 +2006,80 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     const turnId = randomUUID();
     const messageId = options?.clientMessageId ?? randomUUID();
     this.activeForegroundTurnId = turnId;
+    this.lastTimelineItem = null;
+    this.planYieldContinues = 0;
+    this.activePromptRedeliveries = 0;
     this.fallbackAssistantMessageId = null;
     this.submittedUserMessageTurnId = null;
     this.emitBootstrapThreadEvent();
     this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
     this.emitSubmittedUserMessage(prompt, messageId, turnId, options?.clientMessageId);
-
-    void this.connection
-      .prompt({
-        sessionId: this.sessionId,
-        messageId,
-        prompt: toACPContentBlocks(prompt),
-      })
-      .then((response) => {
-        this.handlePromptResponse(response, turnId);
-        return;
-      })
-      .catch((error) => {
-        const summary = summarizeACPRequestError(error);
-        this.finishTurn({
-          type: "turn_failed",
-          provider: this.provider,
-          error: summary.message,
-          code: summary.code,
-          diagnostic: this.collectDiagnostic(summary.diagnostic ?? summary.message),
-          turnId,
-        });
-      });
+    this.dispatchPrompt(turnId, prompt, messageId);
 
     return { turnId };
+  }
+
+  /**
+   * ACP has no steer RPC, so a steer is queued and sent as the next
+   * session/prompt when the in-flight one settles — still inside the Paseo turn
+   * the steer was admitted to.
+   */
+  async steerActiveTurn(
+    prompt: AgentPromptInput,
+    options: SteerActiveTurnOptions,
+  ): Promise<SteerResult> {
+    if (this.closed || !this.connection || !this.sessionId) {
+      return { status: "unavailable" };
+    }
+    if (this.activeForegroundTurnId !== options.expectedTurnId) {
+      return { status: "unavailable" };
+    }
+    // A blocked prompt can never settle, so a steer queued behind it could never
+    // be delivered. Only accept when this steer may answer the permission.
+    if (this.pendingPermissions.size > 0) {
+      if (!options.clearPendingPermissions) {
+        return { status: "unavailable" };
+      }
+      await this.clearPendingPermissionsForSteer();
+      if (this.activeForegroundTurnId !== options.expectedTurnId) {
+        return { status: "unavailable" };
+      }
+    }
+    this.pendingSteers.push({
+      prompt,
+      messageId: options.clientMessageId ?? randomUUID(),
+      ...(options.clientMessageId ? { clientMessageId: options.clientMessageId } : {}),
+    });
+    return { status: "accepted" };
+  }
+
+  private async clearPendingPermissionsForSteer(): Promise<void> {
+    for (const requestId of Array.from(this.pendingPermissions.keys())) {
+      if (!this.pendingPermissions.has(requestId)) continue;
+      await this.respondToPermission(requestId, {
+        behavior: "deny",
+        message: "The user answered with a message instead of approving. Their message follows.",
+      });
+    }
+  }
+
+  /** Runs the oldest queued steer as the next ACP prompt of the same Paseo turn. */
+  private deliverQueuedSteer(turnId: string): void {
+    const steer = this.pendingSteers.shift();
+    if (!steer) {
+      this.finishTurn({
+        type: "turn_completed",
+        provider: this.provider,
+        usage: this.currentTurnUsage,
+        turnId,
+      });
+      return;
+    }
+    // A fresh fallback id keeps the steer's answer out of the previous assistant message.
+    this.fallbackAssistantMessageId = null;
+    this.lastTimelineItem = null;
+    this.emitSubmittedUserMessage(steer.prompt, steer.messageId, turnId, steer.clientMessageId);
+    this.dispatchPrompt(turnId, steer.prompt, steer.messageId);
   }
 
   subscribe(callback: (event: AgentStreamEvent) => void): () => void {
@@ -1920,7 +2122,9 @@ export class ACPAgentSession implements AgentSession, ACPClient {
 
   get features(): AgentFeature[] {
     return [
-      buildACPAutoAcceptFeature(this.config),
+      ...(this.capabilities.supportsAutoAccept === false
+        ? []
+        : [buildACPAutoAcceptFeature(this.config)]),
       ...deriveFeaturesFromACP(this.configOptions, this.configFeatureOptions),
     ];
   }
@@ -2263,6 +2467,11 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     }
 
     if (featureId === ACP_AUTO_ACCEPT_FEATURE_ID) {
+      if (this.capabilities.supportsAutoAccept === false) {
+        throw new Error(
+          "This provider does not support ACP Auto Accept; Paseo cannot guarantee execution approval.",
+        );
+      }
       this.config.featureValues = {
         ...this.config.featureValues,
         [ACP_AUTO_ACCEPT_FEATURE_ID]: value === true,
@@ -2372,8 +2581,8 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       turnId: pending.turnId ?? undefined,
     });
 
-    if (response.behavior === "deny" && response.interrupt && this.connection && this.sessionId) {
-      await this.connection.cancel({ sessionId: this.sessionId });
+    if (response.behavior === "deny" && response.interrupt) {
+      await this.cancelActiveACPPrompt();
     }
   }
 
@@ -2402,8 +2611,58 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     }
     this.pendingPermissions.clear();
 
-    if (this.activeForegroundTurnId) {
-      await this.connection.cancel({ sessionId: this.sessionId });
+    await this.cancelActiveACPPrompt();
+  }
+
+  /**
+   * Cancels the in-flight session/prompt and settles the turn even when the
+   * agent never answers the cancel with a stopReason:"cancelled" response.
+   * A silent agent would otherwise leave activeForegroundTurnId set forever,
+   * so every later prompt is refused with "A foreground turn is already
+   * active" until the process is replaced.
+   */
+  private async cancelActiveACPPrompt(): Promise<void> {
+    const turnId = this.activeForegroundTurnId;
+    if (!turnId || !this.connection || !this.sessionId) {
+      return;
+    }
+    await this.connection.cancel({ sessionId: this.sessionId });
+    this.cancelEpoch += 1;
+    if (await this.waitForTurnToSettle(ACP_CANCEL_SETTLE_TIMEOUT_MS)) {
+      return;
+    }
+    if (this.activeForegroundTurnId !== turnId) {
+      return;
+    }
+    this.synthesizeCanceledToolCalls();
+    this.finishTurn({
+      type: "turn_canceled",
+      provider: this.provider,
+      reason: "Interrupted",
+      turnId,
+    });
+  }
+
+  /** Resolves true once the in-flight prompt settles, false after timeoutMs. */
+  private waitForTurnToSettle(timeoutMs: number): Promise<boolean> {
+    if (!this.activeForegroundTurnId) {
+      return Promise.resolve(true);
+    }
+    let settleTurn!: () => void;
+    const turnSettled = new Promise<void>((resolve) => {
+      settleTurn = resolve;
+    });
+    this.turnSettledWaiters.push(settleTurn);
+    const timedOut = new Promise<boolean>((resolve) => {
+      setTimeout(() => resolve(false), timeoutMs);
+    });
+    return Promise.race([turnSettled.then(() => true), timedOut]);
+  }
+
+  private settleTurnWaiters(): void {
+    const waiters = this.turnSettledWaiters.splice(0);
+    for (const waiter of waiters) {
+      waiter();
     }
   }
 
@@ -2453,12 +2712,16 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     this.subscribers.clear();
     this.connection = null;
     this.child = null;
+    this.pendingSteers.length = 0;
+    this.settleTurnWaiters();
     this.activeForegroundTurnId = null;
   }
 
   async requestPermission(params: RequestPermissionRequest): Promise<RequestPermissionResponse> {
     const canAutoAccept =
-      isACPAutoAcceptEnabled(this.config) && !isACPChooserRequest(params.options);
+      this.capabilities.supportsAutoAccept !== false &&
+      isACPAutoAcceptEnabled(this.config) &&
+      !isACPChooserRequest(params.options);
     if (canAutoAccept) {
       const allowOption = selectPermissionOption(params.options, { behavior: "allow" });
       if (allowOption) {
@@ -2697,6 +2960,31 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     return {};
   }
 
+  /**
+   * Some ACP agents (notably the Knot CLI) ignore session-level mcpServers but
+   * watch a global config file (~/.bg-agent/mcp_config.json) instead. Wrapper
+   * scripts such as .with-connect/acp-compat.cjs read this env var on startup
+   * and mirror it into that file, giving those agents access to Paseo-managed
+   * MCP servers (including the daemon's own tool endpoint with its capability
+   * token, which no external process could reconstruct on its own).
+   */
+  private mcpServersEnv(): Record<string, string> {
+    const servers = this.config.mcpServers;
+    if (!servers || Object.keys(servers).length === 0) return {};
+    return { PASEO_MCP_SERVERS_JSON: JSON.stringify(servers) };
+  }
+
+  /**
+   * Adapters that isolate provider state per session (e.g. the knot-acp-metadata
+   * HOME redirection) must learn which persisted session this process is about
+   * to load before any ACP traffic reveals it, so they can pre-seed the
+   * session's registry entry. Only resume sessions carry the handle; new
+   * sessions and catalog probes spawn without it.
+   */
+  private resumeSessionEnv(): Record<string, string> {
+    return buildResumeSessionEnv(this.initialHandle?.sessionId);
+  }
+
   private async spawnProcess(): Promise<SpawnedACPProcess> {
     const prefix = await resolveProviderLaunch({
       commandConfig: this.runtimeSettings?.command,
@@ -2713,7 +3001,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       cwd: this.config.cwd,
       ...createProviderEnvSpec({
         runtimeSettings: this.runtimeSettings,
-        overlays: [this.launchEnv],
+        overlays: [this.launchEnv, this.mcpServersEnv(), this.resumeSessionEnv()],
       }),
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -2839,6 +3127,17 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     for (const featureOption of this.configFeatureOptions) {
       if (!Object.prototype.hasOwnProperty.call(configuredFeatureValues, featureOption.id)) {
         continue;
+      }
+      if (featureOption.skipUnsupportedOnRestore) {
+        const option = findSelectConfigFeatureOption(this.configOptions, featureOption);
+        const value = configuredFeatureValues[featureOption.id];
+        if (typeof value !== "string" || !findSelectConfigChoice({ option, value })) {
+          this.logger.warn(
+            { featureId: featureOption.id },
+            "Skipping saved ACP feature value unsupported by the current model",
+          );
+          continue;
+        }
       }
       await this.setFeature(featureOption.id, configuredFeatureValues[featureOption.id]);
     }
@@ -3073,34 +3372,115 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   }
 
   private handlePromptResponse(response: PromptResponse, turnId: string): void {
+    if (this.activeForegroundTurnId !== turnId) {
+      return;
+    }
     this.currentTurnUsage = mapACPUsage(response.usage) ?? this.currentTurnUsage;
 
-    switch (response.stopReason) {
-      case "cancelled":
-        this.synthesizeCanceledToolCalls();
-        this.finishTurn({
-          type: "turn_canceled",
-          provider: this.provider,
-          reason: "Interrupted",
-          turnId,
-        });
-        break;
-      case "end_turn":
-      case "max_tokens":
-      case "max_turn_requests":
-      case "refusal":
-      default:
-        this.finishTurn({
-          type: "turn_completed",
-          provider: this.provider,
-          usage: this.currentTurnUsage,
-          turnId,
-        });
-        break;
+    if (response.stopReason === "cancelled") {
+      // No cancel was sent since this prompt was dispatched, so the agent is
+      // still flushing a cancel that targeted the previous prompt (CodeBuddy
+      // answers the freshly dispatched one with stopReason "cancelled" without
+      // ever processing it). Re-dispatch instead of losing the message.
+      if (
+        this.cancelEpoch === this.activePromptCancelEpoch &&
+        this.activePrompt &&
+        this.activePromptRedeliveries < MAX_ACP_CANCEL_CROSS_TALK_REDELIVERIES
+      ) {
+        this.activePromptRedeliveries += 1;
+        this.logger.warn(
+          { turnId, redelivery: this.activePromptRedeliveries },
+          `${this.provider} cancelled a prompt no cancel targeted (cancel cross-talk); re-dispatching`,
+        );
+        this.dispatchPrompt(turnId, this.activePrompt, randomUUID());
+        return;
+      }
+      this.synthesizeCanceledToolCalls();
+      this.finishTurn({
+        type: "turn_canceled",
+        provider: this.provider,
+        reason: "Interrupted",
+        turnId,
+      });
+      return;
     }
+
+    // The user's queued steer is itself the next instruction, so it wins over
+    // the synthetic plan-yield continue.
+    if (this.pendingSteers.length > 0) {
+      this.deliverTranslatedEvents(this.flushPendingUserMessage());
+      this.deliverQueuedSteer(turnId);
+      return;
+    }
+
+    if (this.shouldResumeAfterPlanYield(response.stopReason)) {
+      this.planYieldContinues += 1;
+      this.lastTimelineItem = null;
+      this.dispatchPrompt(turnId, ACP_PLAN_YIELD_CONTINUE_PROMPT, randomUUID());
+      return;
+    }
+
+    this.finishTurn({
+      type: "turn_completed",
+      provider: this.provider,
+      usage: this.currentTurnUsage,
+      turnId,
+    });
+  }
+
+  private shouldResumeAfterPlanYield(stopReason: PromptResponse["stopReason"]): boolean {
+    const promptStillLive = !this.closed && this.connection != null && this.sessionId != null;
+    if (stopReason !== "end_turn" || !promptStillLive) {
+      return false;
+    }
+    if (this.planYieldContinues >= MAX_ACP_PLAN_YIELD_CONTINUES) {
+      return false;
+    }
+    const last = this.lastTimelineItem;
+    if (last?.type !== "todo") {
+      return false;
+    }
+    return last.items.some((item) => !item.completed);
+  }
+
+  private dispatchPrompt(turnId: string, prompt: AgentPromptInput, messageId: string): void {
+    this.activePromptCancelEpoch = this.cancelEpoch;
+    this.activePrompt = prompt;
+    if (!this.connection || !this.sessionId) {
+      this.finishTurn({
+        type: "turn_failed",
+        provider: this.provider,
+        error: `${this.provider} session is not initialized`,
+        turnId,
+      });
+      return;
+    }
+
+    void this.connection
+      .prompt({
+        sessionId: this.sessionId,
+        messageId,
+        prompt: toACPContentBlocks(prompt),
+      })
+      .then((response) => {
+        this.handlePromptResponse(response, turnId);
+        return;
+      })
+      .catch((error) => {
+        const summary = summarizeACPRequestError(error);
+        this.finishTurn({
+          type: "turn_failed",
+          provider: this.provider,
+          error: summary.message,
+          code: summary.code,
+          diagnostic: this.collectDiagnostic(summary.diagnostic ?? summary.message),
+          turnId,
+        });
+      });
   }
 
   private wrapTimeline(item: AgentTimelineItem): AgentStreamEvent {
+    this.lastTimelineItem = item;
     return {
       type: "timeline",
       provider: this.provider,
@@ -3169,6 +3549,10 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     this.deliverTranslatedEvents(this.flushPendingUserMessage());
     this.activeForegroundTurnId = null;
     this.fallbackAssistantMessageId = null;
+    this.activePrompt = null;
+    // A steer is only deliverable inside the turn it was admitted to.
+    this.pendingSteers.length = 0;
+    this.settleTurnWaiters();
     if (this.submittedUserMessageTurnId === event.turnId) {
       this.submittedUserMessageTurnId = null;
     }

@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ProviderUsageTooltipSection } from "@/provider-usage/tooltip-section";
 import { useProviderUsage } from "@/provider-usage/use-provider-usage";
+import { decorativeSvgProps } from "@/utils/decorative-svg";
 import { formatTokenCount } from "./context-window-meter.utils";
 
 interface ContextWindowMeterProps {
@@ -141,8 +142,7 @@ export function ContextWindowMeter({
           height={geometry.svgSize}
           viewBox={`0 0 ${geometry.svgSize} ${geometry.svgSize}`}
           style={styles.svg}
-          accessibilityElementsHidden
-          importantForAccessibility="no-hide-descendants"
+          {...decorativeSvgProps}
         >
           <Circle
             cx={geometry.center}
@@ -188,8 +188,7 @@ export function ContextWindowMeter({
             height={svgSize}
             viewBox={`0 0 ${svgSize} ${svgSize}`}
             style={styles.svg}
-            accessibilityElementsHidden
-            importantForAccessibility="no-hide-descendants"
+            {...decorativeSvgProps}
           >
             <Circle
               cx={center}

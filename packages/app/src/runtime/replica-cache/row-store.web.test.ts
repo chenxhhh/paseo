@@ -17,7 +17,10 @@ runReplicaRowStoreContract("IndexedDB", async () => {
   return {
     store: createIndexedDbReplicaRowStore({ databaseName, schemaVersion: 1 }),
     async openWithSchemaVersion(schemaVersion) {
-      const store = createIndexedDbReplicaRowStore({ databaseName, schemaVersion });
+      const store = createIndexedDbReplicaRowStore({
+        databaseName,
+        schemaVersion,
+      });
       await store.open();
       return store;
     },
@@ -33,7 +36,12 @@ it("uses exact IndexedDB keys for targeted rows instead of scanning the host", a
   await store.apply({
     upserts: [
       { serverId: "server-a", kind: "agent", id: "agent-1", payload: "agent" },
-      { serverId: "server-a", kind: "workspace", id: "workspace-1", payload: "workspace" },
+      {
+        serverId: "server-a",
+        kind: "workspace",
+        id: "workspace-1",
+        payload: "workspace",
+      },
     ],
     deletes: [],
   });
@@ -48,4 +56,38 @@ it("uses exact IndexedDB keys for targeted rows instead of scanning the host", a
 
   get.mockRestore();
   getAll.mockRestore();
+});
+
+it("ignores corrupt null and malformed rows returned by IndexedDB", async () => {
+  const store = createIndexedDbReplicaRowStore({
+    databaseName: "replica-corrupt-" + databaseSequence++,
+    schemaVersion: 1,
+  });
+  await store.open();
+  const valid = {
+    serverId: "s",
+    kind: "agent" as const,
+    id: "a",
+    payload: "{}",
+  };
+  await store.apply({ upserts: [valid], deletes: [] });
+  const original = FakeIDBObjectStore.prototype.getAll;
+  const spy = vi.spyOn(FakeIDBObjectStore.prototype, "getAll").mockImplementation(function (
+    this: IDBObjectStore,
+    ...args
+  ) {
+    const request = original.apply(this, args);
+    request.addEventListener("success", () => {
+      Object.defineProperty(request, "result", {
+        value: [null, {}, ...request.result],
+      });
+    });
+    return request;
+  });
+  try {
+    expect(await store.readAll()).toEqual([{ serverId: "s", rows: [valid] }]);
+    expect(await store.read("s", ["agent"])).toEqual([valid]);
+  } finally {
+    spy.mockRestore();
+  }
 });

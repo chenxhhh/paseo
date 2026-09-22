@@ -147,6 +147,10 @@ function mergeIdentityMetadata(
 function mergeIdentityEntries(existing: WorkingEntry, entry: WorkingEntry): WorkingEntry | null {
   switch (entry.item.type) {
     case "tool_call":
+      // A single tool call can span turns: an auto-continue after an abnormal
+      // turn end starts a new turn while the old call keeps streaming. Rows
+      // only merge within one turn; on a turn change the caller re-keys the
+      // identity map so the new turn gets its own projected entry.
       if (existing.item.type !== "tool_call" || existing.turnId !== entry.turnId) return null;
       return {
         ...existing,
@@ -170,6 +174,12 @@ function mergeIdentityEntries(existing: WorkingEntry, entry: WorkingEntry): Work
 function collapseByIdentity(entries: readonly WorkingEntry[]): WorkingEntry[] {
   const output: WorkingEntry[] = [];
   const indexByIdentity = new Map<string, number>();
+  // A single tool call can span turns: an auto-continue after an abnormal turn
+  // end starts a new turn while the old call keeps streaming, and late rows from
+  // an earlier turn can arrive after another turn took over. Tool rows key per
+  // (identity, turn) so those late rows re-merge into their own turn's entry;
+  // plugin rows intentionally replace across turns by identity alone.
+  const toolIndexByIdentityAndTurn = new Map<string, number>();
 
   for (const entry of entries) {
     const identity = timelineItemIdentity(entry.item);
@@ -178,9 +188,13 @@ function collapseByIdentity(entries: readonly WorkingEntry[]): WorkingEntry[] {
       continue;
     }
 
-    const existingIndex = indexByIdentity.get(identity);
+    const isToolCall = entry.item.type === "tool_call";
+    const key = isToolCall ? `${identity}\u0000${entry.turnId ?? ""}` : identity;
+    const index = isToolCall ? toolIndexByIdentityAndTurn : indexByIdentity;
+
+    const existingIndex = index.get(key);
     if (existingIndex === undefined) {
-      indexByIdentity.set(identity, output.length);
+      index.set(key, output.length);
       output.push(entry);
       continue;
     }
@@ -188,7 +202,7 @@ function collapseByIdentity(entries: readonly WorkingEntry[]): WorkingEntry[] {
     const existing = output[existingIndex];
     const merged = existing ? mergeIdentityEntries(existing, entry) : null;
     if (!merged) {
-      indexByIdentity.set(identity, output.length);
+      index.set(key, output.length);
       output.push(entry);
       continue;
     }

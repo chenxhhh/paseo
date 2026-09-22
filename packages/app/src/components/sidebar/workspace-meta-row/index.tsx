@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Pressable, Text, View, type GestureResponderEvent } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -14,11 +14,13 @@ import type { PrHint } from "@/git/pr-hint";
 import { getForgePresentation, normalizeForge } from "@/git/forge";
 import { openExternalUrl } from "@/utils/open-external-url";
 import { useSidebarMetaPreferences } from "@/components/sidebar/display-preferences/model";
+import { useWorkspaceStatusStore } from "@/stores/workspace-status-store";
 import type { Theme } from "@/styles/theme";
 import { PullRequestStateIcon } from "@/git/pull-request-state-icon";
 import { CheckIndicator } from "./check-indicator";
 import type { CheckSummary, CheckSummaryState } from "./check-summary";
 import { selectMetaRowItems, type MetaRowItem } from "./meta-items";
+import type { WorkspaceStatusDefinition } from "@/utils/workspace-statuses";
 import { workspaceServiceLabelKey, type WorkspaceServiceSummary } from "./service-summary";
 
 export {
@@ -66,6 +68,7 @@ export function WorkspaceMetaRow({
   hostBadge,
   prHint,
   serviceSummary,
+  userStatusId,
   labels = EMPTY_LABELS,
 }: {
   currentBranch: string | null;
@@ -73,15 +76,23 @@ export function WorkspaceMetaRow({
   hostBadge: HostBadgeModel | null;
   prHint: PrHint | null;
   serviceSummary: WorkspaceServiceSummary | null;
+  /** The workspace's stored assignment; the catalog resolves it to a chip, or nothing. */
+  userStatusId?: string | null;
   labels?: readonly WorkspaceLabelDefinition[];
 }) {
   const { rowItems, checksDisplay } = useSidebarMetaPreferences();
+  const statuses = useWorkspaceStatusStore((state) => state.statuses);
+  const userStatus = useMemo(
+    () => statuses.find((status) => status.id === userStatusId) ?? null,
+    [statuses, userStatusId],
+  );
   const items = selectMetaRowItems({
     currentBranch,
     projectName,
     hasHostBadge: hostBadge !== null,
     prHint,
     serviceSummary,
+    userStatus,
     labels,
     visible: rowItems,
     checksDisplay,
@@ -126,10 +137,33 @@ function MetaItemNode({
   if (item.kind === "checks") {
     return <ChecksItem summary={item.summary} label={item.label} />;
   }
+  if (item.kind === "userStatus") {
+    return <UserStatusChip status={item.status} leading={leading} />;
+  }
   if (item.kind === "labels") {
     return <LabelsItem labels={item.labels} leading={leading} />;
   }
   return <ServiceItem summary={item.summary} />;
+}
+
+// One chip, the ground the labels use. A status that leads the line hangs left by its own
+// padding for the same reason the label run does — see `LabelsItem`.
+function UserStatusChip({
+  status,
+  leading,
+}: {
+  status: WorkspaceStatusDefinition;
+  leading: boolean;
+}) {
+  const chipLabel = useMemo(
+    () => ({ name: status.label, color: status.color }),
+    [status.color, status.label],
+  );
+  return (
+    <View style={[styles.labels, leading && styles.labelsLeading]}>
+      <WorkspaceLabelChip label={chipLabel} />
+    </View>
+  );
 }
 
 function IdentityItem({ kind, name }: { kind: "branch" | "project"; name: string }) {

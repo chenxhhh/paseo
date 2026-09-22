@@ -22,6 +22,17 @@ interface IndexedDbReplicaRowStoreOptions {
   schemaVersion: number;
 }
 
+function isReplicaRow(value: unknown): value is ReplicaRow {
+  if (!value || typeof value !== "object") return false;
+  const row = value as Partial<ReplicaRow>;
+  return (
+    typeof row.serverId === "string" &&
+    typeof row.id === "string" &&
+    typeof row.payload === "string" &&
+    ["agent", "workspace", "project", "timeline", "checkpoint"].includes(row.kind ?? "")
+  );
+}
+
 function requestResult<Result>(request: IDBRequest<Result>): Promise<Result> {
   return new Promise((resolve, reject) => {
     request.addEventListener("success", () => resolve(request.result));
@@ -69,7 +80,9 @@ async function openDatabase(databaseName: string): Promise<IDBDatabase> {
     const request = indexedDB.open(databaseName, DATABASE_VERSION);
     request.addEventListener("upgradeneeded", () => {
       if (!request.result.objectStoreNames.contains(ROWS_STORE)) {
-        request.result.createObjectStore(ROWS_STORE, { keyPath: ["serverId", "kind", "id"] });
+        request.result.createObjectStore(ROWS_STORE, {
+          keyPath: ["serverId", "kind", "id"],
+        });
       }
       if (!request.result.objectStoreNames.contains(META_STORE)) {
         request.result.createObjectStore(META_STORE);
@@ -128,12 +141,15 @@ export function createIndexedDbReplicaRowStore(
     const rows = await requestResult<ReplicaRow[]>(transaction.objectStore(ROWS_STORE).getAll());
     await completion;
     const hosts = new Map<string, ReplicaRow[]>();
-    for (const row of rows) {
+    for (const row of rows.filter(isReplicaRow)) {
       const hostRows = hosts.get(row.serverId) ?? [];
       hostRows.push(row);
       hosts.set(row.serverId, hostRows);
     }
-    return Array.from(hosts, ([serverId, hostRows]) => ({ serverId, rows: hostRows }));
+    return Array.from(hosts, ([serverId, hostRows]) => ({
+      serverId,
+      rows: hostRows,
+    }));
   }
 
   async function read(
@@ -161,11 +177,13 @@ export function createIndexedDbReplicaRowStore(
         );
     const rows = (await Promise.all(requests)).flat();
     await completion;
-    return rows.sort((left, right) =>
-      left.kind === right.kind
-        ? left.id.localeCompare(right.id)
-        : left.kind.localeCompare(right.kind),
-    );
+    return rows
+      .filter(isReplicaRow)
+      .sort((left, right) =>
+        left.kind === right.kind
+          ? left.id.localeCompare(right.id)
+          : left.kind.localeCompare(right.kind),
+      );
   }
 
   async function apply(changes: ReplicaRowChanges): Promise<void> {
@@ -194,7 +212,7 @@ export function createIndexedDbReplicaRowStore(
       const rows = transaction.objectStore(ROWS_STORE);
       const range = IDBKeyRange.bound([oldServerId], [oldServerId, []]);
       const oldRows = await requestResult<ReplicaRow[]>(rows.getAll(range));
-      for (const row of oldRows) {
+      for (const row of oldRows.filter(isReplicaRow)) {
         await requestResult(rows.put({ ...row, serverId: newServerId }));
         await requestResult(rows.delete([row.serverId, row.kind, row.id]));
       }

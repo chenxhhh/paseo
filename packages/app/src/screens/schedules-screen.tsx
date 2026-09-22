@@ -15,6 +15,7 @@ import { ExternalLink } from "@/components/ui/external-link";
 import { HostFilter } from "@/components/hosts/host-filter";
 import { ALL_HOSTS_OPTION_ID } from "@/components/hosts/host-picker";
 import { ScheduleFormSheet } from "@/components/schedules/schedule-form-sheet";
+import { ScheduleRunsSheet } from "@/components/schedules/schedule-runs-sheet";
 import { SchedulesTable, type ScheduleRowView } from "@/components/schedules/schedules-table";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
@@ -44,6 +45,10 @@ type FormState =
   | { mode: "closed" }
   | { mode: "create" }
   | { mode: "edit"; serverId: string; schedule: ScheduleSummary };
+
+type RunsSheetState =
+  | { mode: "closed" }
+  | { mode: "open"; serverId: string; schedule: ScheduleSummary };
 
 const STATUS_FILTER_OPTIONS: { value: ScheduleBucket; label: string; testID: string }[] = [
   { value: "runnable", label: "Active", testID: "schedules-filter-active" },
@@ -92,6 +97,7 @@ function SchedulesScreenContent(): ReactElement {
   }, [hosts, runtime, runtimeVersion]);
 
   const [form, setForm] = useState<FormState>({ mode: "closed" });
+  const [runsSheet, setRunsSheet] = useState<RunsSheetState>({ mode: "closed" });
   const [selectedHost, setSelectedHost] = useState(ALL_HOSTS_OPTION_ID);
   const [statusFilter, setStatusFilter] = useState<ScheduleBucket>("runnable");
 
@@ -109,6 +115,11 @@ function SchedulesScreenContent(): ReactElement {
     setForm({ mode: "edit", serverId: schedule.serverId, schedule });
   }, []);
   const closeForm = useCallback(() => setForm({ mode: "closed" }), []);
+
+  const openRuns = useCallback((schedule: AggregatedSchedule) => {
+    setRunsSheet({ mode: "open", serverId: schedule.serverId, schedule });
+  }, []);
+  const closeRuns = useCallback(() => setRunsSheet({ mode: "closed" }), []);
 
   const agentsByKey = useMemo(() => {
     const map = new Map<string, ScheduleTargetAgent>();
@@ -180,6 +191,7 @@ function SchedulesScreenContent(): ReactElement {
         onRetry={refetch}
         onCreate={openCreate}
         onEdit={openEdit}
+        onViewRuns={openRuns}
       />
       <ScheduleFormSheet
         serverId={form.mode === "edit" ? form.serverId : undefined}
@@ -187,6 +199,12 @@ function SchedulesScreenContent(): ReactElement {
         onClose={closeForm}
         mode={form.mode === "edit" ? "edit" : "create"}
         schedule={form.mode === "edit" ? form.schedule : undefined}
+      />
+      <ScheduleRunsSheet
+        serverId={runsSheet.mode === "open" ? runsSheet.serverId : undefined}
+        schedule={runsSheet.mode === "open" ? runsSheet.schedule : undefined}
+        visible={runsSheet.mode === "open"}
+        onClose={closeRuns}
       />
     </View>
   );
@@ -206,6 +224,7 @@ function SchedulesScreenBody({
   onRetry,
   onCreate,
   onEdit,
+  onViewRuns,
 }: {
   rows: ScheduleRowView[];
   loadState: AggregateLoadState<AggregatedSchedule>;
@@ -220,6 +239,7 @@ function SchedulesScreenBody({
   onRetry: () => void;
   onCreate: () => void;
   onEdit: (schedule: AggregatedSchedule) => void;
+  onViewRuns: (schedule: AggregatedSchedule) => void;
 }): ReactElement {
   const bodyState = resolveSchedulesScreenBodyState({ loadState, showLoadError });
 
@@ -253,7 +273,9 @@ function SchedulesScreenBody({
 
   let schedulesContent: ReactElement;
   if (rows.length > 0) {
-    schedulesContent = <SchedulesTable rows={rows} onEditSchedule={onEdit} />;
+    schedulesContent = (
+      <SchedulesTable rows={rows} onEditSchedule={onEdit} onViewRuns={onViewRuns} />
+    );
   } else if (statusFilter === "ended") {
     schedulesContent = <SchedulesEndedEmptyState />;
   } else {
