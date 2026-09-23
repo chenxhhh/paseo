@@ -1,0 +1,40 @@
+diff --git a/node_modules/agy-acp-bridge/dist/agyArgs.js b/node_modules/agy-acp-bridge/dist/agyArgs.js
+index dd13be2..5371a72 100644
+--- a/node_modules/agy-acp-bridge/dist/agyArgs.js
++++ b/node_modules/agy-acp-bridge/dist/agyArgs.js
+@@ -32,7 +32,7 @@ export function resolvePrintTimeout(argv = process.argv, env = process.env) {
+ export function buildAgyArgs(session, userPrompt, options = {}) {
+     const argv = options.argv ?? process.argv;
+     const env = options.env ?? process.env;
+-    const args = ["--print", userPrompt, "--output-format", "stream-json"];
++    const args = ["--input-format", "stream-json", "--output-format", "stream-json"];
+     const printTimeout = resolvePrintTimeout(argv, env);
+     if (printTimeout) {
+         args.push("--print-timeout", printTimeout);
+diff --git a/node_modules/agy-acp-bridge/dist/index.js b/node_modules/agy-acp-bridge/dist/index.js
+index a45fe76..ef9c690 100644
+--- a/node_modules/agy-acp-bridge/dist/index.js
++++ b/node_modules/agy-acp-bridge/dist/index.js
+@@ -720,8 +720,22 @@ const app = agent({ name: "agy-acp" })
+         const child = spawnAgy(agyArgs, {
+             cwd: session.cwd,
+             env: { ...process.env },
++            stdio: ["pipe", "pipe", "pipe"],
+         });
+         activeProcesses[sessionId] = child;
++        child.stdin.on("error", (err) => {
++            logDebug("child.stdin error:", err);
++        });
++        const streamPayload = JSON.stringify({
++            event: "user",
++            message: { content: userPrompt },
++        }) + "\n";
++        child.stdin.write(streamPayload, "utf-8", (err) => {
++            if (err) {
++                logError("Failed to write prompt to agy stdin:", err);
++            }
++            child.stdin.end();
++        });
+         const turn = { stopReason: "end_turn" };
+         let turnError = null;
+         const turnContext = { hasOutputText: false };
