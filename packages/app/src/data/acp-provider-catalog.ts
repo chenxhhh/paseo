@@ -33,6 +33,15 @@ const CATALOG_DATA = [
     command: ["amp-acp"],
   },
   {
+    id: "antigravity",
+    title: "Google Antigravity",
+    description: "Google Antigravity via community ACP bridge (agy-acp-bridge)",
+    version: "0.3.6",
+    iconId: "antigravity",
+    installLink: "https://antigravity.google",
+    command: ["agy-acp"],
+  },
+  {
     id: "auggie",
     title: "Auggie CLI",
     description:
