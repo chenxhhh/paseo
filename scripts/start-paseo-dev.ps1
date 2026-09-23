@@ -232,6 +232,11 @@ try {
             }
         }
     }
+
+    # (d) auto-patch agy-acp-bridge if present
+    if (Test-Path (Join-Path $PaseoRoot "scripts\patch-agy-acp-bridge.mjs")) {
+        node (Join-Path $PaseoRoot "scripts\patch-agy-acp-bridge.mjs")
+    }
 } finally {
     Pop-Location
 }
