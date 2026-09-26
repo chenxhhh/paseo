@@ -63,6 +63,7 @@ describe("GenericACPAgentClient", () => {
           supportsRewindBoth: false,
           requiresDurableTimeline: false,
         },
+        waitForInitialCommands: true,
       },
     ]);
   });
