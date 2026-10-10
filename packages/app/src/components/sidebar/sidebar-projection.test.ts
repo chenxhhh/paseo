@@ -1,3 +1,4 @@
+import { i18n } from "@/i18n/i18next";
 import { describe, expect, it } from "vitest";
 import type {
   SidebarProjectEntry,
@@ -97,6 +98,7 @@ function projectionInput(options?: {
     collapsedProjectKeys: new Set<string>(),
     collapsedWorkspaceGroupKeys: new Set<string>(),
     statuses: [],
+    t: i18n.t,
   };
 }
 

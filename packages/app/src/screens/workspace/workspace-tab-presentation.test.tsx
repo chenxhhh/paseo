@@ -73,15 +73,17 @@ function mountIcon(
   presentation: Partial<WorkspaceTabPresentation> & Pick<WorkspaceTabPresentation, "statusBucket">,
 ): HTMLDivElement {
   const fullPresentation: WorkspaceTabPresentation = {
-    key: "tab",
-    kind: "agent",
-    label: "Tab",
-    subtitle: "",
-    tooltip: "Tab",
-    modified: false,
-    titleState: "ready",
-    icon: () => React.createElement("div", { "data-icon": "agent" }),
-    ...presentation,
+    key: presentation.key ?? "tab",
+    kind: presentation.kind ?? "agent",
+    label: presentation.label ?? "Tab",
+    subtitle: presentation.subtitle ?? "",
+    tooltip: presentation.tooltip ?? "Tab",
+    modified: presentation.modified ?? false,
+    showCloseButton: presentation.showCloseButton ?? false,
+    titleState: presentation.titleState ?? "ready",
+    icon: presentation.icon ?? (() => React.createElement("div", { "data-icon": "agent" })),
+    statusBucket: presentation.statusBucket,
+    terminalStatus: presentation.terminalStatus,
   };
   const container = window.document.createElement("div");
   window.document.body.appendChild(container);

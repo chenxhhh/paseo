@@ -2,7 +2,8 @@ import { join } from "node:path";
 import type { Logger } from "pino";
 import type { AgentManager } from "../agent/agent-manager.js";
 import type { AgentStorage } from "../agent/agent-storage.js";
-import { formatSystemNotificationPrompt, sendPromptToAgent } from "../agent/agent-prompt.js";
+import { formatSystemNotificationPrompt } from "../agent/agent-messages/index.js";
+import { sendPromptToAgent } from "../agent/agent-prompt.js";
 import { getParentAgentIdFromLabels } from "@getpaseo/protocol/agent-labels";
 import type {
   StoredTask,

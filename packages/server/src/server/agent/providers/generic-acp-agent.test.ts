@@ -61,43 +61,22 @@ describe("GenericACPAgentClient", () => {
           supportsRewindConversation: false,
           supportsRewindFiles: false,
           supportsRewindBoth: false,
-          requiresDurableTimeline: false,
         },
         waitForInitialCommands: true,
       },
     ]);
   });
-
-  test("uses provider params to report MCP support", () => {
+  test("gates Auto Accept behind the supportsAutoAccept option", () => {
     const _client = new GenericACPAgentClient({
       logger: createTestLogger(),
-      command: ["no-mcp-acp", "serve"],
-      providerParams: {
-        supportsMcpServers: false,
-      },
+      command: ["with", "acp"],
+      supportsAutoAccept: false,
     });
     void _client;
 
     expect(mockState.superConstructorOptions.at(-1)).toMatchObject({
       capabilities: {
-        supportsMcpServers: false,
-      },
-    });
-  });
-
-  test("exposes requiresDurableTimeline from provider params", () => {
-    const _client = new GenericACPAgentClient({
-      logger: createTestLogger(),
-      command: ["serverless-history-acp", "serve"],
-      providerParams: {
-        requiresDurableTimeline: true,
-      },
-    });
-    void _client;
-
-    expect(mockState.superConstructorOptions.at(-1)).toMatchObject({
-      capabilities: {
-        requiresDurableTimeline: true,
+        supportsAutoAccept: false,
       },
     });
   });
