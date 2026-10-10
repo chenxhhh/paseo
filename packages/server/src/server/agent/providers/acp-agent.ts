@@ -1082,8 +1082,6 @@ export class ACPAgentClient implements AgentClient {
           ...this.capabilities,
           supportsMcpServers:
             providerOptions.supportsMcpServers ?? this.capabilities.supportsMcpServers,
-          requiresDurableTimeline:
-            providerOptions.requiresDurableTimeline ?? this.capabilities.requiresDurableTimeline,
         },
         configuredModelIds: options?.configuredModelIds,
         agentId: launchContext?.agentId,
@@ -1141,8 +1139,6 @@ export class ACPAgentClient implements AgentClient {
         ...this.capabilities,
         supportsMcpServers:
           providerOptions.supportsMcpServers ?? this.capabilities.supportsMcpServers,
-        requiresDurableTimeline:
-          providerOptions.requiresDurableTimeline ?? this.capabilities.requiresDurableTimeline,
       },
       handle,
       resumePurpose: options?.purpose,
