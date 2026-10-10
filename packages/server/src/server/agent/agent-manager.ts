@@ -1258,7 +1258,7 @@ export class AgentManager {
 
   async getTimelineRows(id: string): Promise<AgentTimelineRow[]> {
     this.requireAgent(id);
-    if (this.durableTimelineStore && this.durableTimelineEnabled(id)) {
+    if (this.durableTimelineStore) {
       return projectTimelineRows({
         rows: await this.durableTimelineStore.getCommittedRows(id),
         mode: "projected",
@@ -3630,7 +3630,6 @@ export class AgentManager {
       const { durableTimelineHasRows } = await this.initializeAgentTimelineForRegister({
         agentId: resolvedAgentId,
         now,
-        capabilities: session.capabilities,
         options,
       });
 
@@ -3737,7 +3736,6 @@ export class AgentManager {
   private async initializeAgentTimelineForRegister(params: {
     agentId: string;
     now: Date;
-    capabilities?: AgentCapabilityFlags;
     options:
       | {
           timeline?: AgentTimelineItem[];
@@ -3749,13 +3747,11 @@ export class AgentManager {
         }
       | undefined;
   }): Promise<{ durableTimelineHasRows: boolean }> {
-    const { agentId, now, capabilities, options } = params;
+    const { agentId, now, options } = params;
     const timelineAlreadyPrimed = this.timelineStore.has(agentId);
     const explicitTimelineSeed = buildExplicitTimelineSeedForRegister(now, options);
     const shouldSeedFromDurable =
-      !explicitTimelineSeed &&
-      !this.timelineStore.has(agentId) &&
-      this.durableTimelineEnabled(agentId, capabilities);
+      !explicitTimelineSeed && !this.timelineStore.has(agentId) && this.durableTimelineStore;
     const durableTimelineSeed = shouldSeedFromDurable
       ? await this.loadCommittedTimelineSeed(agentId, now)
       : null;
@@ -3767,7 +3763,7 @@ export class AgentManager {
       this.timelineStore.initialize(agentId, timelineSeed ?? { timestamp: now.toISOString() });
     }
     if (options?.timelineRows?.length) {
-      this.enqueueDurableTimelineBulkInsert(agentId, options.timelineRows, capabilities);
+      this.enqueueDurableTimelineBulkInsert(agentId, options.timelineRows);
     }
     return { durableTimelineHasRows };
   }
@@ -5234,19 +5230,8 @@ export class AgentManager {
     this.trackBackgroundTask(task);
   }
 
-  /**
-   * Durable rows are only written and replayed for providers that cannot
-   * rehydrate history themselves (`requiresDurableTimeline`); providers with
-   * history replay keep hydrating from provider history.
-   */
-  private durableTimelineEnabled(agentId: string, capabilities?: AgentCapabilityFlags): boolean {
-    if (this.durableTimelineStore == null) return false;
-    const flags = capabilities ?? this.agents.get(agentId)?.session.capabilities;
-    return flags?.requiresDurableTimeline === true;
-  }
-
   private enqueueDurableTimelineAppend(agentId: string, row: AgentTimelineRow): void {
-    if (!this.durableTimelineStore || !this.durableTimelineEnabled(agentId)) {
+    if (!this.durableTimelineStore) {
       return;
     }
     const task = this.durableTimelineStore.bulkInsert(agentId, [row]).catch((err) => {
@@ -5261,12 +5246,10 @@ export class AgentManager {
   private enqueueDurableTimelineBulkInsert(
     agentId: string,
     rows: readonly AgentTimelineRow[],
-    capabilities?: AgentCapabilityFlags,
   ): void {
     if (!this.durableTimelineStore || rows.length === 0) {
       return;
     }
-    if (!this.durableTimelineEnabled(agentId, capabilities)) return;
     const task = this.durableTimelineStore.bulkInsert(agentId, rows).catch((err) => {
       this.logger.error(
         { err, agentId, rowCount: rows.length },
@@ -5277,7 +5260,7 @@ export class AgentManager {
   }
 
   private enqueueDurableTimelineUpdate(agentId: string, row: AgentTimelineRow): void {
-    if (!this.durableTimelineStore || !this.durableTimelineEnabled(agentId)) return;
+    if (!this.durableTimelineStore) return;
     const task = this.durableTimelineStore.updateCommittedRow(agentId, row).catch((err) => {
       this.logger.error(
         { err, agentId, seq: row.seq, itemType: row.item.type },
