@@ -580,10 +580,6 @@ class CloseRecordingTestAgentSession extends TestAgentSession {
  * its own timeline rows.
  */
 class DurableTimelineTestSession extends TestAgentSession {
-  override readonly capabilities = {
-    ...TEST_CAPABILITIES,
-    requiresDurableTimeline: true,
-  };
   streamHistoryCalls = 0;
 
   override async *streamHistory(): AsyncGenerator<AgentStreamEvent> {
@@ -691,8 +687,8 @@ test("reads durable history after restart without opening a provider session", a
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-offline-history-"));
   const registry = new AgentStorage(join(workdir, "agents"), logger);
   const store = new RecordingTimelineStore();
-  // Durable rows are only committed for providers that cannot replay history
-  // themselves, so the offline read needs a requiresDurableTimeline session.
+  // Durable rows are committed for every provider, so the offline read works
+  // even for sessions that replay nothing from streamHistory.
   const client = new (class extends TestAgentClient {
     override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
       this.createdConfigs.push(config);
