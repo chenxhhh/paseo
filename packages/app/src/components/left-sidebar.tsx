@@ -1,5 +1,13 @@
 import { router } from "expo-router";
-import { CircleGauge, FolderPlus, GitBranch, Server, Settings, X } from "lucide-react-native";
+import {
+  CircleGauge,
+  FolderPlus,
+  GitBranch,
+  Server,
+  Settings,
+  X,
+  type LucideIcon,
+} from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import {
@@ -26,7 +34,7 @@ import { SidebarSeparator } from "@/components/sidebar/sidebar-separator";
 import { SidebarNavRows } from "@/components/sidebar/sidebar-nav-rows";
 import { SidebarHelpMenu } from "@/components/sidebar/sidebar-help-menu";
 import { SidebarResizeHandle } from "@/components/sidebar-resize-handle";
-import { buttonControlHeight } from "@/components/ui/control-geometry";
+import { DensityIcon } from "@/components/ui/density-icon";
 import { Shortcut } from "@/components/ui/shortcut";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { HEADER_INNER_HEIGHT, useIsCompactFormFactor } from "@/constants/layout";
@@ -37,6 +45,7 @@ import {
   type SidebarProjectEntry,
   type SidebarWorkspaceEntry,
 } from "@/hooks/use-sidebar-workspaces-list";
+import { density } from "@/styles/density";
 import { useSidebarModel } from "@/components/sidebar/sidebar-model";
 import type { PinnedSidebarGroups } from "@/hooks/use-sidebar-pins";
 import { RetainedPanelActivity } from "@/components/retained-panel";
@@ -286,30 +295,25 @@ function FooterIconButton({
   onPress,
   testID,
   label,
-  icon: Icon,
+  icon,
   iconSizeAdjustment = 0,
   shortcutKeys,
-  theme,
 }: {
   onPress: () => void;
   testID: string;
   label: string;
-  icon: typeof FolderPlus;
+  icon: LucideIcon;
   /** Only for a glyph that reads larger than the others at the same size. */
   iconSizeAdjustment?: number;
   shortcutKeys?: ReturnType<typeof useShortcutKeys>;
-  theme: SidebarTheme;
   buttonRef?: RefObject<View | null>;
 }) {
-  const isCompact = useIsCompactFormFactor();
-  const iconSize = isCompact ? theme.iconSize.lg : theme.iconSize.md;
-
   return (
     <Tooltip delayDuration={300}>
       <TooltipTrigger asChild>
         <Pressable
           ref={buttonRef}
-          style={styles.footerIconButton(isCompact)}
+          style={styles.footerIconButton}
           testID={testID}
           nativeID={testID}
           collapsable={false}
@@ -319,9 +323,11 @@ function FooterIconButton({
           onPress={onPress}
         >
           {({ hovered }) => (
-            <Icon
-              size={iconSize + iconSizeAdjustment}
-              color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
+            <DensityIcon
+              icon={icon}
+              size="md"
+              sizeAdjustment={iconSizeAdjustment}
+              color={hovered ? "foreground" : "foregroundMuted"}
             />
           )}
         </Pressable>
@@ -334,12 +340,10 @@ function FooterIconButton({
 }
 
 function SidebarHostPicker({
-  theme,
   label,
   onAddHost,
   onOpenHostSettings,
 }: {
-  theme: SidebarTheme;
   label: string;
   onAddHost: () => void;
   onOpenHostSettings: (serverId: string) => void;
@@ -383,7 +387,6 @@ function SidebarHostPicker({
         icon={Server}
         // Server's two boxes fill more of the square than the other glyphs.
         iconSizeAdjustment={-1}
-        theme={theme}
       />
     </HostPicker>
   );
@@ -405,7 +408,6 @@ function IconTooltipContent({
 }
 
 function SidebarFooter({
-  theme,
   handleOpenProject,
   handleSettings,
   labels,
@@ -413,7 +415,6 @@ function SidebarFooter({
   handleOpenHostSettings,
   onBeforeNavigate,
 }: {
-  theme: SidebarTheme;
   handleOpenProject: () => void;
   handleSettings: () => void;
   labels: {
@@ -442,11 +443,9 @@ function SidebarFooter({
             label={labels.addProject}
             icon={FolderPlus}
             shortcutKeys={newAgentKeys}
-            theme={theme}
           />
-          <SidebarUsageIcon label={labels.usage} theme={theme} />
+          <SidebarUsageIcon label={labels.usage} />
           <SidebarHostPicker
-            theme={theme}
             label={labels.hosts}
             onAddHost={handleAddHost}
             onOpenHostSettings={handleOpenHostSettings}
@@ -459,7 +458,6 @@ function SidebarFooter({
             label={labels.settings}
             icon={Settings}
             shortcutKeys={settingsKeys}
-            theme={theme}
           />
         </View>
       </View>
@@ -467,7 +465,7 @@ function SidebarFooter({
   );
 }
 
-function SidebarUsageIcon({ label, theme }: { label: string; theme: SidebarTheme }) {
+function SidebarUsageIcon({ label }: { label: string }) {
   const openUsage = useOpenSidebarUsage();
   return (
     <FooterIconButton
@@ -475,7 +473,6 @@ function SidebarUsageIcon({ label, theme }: { label: string; theme: SidebarTheme
       testID="sidebar-usage-icon"
       label={label}
       icon={CircleGauge}
-      theme={theme}
     />
   );
 }
@@ -622,7 +619,6 @@ function MobileSidebar({
         )}
 
         <SidebarFooter
-          theme={theme}
           handleOpenProject={handleOpenProject}
           handleSettings={handleSettings}
           labels={labels}
@@ -802,7 +798,6 @@ function DesktopSidebar({
         <SidebarCalloutSlot />
 
         <SidebarFooter
-          theme={theme}
           handleOpenProject={handleOpenProject}
           handleSettings={handleSettings}
           labels={labels}
@@ -970,14 +965,14 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing[1.5],
     gap: 2,
   },
-  footerIconButton: (isCompact: boolean) => ({
-    width: isCompact ? buttonControlHeight.md : buttonControlHeight.xs,
-    height: isCompact ? buttonControlHeight.md : buttonControlHeight.xs,
+  footerIconButton: {
+    width: density.iconButton,
+    height: density.iconButton,
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: theme.spacing[1],
     paddingHorizontal: theme.spacing[1],
-  }),
+  },
   tooltipRow: {
     flexDirection: "row",
     alignItems: "center",
