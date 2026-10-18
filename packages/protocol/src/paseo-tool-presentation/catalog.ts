@@ -315,6 +315,56 @@ export const PASEO_TOOL_CATALOG = {
     detail: { inputOrder: ["provider", "cwd", "settings"] },
   },
 
+  // Coordination tasks and agent questions
+  create_task: {
+    label: "Create task",
+    context: field("title"),
+    detail: { inputOrder: ["title", "spec", "deps", "assignee_agent_id", "gate"] },
+  },
+  list_tasks: {
+    label: "List tasks",
+    detail: { inputOrder: ["status"] },
+  },
+  inspect_task: {
+    label: "Inspect task",
+    context: field("task_id"),
+    detail: { inputOrder: ["task_id"] },
+  },
+  start_task: {
+    label: "Start task",
+    context: field("task_id"),
+    detail: { inputOrder: ["task_id"] },
+  },
+  complete_task: {
+    label: "Complete task",
+    context: field("task_id"),
+    detail: { inputOrder: ["task_id", "result"] },
+  },
+  fail_task: {
+    label: "Fail task",
+    context: field("task_id"),
+    detail: { inputOrder: ["task_id", "reason"] },
+  },
+  resolve_task_gate: {
+    label: "Resolve task gate",
+    context: field("task_id"),
+    detail: { inputOrder: ["task_id", "resolution"] },
+  },
+  ask_parent: {
+    label: "Ask parent",
+    context: field("question"),
+    detail: { inputOrder: ["question", "task_id"] },
+  },
+  answer_question: {
+    label: "Answer question",
+    context: field("question_id"),
+    detail: { inputOrder: ["question_id", "answer"] },
+  },
+  list_questions: {
+    label: "List questions",
+    detail: { inputOrder: ["status"] },
+  },
+
   // Browser
   browser_list_tabs: browser("List browser tabs"),
   browser_new_tab: browser("Open browser tab", field("url")),
