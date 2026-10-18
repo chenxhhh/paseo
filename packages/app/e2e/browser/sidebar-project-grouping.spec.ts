@@ -10,6 +10,8 @@ import {
   expectProjectWorkspaceCountForHost,
   expectSeparateProjects,
   openGroupedProjectSettings,
+  openGroupedProjectWorkspace,
+  expectWorkspaceHost,
   openProjectsForSettingsHost,
   openProjectDirectory,
   openProjectDirectoryWithHosts,
@@ -487,5 +489,31 @@ test.describe("Sidebar project grouping", () => {
     await expect(group.getByRole("button").filter({ hasText: "Alpha workspace" })).toBeHidden();
     await expect(group.getByRole("button").filter({ hasText: "Beta workspace" })).toBeVisible();
     await expect(group.getByRole("button").filter({ hasText: "Main checkout" })).toBeVisible();
+  });
+
+  test("creates grouped project workspaces on the active workspace host", async ({
+    page,
+    crossHostProject,
+  }) => {
+    await openScenario(page, crossHostProject);
+    await openGroupedProjectWorkspace(page, GROUPED_PROJECT_NAME, "Secondary workspace");
+    await beginWorkspaceFromProject(page, GROUPED_PROJECT_NAME);
+    await expectWorkspaceHost(page, SECONDARY_HOST_LABEL);
+    await createWorkspaceWithoutAgent(page);
+    await expectProjectWorkspaceCountForHost(page, {
+      projectName: GROUPED_PROJECT_NAME,
+      hostName: SECONDARY_HOST_LABEL,
+      count: 2,
+    });
+
+    await openGroupedProjectWorkspace(page, GROUPED_PROJECT_NAME, "Primary workspace");
+    await beginWorkspaceFromProject(page, GROUPED_PROJECT_NAME);
+    await expectWorkspaceHost(page, PRIMARY_HOST_LABEL);
+    await createWorkspaceWithoutAgent(page);
+    await expectProjectWorkspaceCountForHost(page, {
+      projectName: GROUPED_PROJECT_NAME,
+      hostName: PRIMARY_HOST_LABEL,
+      count: 2,
+    });
   });
 });
