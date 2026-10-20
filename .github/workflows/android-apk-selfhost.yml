@@ -77,10 +77,25 @@ jobs:
           java-version: "21"
           cache: "gradle"
 
-      # ubuntu-latest runner images no longer ship the Android SDK; install the
-      # command-line tools first so sdkmanager exists.
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      # ubuntu-latest runner images no longer ship the Android SDK, and
+      # android-actions/setup-android fails on the removed legacy "tools"
+      # package — install the command-line tools manually.
+      - name: Set up Android SDK command-line tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          ct_bin="$sdk_root/cmdline-tools/latest/bin"
+          if [ ! -x "$ct_bin/sdkmanager" ]; then
+            mkdir -p "$sdk_root/cmdline-tools"
+            curl -fsSL -o /tmp/cmdtools.zip \
+              https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+            rm -rf "$sdk_root/cmdline-tools/latest" "$sdk_root/cmdline-tools/cmdline-tools"
+            unzip -q /tmp/cmdtools.zip -d "$sdk_root/cmdline-tools"
+            mv "$sdk_root/cmdline-tools/cmdline-tools" "$sdk_root/cmdline-tools/latest"
+          fi
+          echo "$ct_bin" >> "$GITHUB_PATH"
+          echo "ANDROID_HOME=$sdk_root" >> "$GITHUB_ENV"
 
       - name: Install Android SDK packages
         shell: bash
