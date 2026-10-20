@@ -12,6 +12,9 @@ name: Android APK Selfhost
 # debug signingConfig), which is stable across builds — later APKs can be
 # installed as upgrades over earlier ones. Android shows a warning about
 # debug-signed apps; that is expected for personal sideloads.
+#
+# Builds are arm64-v8a only (typical Android phones) to keep the APK small;
+# pass other ABIs to Gradle via -PreactNativeArchitectures if ever needed.
 
 on:
   push:
@@ -128,6 +131,7 @@ jobs:
         working-directory: packages/app/android
         run: |
           ./gradlew :app:assembleRelease \
+            -PreactNativeArchitectures=arm64-v8a \
             -x lint -x lintVitalAnalyzeRelease -x lintVitalRelease \
             -x generateReleaseLintModel -x generateReleaseLintVitalModel
 
@@ -137,7 +141,7 @@ jobs:
           set -euo pipefail
           apk_dir="packages/app/android/app/build/outputs/apk/release"
           ls -la "$apk_dir"
-          asset="paseo-${RELEASE_TAG}-android.apk"
+          asset="paseo-${RELEASE_TAG}-android-arm64.apk"
           cp "$apk_dir/app-release.apk" "$RUNNER_TEMP/$asset"
           (cd "$RUNNER_TEMP" && sha256sum "$asset" > "$asset.sha256")
           echo "ASSET_NAME=$asset" >> "$GITHUB_ENV"
