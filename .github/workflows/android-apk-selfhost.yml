@@ -1,0 +1,146 @@
+name: Android APK Selfhost
+
+# Fully self-hosted Android APK build: JDK + Android SDK + Gradle run on the
+# GitHub runner. No EAS project, no Expo account, no external services.
+#
+# Triggers:
+#   - push a tag matching "apk-v*" (e.g. apk-v0.12.0-beta.3-1) -> builds that tag
+#   - workflow_dispatch on any branch -> builds the branch HEAD, publishes under
+#     the optional `tag` input, or an auto-generated apk-v<version>-<run_number> tag
+#
+# The APK is signed with the Expo template debug keystore (release buildType with
+# debug signingConfig), which is stable across builds — later APKs can be
+# installed as upgrades over earlier ones. Android shows a warning about
+# debug-signed apps; that is expected for personal sideloads.
+
+on:
+  push:
+    tags:
+      - "apk-v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish under (default: apk-v<appVersion>-<runNumber>)"
+        required: false
+        type: string
+
+concurrency:
+  group: android-apk-selfhost-${{ github.event_name == 'workflow_dispatch' && (inputs.tag || github.run_id) || github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  APP_VARIANT: production
+  # Not needed for an Android build; skip the heavy browser/electron downloads.
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+  ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+
+jobs:
+  build-apk:
+    name: Build release APK and publish to GitHub Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "push" ]; then
+            tag="${GITHUB_REF_NAME}"
+          else
+            tag="${{ inputs.tag }}"
+          fi
+          if [ -z "$tag" ]; then
+            app_version="$(node -p "require('./packages/app/package.json').version")"
+            tag="apk-v${app_version}-${{ github.run_number }}"
+          fi
+          echo "RELEASE_TAG=$tag" >> "$GITHUB_ENV"
+          case "$tag" in
+            *-*) echo "IS_PRERELEASE=true" >> "$GITHUB_ENV" ;;
+            *) echo "IS_PRERELEASE=false" >> "$GITHUB_ENV" ;;
+          esac
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "21"
+          cache: "gradle"
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager --install "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Install JS dependencies
+        shell: bash
+        run: node scripts/npm-retry.mjs ci
+
+      # Mirrors packages/app "eas-build-post-install": build the workspace
+      # packages the app imports, plus the terminal webview asset.
+      - name: Build app workspace dependencies
+        shell: bash
+        run: npm run build:app-deps
+
+      - name: Build terminal webview asset
+        shell: bash
+        working-directory: packages/app
+        run: npm run build:terminal-webview
+
+      - name: Generate Android project (expo prebuild)
+        shell: bash
+        working-directory: packages/app
+        run: npx expo prebuild --platform android --clean --non-interactive
+
+      - name: Assemble release APK
+        shell: bash
+        working-directory: packages/app/android
+        run: |
+          ./gradlew :app:assembleRelease \
+            -x lint -x lintVitalAnalyzeRelease -x lintVitalRelease \
+            -x generateReleaseLintModel -x generateReleaseLintVitalModel
+
+      - name: Collect APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk_dir="packages/app/android/app/build/outputs/apk/release"
+          ls -la "$apk_dir"
+          asset="paseo-${RELEASE_TAG}-android.apk"
+          cp "$apk_dir/app-release.apk" "$RUNNER_TEMP/$asset"
+          (cd "$RUNNER_TEMP" && sha256sum "$asset" > "$asset.sha256")
+          echo "ASSET_NAME=$asset" >> "$GITHUB_ENV"
+
+      - name: Publish APK to GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          prerelease_args=()
+          if [ "$IS_PRERELEASE" = "true" ]; then
+            prerelease_args=(--prerelease)
+          fi
+          if ! gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Paseo $RELEASE_TAG" \
+              --notes "Self-hosted Android APK built from ${GITHUB_SHA} by the Android APK Selfhost workflow." \
+              "${prerelease_args[@]}"
+          fi
+          gh release upload "$RELEASE_TAG" \
+            "$RUNNER_TEMP/$ASSET_NAME" "$RUNNER_TEMP/$ASSET_NAME.sha256" \
+            --clobber --repo "$GITHUB_REPOSITORY"
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+            --json assets --jq '.assets[].browser_download_url'
