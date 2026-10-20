@@ -77,6 +77,11 @@ jobs:
           java-version: "21"
           cache: "gradle"
 
+      # ubuntu-latest runner images no longer ship the Android SDK; install the
+      # command-line tools first so sdkmanager exists.
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
       - name: Install Android SDK packages
         shell: bash
         run: |
