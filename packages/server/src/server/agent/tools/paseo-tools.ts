@@ -40,6 +40,7 @@ import { everyMsToFiveFieldCron } from "@getpaseo/protocol/schedule/cadence";
 import { expandUserPath, isSameOrDescendantPath, resolvePathFromBase } from "../../path-utils.js";
 import type { TerminalManager } from "../../../terminal/terminal-manager.js";
 import type { CreatePaseoWorktreeWorkflowFn } from "../../worktree-session.js";
+import type { TaskService } from "../../tasks/service.js";
 import { computeNextRunAt, validateScheduleCadence } from "../../schedule/cron.js";
 import {
   ScheduleNotFoundError,
@@ -87,13 +88,17 @@ import type {
   ProjectRegistry,
   WorkspaceRegistry,
 } from "../../workspace-registry.js";
-import { resolveWorktreeSourceCwd } from "../../workspace-source.js";
+import {
+  resolveInheritedProjectIdForWorktreeCreate as lookupInheritedProjectIdForWorktreeCreate,
+  resolveWorktreeSourceCwd,
+} from "../../workspace-source.js";
 import type { WorkspaceScriptsService } from "../../session/workspace-scripts/workspace-scripts-service.js";
 import {
   type ArchiveCommandDependencies,
   type CreatePaseoWorktreeCommandInput,
   createPaseoWorktreeCommand,
 } from "../../worktree/commands.js";
+import { registerTaskTools } from "../../tasks/task-tools.js";
 import { registerBrowserTools } from "../../browser-tools/tools.js";
 import type { BrowserToolsBroker } from "../../browser-tools/broker.js";
 import {
@@ -113,6 +118,7 @@ export interface PaseoToolHostDependencies {
   terminalManager?: TerminalManager | null;
   getDaemonTcpPort?: () => number | null;
   scheduleService?: ScheduleService | null;
+  taskService?: TaskService | null;
   providerSnapshotManager: ProviderSnapshotManager;
   daemonConfigStore?: Pick<DaemonConfigStore, "get">;
   github?: ForgeService;
@@ -634,6 +640,7 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
     terminalManager,
     workspaceScripts,
     scheduleService,
+    taskService,
     providerSnapshotManager,
     daemonConfigStore,
     callerAgentId,
@@ -798,6 +805,20 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
       return callerAgent.workspaceId;
     }
     throw new PaseoToolInputError("workspaceId is required outside an agent-scoped session");
+  }
+
+  async function resolveInheritedProjectIdForWorktreeCreate(
+    resolvedSourceCwd: string,
+  ): Promise<string | undefined> {
+    if (!callerAgentId) {
+      return undefined;
+    }
+    const callerAgent = agentManager.getAgent(callerAgentId);
+    return lookupInheritedProjectIdForWorktreeCreate({
+      callerWorkspaceId: callerAgent?.workspaceId,
+      resolvedSourceCwd,
+      workspaceRegistry: options.workspaceRegistry,
+    });
   }
 
   const buildCallerAgentScheduleConfigExtras = (
@@ -1324,7 +1345,12 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
           .describe(
             "Local directory or source checkout. Defaults to your current workspace. Local isolation adopts an existing directory and never creates one.",
           ),
-        projectId: z.string().optional().describe("Existing project id to own the workspace."),
+        projectId: z
+          .string()
+          .optional()
+          .describe(
+            "Existing project id to own the workspace. Defaults to your current workspace's project when creating from your own checkout.",
+          ),
         title: z.string().trim().min(1).optional(),
         background: z
           .boolean()
@@ -1422,6 +1448,8 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
           prNumber,
           forge,
         });
+        const inheritedProjectId = await resolveInheritedProjectIdForWorktreeCreate(cwd);
+        const effectiveProjectId = projectId ?? inheritedProjectId;
         const result = await createPaseoWorktreeCommand(
           {
             paseoHome: options.paseoHome,
@@ -1430,7 +1458,7 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
           },
           {
             cwd,
-            ...(projectId ? { projectId } : {}),
+            ...(effectiveProjectId ? { projectId: effectiveProjectId } : {}),
             ...(worktreeSlug ? { worktreeSlug } : {}),
             ...worktreeTarget,
             ...(title ? { title } : {}),
@@ -1557,6 +1585,7 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
           terminalManager,
           providerSnapshotManager,
           createPaseoWorktree: options.createPaseoWorktree,
+          ...(options.workspaceRegistry ? { workspaceRegistry: options.workspaceRegistry } : {}),
           ...(options.ensureWorkspaceForCreate
             ? { ensureWorkspaceForCreate: options.ensureWorkspaceForCreate }
             : {}),
@@ -2747,6 +2776,14 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
     },
   );
 
+  registerTaskTools({
+    registerTool,
+    taskService,
+    callerAgentId,
+    resolveCallerAgent,
+    ensureValidJson,
+  });
+
   registerTool(
     "list_schedules",
     {
@@ -3147,12 +3184,17 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
       },
     },
     async ({ agentId, limit }) => {
-      await ensureAgentLoaded(agentId, {
-        agentManager,
-        agentStorage,
-        logger: childLogger,
-      });
-      const timeline = agentManager.getTimeline(agentId);
+      const persistedTimeline = agentManager.getAgent(agentId)
+        ? null
+        : await agentManager.getPersistedTimeline(agentId);
+      if (persistedTimeline === null) {
+        await ensureAgentLoaded(agentId, {
+          agentManager,
+          agentStorage,
+          logger: childLogger,
+        });
+      }
+      const timeline = persistedTimeline ?? agentManager.getTimeline(agentId);
       const snapshot = agentManager.getAgent(agentId);
 
       const selection = selectItemsByProjectedLimit({
@@ -3169,7 +3211,10 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
           ? `Showing ${shownProjected} of ${totalProjected} ${noun} (limited to ${limit})`
           : `Showing all ${totalProjected} ${noun}`;
 
-      const contentWithCount = `${countHeader}\n\n${curatedContent}`;
+      const runtimeNotice = persistedTimeline
+        ? "\n\nSaved history only. Provider runtime was not resumed; this does not verify whether the native session can resume."
+        : "";
+      const contentWithCount = `${countHeader}${runtimeNotice}\n\n${curatedContent}`;
 
       return {
         content: [],
