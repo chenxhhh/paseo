@@ -30,6 +30,9 @@ interface GenericACPAgentClientOptions {
   configFeatureOptions?: ACPConfigFeatureOption[];
   extensionCommandsParser?: ACPExtensionCommandsParser;
   catalogModelResolver?: ACPCatalogModelResolver;
+  resumeAfterLoad?: boolean;
+  recreateOnSessionLost?: boolean;
+  supportsAutoAccept?: boolean;
   now?: () => number;
 }
 
@@ -48,7 +51,12 @@ export class GenericACPAgentClient extends ACPAgentClient {
         env: options.env,
       },
       defaultCommand: options.command,
-      capabilities: DEFAULT_ACP_CAPABILITIES,
+      capabilities: {
+        ...DEFAULT_ACP_CAPABILITIES,
+        ...(options.supportsAutoAccept === undefined
+          ? {}
+          : { supportsAutoAccept: options.supportsAutoAccept }),
+      },
       // ACP agents advertise slash commands with available_commands_update after
       // session/new, so the first listCommands() waits for that batch.
       waitForInitialCommands: options.waitForInitialCommands ?? true,
@@ -57,6 +65,8 @@ export class GenericACPAgentClient extends ACPAgentClient {
       configFeatureOptions: options.configFeatureOptions,
       extensionCommandsParser: options.extensionCommandsParser,
       catalogModelResolver: options.catalogModelResolver,
+      resumeAfterLoad: options.resumeAfterLoad,
+      recreateOnSessionLost: options.recreateOnSessionLost,
       now: options.now,
     });
 

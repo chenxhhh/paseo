@@ -39,6 +39,7 @@ import { CopilotACPAgentClient } from "./providers/copilot-acp-agent.js";
 import { CursorACPAgentClient } from "./providers/cursor-acp-agent.js";
 import { GenericACPAgentClient } from "./providers/generic-acp-agent.js";
 import { KimiACPAgentClient } from "./providers/kimi-acp-agent.js";
+import { WithACPAgentClient } from "./providers/with-acp-agent.js";
 import { KiroACPAgentClient } from "./providers/kiro-acp-agent.js";
 import { OpenCodeRuntimeClient } from "./providers/opencode/runtime-client.js";
 import type { OpenCodeBridge } from "./providers/opencode/bridge.js";
@@ -847,6 +848,9 @@ function addDerivedProviders(
           }
           if (providerId === "kimi") {
             return new KimiACPAgentClient(acpOptions);
+          }
+          if (providerId === "with" || providerId === "with-metadata") {
+            return new WithACPAgentClient(acpOptions);
           }
           if (providerId === "kiro") {
             return new KiroACPAgentClient(acpOptions);

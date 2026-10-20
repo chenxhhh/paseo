@@ -66,4 +66,18 @@ describe("GenericACPAgentClient", () => {
       },
     ]);
   });
+  test("gates Auto Accept behind the supportsAutoAccept option", () => {
+    const _client = new GenericACPAgentClient({
+      logger: createTestLogger(),
+      command: ["with", "acp"],
+      supportsAutoAccept: false,
+    });
+    void _client;
+
+    expect(mockState.superConstructorOptions.at(-1)).toMatchObject({
+      capabilities: {
+        supportsAutoAccept: false,
+      },
+    });
+  });
 });
