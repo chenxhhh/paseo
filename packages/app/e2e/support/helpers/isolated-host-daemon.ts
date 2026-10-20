@@ -49,6 +49,8 @@ export async function getAvailableHostDaemonPort(): Promise<number> {
 }
 
 async function waitForServer(port: number, child: ChildProcess): Promise<void> {
+  // tsx cold-starting the dev supervisor can exceed 20s on Windows; success
+  // returns on first probe, so the ceiling only bounds the failure case.
   const deadline = Date.now() + 90_000;
   let lastError: unknown = null;
 
@@ -165,6 +167,9 @@ export async function startIsolatedHostDaemon(
         PASEO_RELAY_ENABLED: options.mutableRelay ? undefined : "0",
         PASEO_NODE_ENV: "development",
         NODE_ENV: "development",
+        // The dev supervisor attaches --inspect by default; parallel e2e
+        // daemons and any developer daemon would fight over port 9229.
+        PASEO_NODE_INSPECT: "off",
       }),
       stdio: ["ignore", "ignore", "pipe"],
       detached: false,

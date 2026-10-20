@@ -131,6 +131,8 @@ function startMetro(port: number, buffer: ReturnType<typeof createLineBuffer>): 
   // Spawns Node directly to bypass Windows .cmd shim execution restrictions without shell: true.
   const child = spawn(process.execPath, [expoCli, "start", "--web", "--port", String(port)], {
     cwd: appDir,
+    // Windows resolves npx to npx.cmd, which Node only spawns through a shell.
+    shell: process.platform === "win32",
     env: {
       ...process.env,
       BROWSER: "none",
@@ -165,15 +167,23 @@ export default async function globalSetup() {
   const repoRoot = path.resolve(__dirname, "../../../..");
   await loadHarnessEnvironment(repoRoot);
 
-  const metroPort = await getAvailableE2EPort();
+  // With E2E_BASE_URL pointing at an already-running dev Metro (e.g. the
+  // `npm run dev` server on 8081), reuse it instead of bundling a second copy
+  // from a cold cache alongside the dev server.
+  const reuseBaseUrl = process.env.E2E_BASE_URL;
+  const metroPort = reuseBaseUrl ? Number(new URL(reuseBaseUrl).port) : await getAvailableE2EPort();
   const metroOutput = createLineBuffer();
   let metroProcess: ChildProcess | null = null;
 
   try {
-    metroProcess = startMetro(metroPort, metroOutput);
+    if (!reuseBaseUrl) {
+      metroProcess = startMetro(metroPort, metroOutput);
+    }
     await waitForMetro(metroPort, {
       label: "Metro web server",
-      timeoutMs: 120_000,
+      // Cold-cache Windows bundling can exceed two minutes; success returns as
+      // soon as the probe passes, so a generous ceiling costs nothing.
+      timeoutMs: 300_000,
       childProcess: metroProcess,
       getRecentOutput: metroOutput.dump,
     });
