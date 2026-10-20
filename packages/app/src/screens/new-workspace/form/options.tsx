@@ -7,7 +7,14 @@ import { Shortcut } from "@/components/ui/shortcut";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { getHostProjectSourceDirectory, type HostProjectListItem } from "@/projects/host-projects";
 import { pickerItemLabel, type PickerItem } from "../../new-workspace-picker-item";
-import { addProjectIcon, branchIcon, folderIcon, ProjectIcon, pullRequestIcon } from "./icons";
+import {
+  addProjectIcon,
+  branchIcon,
+  folderGit2Icon,
+  folderIcon,
+  ProjectIcon,
+  pullRequestIcon,
+} from "./icons";
 
 interface OptionRowState {
   option: ComboboxOption;
@@ -84,7 +91,14 @@ export function AddProjectOption({ onPress }: { onPress: () => void }): ReactEle
 }
 
 const worktreeLeading = <IconBox>{branchIcon}</IconBox>;
+const existingWorktreeLeading = <IconBox>{folderGit2Icon}</IconBox>;
 const localLeading = <IconBox>{folderIcon}</IconBox>;
+
+function isolationOptionLeadingSlot(optionId: string): ReactElement {
+  if (optionId === "worktree") return worktreeLeading;
+  if (optionId === "existing-worktree") return existingWorktreeLeading;
+  return localLeading;
+}
 
 export function IsolationOption({
   option,
@@ -101,7 +115,7 @@ export function IsolationOption({
       active={active}
       disabled={disabled}
       onPress={onPress}
-      leadingSlot={option.id === "worktree" ? worktreeLeading : localLeading}
+      leadingSlot={isolationOptionLeadingSlot(option.id)}
     />
   );
 }

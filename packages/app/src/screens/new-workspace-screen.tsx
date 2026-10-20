@@ -65,7 +65,6 @@ import { toErrorMessage } from "@/utils/error-messages";
 import { buildSettingsAddHostRoute } from "@/utils/host-routes";
 import {
   getHostProjectId,
-  getWorktreeSupportForHostProject,
   hostProjectFromRoute,
   hostProjectFromWorkspace,
   resolveHostProjectCandidate,
@@ -108,6 +107,16 @@ import {
 } from "./new-workspace-initial-context";
 import { buildNewWorkspaceProjectIconTargets } from "./new-workspace/project-icon-targets";
 import { useNewWorkspaceProjectPicker } from "./new-workspace/project-picker";
+import {
+  existingWorktreePathForCreate,
+  multiplicityWorkspaceSource,
+  persistIsolationPreference,
+  resetSelectionIfTargetChanged,
+  resolveEffectiveIsolation,
+  resolveNewWorkspaceWorktreeSupport,
+  type IsolationMode,
+} from "./new-workspace/existing-worktree-field";
+import { useExistingWorktreePicker } from "./new-workspace/use-existing-worktree-picker";
 import { useNewWorkspaceForm } from "./new-workspace/form";
 import { ImportSessionButton } from "./new-workspace/import-session-button";
 import { useImportSession } from "@/hooks/use-import-session";
@@ -183,9 +192,9 @@ function noopClearDraft() {}
 const PROJECT_PICK_ACTIONS: readonly KeyboardActionId[] = ["workspace.project.pick"];
 
 interface WorkspaceIsolationState {
-  isolation: "local" | "worktree";
-  setIsolation: (value: "local" | "worktree") => void;
-  effectiveIsolation: "local" | "worktree";
+  isolation: IsolationMode;
+  setIsolation: (value: IsolationMode) => void;
+  effectiveIsolation: IsolationMode;
   canCreateWorktree: boolean;
   showRefPicker: boolean;
 }
@@ -200,16 +209,23 @@ function useWorkspaceIsolation(input: {
   // The last isolation choice is remembered alongside the other New Workspace
   // form preferences (provider, model, mode). A manual in-screen pick overrides
   // the remembered default until the screen remounts.
+  // Existing-worktree is screen-local only: FormPreferences.isolation is a
+  // two-value enum shared with the schedule form, so persisting a third value
+  // would wipe stored preferences on parse.
   const { preferences, updatePreferences } = useFormPreferences();
-  const [manualIsolation, setManualIsolation] = useState<"local" | "worktree" | null>(null);
+  const [manualIsolation, setManualIsolation] = useState<IsolationMode | null>(null);
   const isolation = manualIsolation ?? preferences.isolation ?? "local";
   const canCreateWorktree = supportsMultiplicity && worktreeSupport !== "unsupported";
-  const isWorktree = isolation === "worktree" && canCreateWorktree;
+  const effectiveIsolation = resolveEffectiveIsolation({ isolation, canCreateWorktree });
+  const isWorktree = effectiveIsolation === "worktree";
 
   const setIsolation = useCallback(
-    (value: "local" | "worktree") => {
+    (value: IsolationMode) => {
       setManualIsolation(value);
-      void updatePreferences({ isolation: value });
+      const persisted = persistIsolationPreference(value);
+      if (persisted) {
+        void updatePreferences({ isolation: persisted });
+      }
     },
     [updatePreferences],
   );
@@ -217,7 +233,7 @@ function useWorkspaceIsolation(input: {
   return {
     isolation,
     setIsolation,
-    effectiveIsolation: isWorktree ? "worktree" : "local",
+    effectiveIsolation,
     canCreateWorktree,
     showRefPicker: !supportsMultiplicity || isWorktree,
   };
@@ -284,9 +300,10 @@ async function createMultiplicityWorkspace(input: {
   idempotencyKey: string;
   worktreeSlug: string;
   client: NonNullable<ReturnType<typeof useHostRuntimeClient>>;
-  isolation: "local" | "worktree";
+  isolation: IsolationMode;
   project: HostProjectListItem;
   sourceDirectory: string;
+  existingWorktreePath: string | null;
   checkoutRequest: PickerCheckoutRequest | undefined;
   withInitialAgent: boolean;
   agent?: CreateWorkspaceRequestOptions["agent"];
@@ -299,10 +316,10 @@ async function createMultiplicityWorkspace(input: {
   ) => void;
   serverId: string;
   createFailedMessage: string;
+  chooseWorktreeMessage: string;
 }): Promise<WorkspaceCreationResult> {
   const projectId = getHostProjectId(input.project, input.serverId);
   if (!projectId) throw new Error("Project is not available on the selected host");
-  const isWorktree = input.isolation === "worktree";
   const firstAgentContext = buildFirstAgentContext({
     prompt: input.prompt,
     attachments: input.attachments,
@@ -311,19 +328,15 @@ async function createMultiplicityWorkspace(input: {
     idempotencyKey: input.idempotencyKey,
     agent: input.agent,
     onEvent: input.onEvent,
-    source: isWorktree
-      ? {
-          kind: "worktree",
-          cwd: input.sourceDirectory,
-          projectId,
-          worktreeSlug: input.worktreeSlug,
-          ...input.checkoutRequest,
-        }
-      : {
-          kind: "directory",
-          path: input.sourceDirectory,
-          projectId,
-        },
+    source: multiplicityWorkspaceSource({
+      isolation: input.isolation,
+      sourceDirectory: input.sourceDirectory,
+      existingWorktreePath: input.existingWorktreePath,
+      projectId,
+      checkoutRequest: input.checkoutRequest,
+      chooseWorktreeMessage: input.chooseWorktreeMessage,
+      worktreeSlug: input.worktreeSlug,
+    }),
     ...(firstAgentContext ? { firstAgentContext } : {}),
   });
   if (payload.error || !payload.workspace) {
@@ -1034,15 +1047,27 @@ export function NewWorkspaceScreen({
     cwd: selectedSourceDirectory ?? "",
   });
 
-  const worktreeSupport = selectedProject
-    ? getWorktreeSupportForHostProject({ project: selectedProject, serverId: selectedServerId })
-    : "unsupported";
+  const worktreeSupport = resolveNewWorkspaceWorktreeSupport({
+    project: selectedProject,
+    serverId: selectedServerId,
+  });
   const isPending = isNewWorkspacePending({ pendingAction, isDraftHandoffActive });
   const { effectiveIsolation, setIsolation, canCreateWorktree, showRefPicker } =
     useWorkspaceIsolation({
       supportsMultiplicity: supportsWorkspaceMultiplicity,
       worktreeSupport,
     });
+  const existingWorktreePicker = useExistingWorktreePicker({
+    serverId: selectedServerId,
+    sourceDirectory: selectedSourceDirectory,
+    workspaceKeys: selectedProject?.workspaceKeys,
+    clientReady,
+    show: effectiveIsolation === "existing-worktree",
+    isPending,
+    withConnectedClient,
+    t,
+  });
+  const resetExistingWorktreeSelection = existingWorktreePicker.resetSelection;
 
   const branchSuggestionsQuery = useQuery({
     queryKey: [
@@ -1149,16 +1174,36 @@ export function NewWorkspaceScreen({
       selectProjectOption(id);
       setProjectPickerOpen(false);
       clearPickerSelectionForTargetChange(selectedProjectOptionId, id);
+      resetSelectionIfTargetChanged({
+        currentId: selectedProjectOptionId,
+        nextId: id,
+        reset: resetExistingWorktreeSelection,
+      });
     },
-    [clearPickerSelectionForTargetChange, selectProjectOption, selectedProjectOptionId],
+    [
+      clearPickerSelectionForTargetChange,
+      resetExistingWorktreeSelection,
+      selectProjectOption,
+      selectedProjectOptionId,
+    ],
   );
 
   const handleSelectWorkspaceHost = useCallback(
     (id: string) => {
       handleSelectHost(id);
       clearPickerSelectionForTargetChange(selectedServerId, id);
+      resetSelectionIfTargetChanged({
+        currentId: selectedServerId,
+        nextId: id,
+        reset: resetExistingWorktreeSelection,
+      });
     },
-    [clearPickerSelectionForTargetChange, handleSelectHost, selectedServerId],
+    [
+      clearPickerSelectionForTargetChange,
+      handleSelectHost,
+      resetExistingWorktreeSelection,
+      selectedServerId,
+    ],
   );
 
   const handleAddProject = useCallback(() => {
@@ -1254,9 +1299,14 @@ export function NewWorkspaceScreen({
         idempotencyKey: creationIdentity.draftId,
         worktreeSlug: creationIdentity.worktreeSlug,
         client: connectedClient,
-        isolation: createsWorktree ? "worktree" : "local",
+        isolation: createsWorktree ? "worktree" : effectiveIsolation,
         project: selectedProject,
         sourceDirectory: selectedSourceDirectory,
+        existingWorktreePath: existingWorktreePathForCreate({
+          isolation: effectiveIsolation,
+          selectedWorktree: existingWorktreePicker.selectedExistingWorktree,
+          chooseWorktreeMessage: t("newWorkspace.errors.chooseWorktree"),
+        }),
         checkoutRequest,
         withInitialAgent: input.withInitialAgent,
         prompt: input.prompt,
@@ -1266,6 +1316,7 @@ export function NewWorkspaceScreen({
         mergeWorkspaces,
         serverId: selectedServerId,
         createFailedMessage: t("newWorkspace.errors.createWorktreeFailed"),
+        chooseWorktreeMessage: t("newWorkspace.errors.chooseWorktree"),
       });
       setCreationResult(normalizedWorkspace);
       return normalizedWorkspace;
@@ -1274,6 +1325,7 @@ export function NewWorkspaceScreen({
       creationIdentity,
       creationResult,
       effectiveIsolation,
+      existingWorktreePicker.selectedExistingWorktree,
       mergeWorkspaces,
       queryClient,
       selectedItem,
@@ -1495,6 +1547,7 @@ export function NewWorkspaceScreen({
       canCreateWorktree,
       onSelect: setIsolation,
     },
+    worktree: existingWorktreePicker.control,
     base: {
       anchorRef: pickerAnchorRef,
       open: openPicker,

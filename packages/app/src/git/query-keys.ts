@@ -21,6 +21,10 @@ export function checkoutStatusQueryKey(serverId: string, cwd: string) {
   return ["checkoutStatus", serverId, cwd] as const;
 }
 
+export function worktreeListQueryKey(serverId: string, cwd: string) {
+  return ["worktree-list", serverId, cwd] as const;
+}
+
 export function checkoutDiffQueryKey(
   serverId: string,
   cwd: string,

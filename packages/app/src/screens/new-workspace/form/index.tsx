@@ -11,6 +11,13 @@ import type { HostProjectListItem } from "@/projects/host-projects";
 import type { HostProfile } from "@/types/host-connection";
 import type { PickerItem } from "../../new-workspace-picker-item";
 import {
+  buildWorktreeControl,
+  isolationLabel,
+  isolationLeadingIcon,
+  type IsolationMode,
+  type WorktreeFormControl,
+} from "../existing-worktree-field";
+import {
   FIELD_BADGE_HEIGHT,
   FIELD_HEIGHT,
   FieldTrigger,
@@ -20,7 +27,7 @@ import { branchIcon, folderIcon, ProjectIcon, pullRequestIcon } from "./icons";
 import { LaunchControl } from "./launch-control";
 import { AddProjectOption, IsolationOption, ProjectOption, RefOption } from "./options";
 
-type Isolation = "local" | "worktree";
+type Isolation = IsolationMode;
 type RenderOption = NonNullable<ComboboxProps["renderOption"]>;
 
 interface PickerControl {
@@ -57,6 +64,8 @@ export interface NewWorkspaceFormProps {
     canCreateWorktree: boolean;
     onSelect: (isolation: Isolation) => void;
   };
+  /** Existing-worktree isolation: replaces the base ref picker while active. */
+  worktree?: WorktreeFormControl;
   base: PickerControl & {
     selectedSourceDirectory: string | null;
     selectedItem: PickerItem | null;
@@ -129,16 +138,20 @@ function useIsolationPicker(
 ): { options: ComboboxOption[]; onSelect: (id: string) => void; renderOption: RenderOption } {
   const { t } = useTranslation();
   const { canCreateWorktree, onSelect, onOpenChange } = isolation;
-  // "New worktree" is omitted entirely (not disabled) when the project isn't a
-  // git checkout, since worktree isolation is impossible there.
+  // "New worktree" and "Existing worktree" are omitted entirely (not disabled) when the
+  // project isn't a git checkout, since worktree isolation is impossible there.
   const options = useMemo<ComboboxOption[]>(() => {
     const local = { id: "local", label: t("newWorkspace.isolation.local") };
     if (!canCreateWorktree) return [local];
-    return [local, { id: "worktree", label: t("newWorkspace.isolation.worktree") }];
+    return [
+      local,
+      { id: "worktree", label: t("newWorkspace.isolation.worktree") },
+      { id: "existing-worktree", label: t("newWorkspace.isolation.existingWorktree") },
+    ];
   }, [canCreateWorktree, t]);
   const handleSelect = useCallback(
     (id: string) => {
-      onSelect(id === "worktree" ? "worktree" : "local");
+      onSelect(id === "worktree" || id === "existing-worktree" ? id : "local");
       onOpenChange(false);
     },
     [onOpenChange, onSelect],
@@ -164,7 +177,7 @@ function useRefRenderOption(itemById: Map<string, PickerItem>, isPending: boolea
  */
 export function useNewWorkspaceForm(props: NewWorkspaceFormProps): ReactElement {
   const { t } = useTranslation();
-  const { isCompact, isPending, project, host, isolation, base, launch } = props;
+  const { isCompact, isPending, project, host, isolation, worktree, base, launch } = props;
   const variant: FieldTriggerVariant = isCompact ? "field" : "badge";
   const projectPicker = useProjectPicker(project, isPending);
   const isolationPicker = useIsolationPicker(isolation, isPending);
@@ -194,11 +207,16 @@ export function useNewWorkspaceForm(props: NewWorkspaceFormProps): ReactElement 
     () => <HostStatusDot serverId={host.selectedServerId} />,
     [host.selectedServerId],
   );
-  const isWorktree = isolation.effectiveIsolation === "worktree";
-  const isolationValue = isWorktree
-    ? t("newWorkspace.isolation.worktree")
-    : t("newWorkspace.isolation.local");
+  const isolationValue = isolationLabel(t, isolation.effectiveIsolation);
+  const isolationIcon = isolationLeadingIcon(isolation.effectiveIsolation);
   const refIcon = base.selectedItem?.kind === "github-pr" ? pullRequestIcon : branchIcon;
+  // While "Existing worktree" isolation is active the worktree picker replaces the
+  // base ref picker: the starting ref is defined by the chosen worktree.
+  const existingWorktreeActive = Boolean(worktree?.show);
+  const worktreeControl =
+    worktree && existingWorktreeActive
+      ? buildWorktreeControl(worktree, { variant, t, isPending })
+      : null;
 
   const projectField = (
     <FieldTrigger
@@ -250,27 +268,29 @@ export function useNewWorkspaceForm(props: NewWorkspaceFormProps): ReactElement 
       label={t("newWorkspace.isolation.label")}
       accessibilityLabel="Workspace isolation"
       tooltip={t("newWorkspace.tooltips.isolation")}
-      icon={isWorktree ? branchIcon : folderIcon}
+      icon={isolationIcon}
       value={isolationValue}
       onPress={isolation.open}
       disabled={isPending}
       testID="workspace-create-isolation-trigger"
     />
   ) : null;
-  const baseField = base.showRefPicker ? (
-    <FieldTrigger
-      ref={base.anchorRef}
-      variant={variant}
-      label={t("newWorkspace.fields.branch")}
-      accessibilityLabel={t("newWorkspace.refPicker.startingRef")}
-      tooltip={t("newWorkspace.tooltips.startingRef")}
-      icon={refIcon}
-      value={base.triggerLabel}
-      onPress={base.open}
-      disabled={isPending || !base.selectedSourceDirectory}
-      testID="new-workspace-ref-picker-trigger"
-    />
-  ) : null;
+  const worktreeField = worktreeControl?.field ?? null;
+  const baseField =
+    base.showRefPicker && !existingWorktreeActive ? (
+      <FieldTrigger
+        ref={base.anchorRef}
+        variant={variant}
+        label={t("newWorkspace.fields.branch")}
+        accessibilityLabel={t("newWorkspace.refPicker.startingRef")}
+        tooltip={t("newWorkspace.tooltips.startingRef")}
+        icon={refIcon}
+        value={base.triggerLabel}
+        onPress={base.open}
+        disabled={isPending || !base.selectedSourceDirectory}
+        testID="new-workspace-ref-picker-trigger"
+      />
+    ) : null;
   const launchField = (
     <LaunchControl
       variant={variant}
@@ -311,6 +331,7 @@ export function useNewWorkspaceForm(props: NewWorkspaceFormProps): ReactElement 
         anchorRef={isolation.anchorRef}
         renderOption={isolationPicker.renderOption}
       />
+      {worktreeControl ? worktreeControl.picker : null}
       <Combobox
         options={base.options}
         value={base.selectedOptionId}
@@ -329,18 +350,53 @@ export function useNewWorkspaceForm(props: NewWorkspaceFormProps): ReactElement 
     </>
   );
 
+  return buildFormLayout({
+    isCompact,
+    projectField,
+    hostField,
+    isolationField,
+    worktreeField,
+    baseField,
+    launchField,
+    pickers,
+  });
+}
+
+function buildFormLayout(input: {
+  isCompact: boolean;
+  projectField: ReactElement;
+  hostField: ReactNode;
+  isolationField: ReactNode;
+  worktreeField: ReactNode;
+  baseField: ReactNode;
+  launchField: ReactElement;
+  pickers: ReactElement;
+}): ReactElement {
+  const {
+    isCompact,
+    projectField,
+    hostField,
+    isolationField,
+    worktreeField,
+    baseField,
+    launchField,
+    pickers,
+  } = input;
   if (isCompact) {
     return (
       <View testID="new-workspace-ref-picker-row" style={styles.compactStack}>
         {projectField}
         {hostField}
         {isolationField}
+        {worktreeField}
         {baseField}
         {launchField}
         {/* Isolation and Base come and go with the project; their rows stay reserved so the
             stack keeps one height and nothing above the composer jumps. */}
         {isolationField ? null : <View style={styles.reservedField} pointerEvents="none" />}
-        {baseField ? null : <View style={styles.reservedField} pointerEvents="none" />}
+        {baseField || worktreeField ? null : (
+          <View style={styles.reservedField} pointerEvents="none" />
+        )}
         {pickers}
       </View>
     );
@@ -351,6 +407,7 @@ export function useNewWorkspaceForm(props: NewWorkspaceFormProps): ReactElement 
       <View style={styles.desktopControl}>{projectField}</View>
       {hostField ? <View style={styles.desktopControl}>{hostField}</View> : null}
       {isolationField ? <View style={styles.desktopControl}>{isolationField}</View> : null}
+      {worktreeField ? <View style={styles.desktopControl}>{worktreeField}</View> : null}
       {baseField ? <View style={styles.desktopControl}>{baseField}</View> : null}
       <View style={styles.launchSpacer} pointerEvents="none" />
       {launchField}
