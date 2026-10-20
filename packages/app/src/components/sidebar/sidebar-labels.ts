@@ -2,12 +2,17 @@ import { workspaceLabelKey } from "@getpaseo/protocol/workspace-labels";
 import type { SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
 import { SIDEBAR_UNLABELLED_LABEL_KEY, type SidebarLabelFilter } from "@/stores/sidebar-view-store";
 import type { StatusBucket, StatusGroup } from "@/hooks/sidebar-status-view-model";
+import type { WorkspaceStatusDefinition } from "@/utils/workspace-statuses";
+
+export type SidebarWorkspaceGroupLeading =
+  | { kind: "status"; bucket: StatusBucket }
+  | { kind: "user-status"; statusId: string; color: WorkspaceStatusDefinition["color"] };
 
 export interface SidebarWorkspaceGroup {
   key: string;
   label: string;
   rows: SidebarWorkspaceEntry[];
-  leading: { kind: "status"; bucket: StatusBucket };
+  leading: SidebarWorkspaceGroupLeading;
 }
 
 export function statusWorkspaceGroups(groups: readonly StatusGroup[]): SidebarWorkspaceGroup[] {

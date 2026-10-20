@@ -18,6 +18,8 @@ function workspace(workspaceId: string, projectViewKey: string): SidebarWorkspac
     title: null,
     pinnedAt: null,
     labels: [],
+    userStatus: null,
+    activeAgents: [],
     currentBranch: "main",
     statusBucket: "done",
     statusEnteredAt: null,

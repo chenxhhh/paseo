@@ -25,6 +25,7 @@ function select(overrides: Partial<Parameters<typeof selectMetaRowItems>[0]> = {
     hasHostBadge: true,
     prHint: PR_HINT,
     serviceSummary: SERVICE,
+    userStatus: null,
     labels: LABELS,
     visible: DEFAULT_SIDEBAR_ROW_ITEMS,
     checksDisplay: DEFAULT_SIDEBAR_CHECKS_DISPLAY,

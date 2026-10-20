@@ -15,6 +15,7 @@ import {
   type SidebarGroupMode,
 } from "@/stores/sidebar-view-store";
 import { useSidebarOrderStore } from "@/stores/sidebar-order-store";
+import { useWorkspaceStatusStore } from "@/stores/workspace-status-store";
 import type { SidebarShortcutModel } from "@/utils/sidebar-shortcuts";
 import { buildSidebarProjection } from "./sidebar-projection";
 import type { SidebarProjectIconTarget } from "@/utils/sidebar-project-row-model";
@@ -42,7 +43,9 @@ interface SidebarModel extends SidebarWorkspacesListResult {
   projectIconTargets: SidebarProjectIconTarget[];
   pinnedGroups: PinnedSidebarGroups;
   collapsedProjectKeys: ReadonlySet<string>;
+  collapsedWorkspaceGroupKeys: ReadonlySet<string>;
   toggleProjectCollapsed: (projectViewKey: string) => void;
+  toggleWorkspaceGroupCollapsed: (workspaceGroupKey: string) => void;
   shortcutModel: SidebarShortcutModel;
 }
 
@@ -71,8 +74,12 @@ export function SidebarModelProvider({
   );
   const pinnedCollapsed = useSidebarCollapsedSectionsStore((state) => state.collapsedPinned);
   const pinnedWorkspaceOrder = useSidebarOrderStore((state) => state.pinnedWorkspaceOrder);
+  const workspaceStatuses = useWorkspaceStatusStore((state) => state.statuses);
   const toggleProjectCollapsed = useSidebarCollapsedSectionsStore(
     (state) => state.toggleProjectCollapsed,
+  );
+  const toggleWorkspaceGroupCollapsed = useSidebarCollapsedSectionsStore(
+    (state) => state.toggleWorkspaceGroupCollapsed,
   );
   const availableLabelNames = useMemo(
     () => labelHosts.flatMap((host) => host.labels.map((label) => label.name)),
@@ -159,6 +166,7 @@ export function SidebarModelProvider({
       pinnedCollapsed,
       collapsedProjectKeys,
       collapsedWorkspaceGroupKeys,
+      statuses: workspaceStatuses,
       t,
     }),
     [
@@ -171,6 +179,7 @@ export function SidebarModelProvider({
       pinnedKeys,
       pinnedWorkspaceOrder,
       filteredWorkspaceEntriesByKey,
+      workspaceStatuses,
       t,
     ],
   );
@@ -188,17 +197,21 @@ export function SidebarModelProvider({
       projectIconTargets: projection.projectIconTargets,
       pinnedGroups: projection.pinnedGroups,
       collapsedProjectKeys,
+      collapsedWorkspaceGroupKeys,
       toggleProjectCollapsed,
+      toggleWorkspaceGroupCollapsed,
       shortcutModel: projection.shortcutModel,
     }),
     [
       resolvedProjectFilters,
       collapsedProjectKeys,
+      collapsedWorkspaceGroupKeys,
       groupMode,
       list,
       filteredProjects,
       projection,
       toggleProjectCollapsed,
+      toggleWorkspaceGroupCollapsed,
       filteredWorkspaceEntriesByKey,
     ],
   );

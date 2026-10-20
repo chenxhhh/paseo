@@ -9,6 +9,7 @@ import {
   CalendarClock,
   Gauge,
   History,
+  KanbanSquare,
   Plus,
   Search,
   type LucideIcon,
@@ -44,6 +45,7 @@ const BUILTIN_ICONS: Record<BuiltinSidebarItemId, LucideIcon> = {
   history: History,
   search: Search,
   schedules: CalendarClock,
+  board: KanbanSquare,
   usage: Gauge,
 };
 

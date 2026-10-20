@@ -14,6 +14,7 @@ import {
   Circle,
   CircleCheck,
   CircleDashed,
+  CircleDot,
   Clock,
   Diff,
   EyeOff,
@@ -21,6 +22,7 @@ import {
   GitBranch,
   GitPullRequest,
   Globe,
+  KanbanSquare,
   Server,
   Settings2,
   Tag,
@@ -89,6 +91,7 @@ type OptionIcon = ComponentType<{
 const GROUPING_ICONS: Record<SidebarGroupMode, OptionIcon> = {
   project: withUnistyles(Folder),
   status: withUnistyles(CircleDashed),
+  "user-status": withUnistyles(KanbanSquare),
 };
 
 const TITLE_SOURCE_ICONS: Record<WorkspaceTitleSource, OptionIcon> = {
@@ -105,6 +108,7 @@ const ROW_ITEM_ICONS: Record<SidebarRowItem, OptionIcon> = {
   changeRequest: withUnistyles(GitPullRequest),
   services: withUnistyles(Globe),
   labels: withUnistyles(Tag),
+  status: withUnistyles(CircleDot),
 };
 
 // These mark how much of the row an option spends, not what CI is, so they are the shapes each
@@ -120,13 +124,14 @@ const TRAILING_ICONS: Record<SidebarTrailingChoice, OptionIcon> = {
   timestamp: withUnistyles(Clock),
 };
 
-const GROUPING_MODES: readonly SidebarGroupMode[] = ["project", "status"];
+const GROUPING_MODES: readonly SidebarGroupMode[] = ["project", "status", "user-status"];
 const TITLE_SOURCES: readonly WorkspaceTitleSource[] = ["title", "branch"];
 const TRAILING_CHOICES: readonly SidebarTrailingChoice[] = ["diff", "timestamp"];
 
 const GROUPING_LABEL_KEYS: Record<SidebarGroupMode, string> = {
   project: "sidebar.display.grouping.project",
   status: "sidebar.display.grouping.status",
+  "user-status": "sidebar.display.grouping.userStatus",
 };
 
 const TITLE_SOURCE_LABEL_KEYS: Record<WorkspaceTitleSource, string> = {
@@ -141,6 +146,7 @@ const ROW_ITEM_LABEL_KEYS: Record<SidebarRowItem, string> = {
   changeRequest: "sidebar.display.show.changeRequest",
   services: "sidebar.display.show.services",
   labels: "sidebar.display.show.labels",
+  status: "sidebar.display.show.status",
 };
 
 const CHECKS_DISPLAY_LABEL_KEYS: Record<SidebarChecksDisplay, string> = {
