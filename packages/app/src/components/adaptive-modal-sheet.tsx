@@ -467,6 +467,12 @@ export interface AdaptiveModalSheetProps {
   visible: boolean;
   onClose: () => void;
   onDismiss?: () => void;
+  /**
+   * Override what tapping the backdrop / pressing Escape does. Defaults to
+   * closing the sheet (calls `onClose`). Callers with drill-down state (e.g. a
+   * sheet with a back level) can step back one level instead of closing.
+   */
+  onBackdropPress?: () => void;
   children: ReactNode;
   /** Sticky footer rendered below the scrollable content. */
   footer?: ReactNode;
@@ -493,6 +499,7 @@ export function AdaptiveModalSheet({
   visible,
   onClose,
   onDismiss,
+  onBackdropPress,
   children,
   footer,
   footerContainerStyle,
@@ -580,15 +587,19 @@ export function AdaptiveModalSheet({
     [isWebClosing, modalLayer],
   );
 
+  const handleBackdropPress = useCallback(() => {
+    (onBackdropPress ?? onClose)();
+  }, [onBackdropPress, onClose]);
+
   const handleWebOverlayKeyDown = useCallback(
     (event: KeyboardEvent) => {
       if (event.key !== "Escape") return false;
       event.preventDefault();
       event.stopPropagation();
-      onClose();
+      handleBackdropPress();
       return true;
     },
-    [onClose],
+    [handleBackdropPress],
   );
   const setWebOverlayScope = useWebOverlayRegistration({
     active: isWeb && !isMobile && visible,
@@ -691,7 +702,7 @@ export function AdaptiveModalSheet({
       <Pressable
         accessibilityLabel={t("common.actions.dismiss")}
         style={ABSOLUTE_FILL_STYLE}
-        onPress={onClose}
+        onPress={handleBackdropPress}
       />
       <View
         ref={setWebOverlayScope}

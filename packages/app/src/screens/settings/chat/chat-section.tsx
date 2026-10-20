@@ -13,6 +13,7 @@ import { useAppSettings, type AppSettings } from "@/hooks/use-settings";
 const TOOL_CALL_DETAIL_LEVELS: readonly AppSettings["toolCallDetailLevel"][] = [
   "detailed",
   "overview",
+  "drawer",
 ];
 
 export function ChatSection() {
