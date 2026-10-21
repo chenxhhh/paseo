@@ -1585,6 +1585,11 @@ export async function createPaseoDaemon(
           void server.close();
         });
 
+        const mcpProtocolVersion = req.headers["mcp-protocol-version"];
+        if (typeof mcpProtocolVersion === "string" && mcpProtocolVersion > "2025-11-25") {
+          req.headers["mcp-protocol-version"] = "2025-11-25";
+        }
+
         await transport.handleRequest(
           req as unknown as IncomingMessage,
           res as unknown as ServerResponse,

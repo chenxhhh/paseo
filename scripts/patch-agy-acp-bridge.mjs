@@ -108,6 +108,49 @@ function patchBridge(bridgeDir) {
     modified = true;
   }
 
+  const oldSpawnAgy = `function spawnAgy(args, options = {}) {
+    const isWindows = process.platform === "win32";
+    const isJsScript = /\\.(mjs|js|cjs)$/i.test(AGY_EXECUTABLE);
+    const isBatchScript = isWindows && /\\.(cmd|bat)$/i.test(AGY_EXECUTABLE);
+    const command = isWindows && isJsScript ? process.execPath : AGY_EXECUTABLE;
+    const commandArgs = isWindows && isJsScript ? [AGY_EXECUTABLE, ...args] : args;
+    return spawn(command, commandArgs, {
+        ...options,
+        shell: options?.shell ?? isBatchScript,
+    });
+}`;
+
+  const newSpawnAgy = `function sanitizeAgyEnv(baseEnv = process.env) {
+    const env = { ...baseEnv };
+    if (!env.AGY_KEEP_PROXY) {
+        for (const key of ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy", "ALL_PROXY", "all_proxy"]) {
+            delete env[key];
+        }
+    }
+    return env;
+}
+function spawnAgy(args, options = {}) {
+    const isWindows = process.platform === "win32";
+    const isJsScript = /\\.(mjs|js|cjs)$/i.test(AGY_EXECUTABLE);
+    const isBatchScript = isWindows && /\\.(cmd|bat)$/i.test(AGY_EXECUTABLE);
+    const command = isWindows && isJsScript ? process.execPath : AGY_EXECUTABLE;
+    const commandArgs = isWindows && isJsScript ? [AGY_EXECUTABLE, ...args] : args;
+    return spawn(command, commandArgs, {
+        ...options,
+        env: sanitizeAgyEnv(options?.env ?? process.env),
+        shell: options?.shell ?? isBatchScript,
+    });
+}`;
+
+  if (indexJs.includes(oldSpawnAgy)) {
+    if (!fs.existsSync(`${indexPath}.bak`)) {
+      fs.copyFileSync(indexPath, `${indexPath}.bak`);
+    }
+    indexJs = indexJs.replace(oldSpawnAgy, newSpawnAgy);
+    fs.writeFileSync(indexPath, indexJs, "utf8");
+    modified = true;
+  }
+
   if (modified) {
     console.log(`[Paseo] Auto-patched agy-acp-bridge at ${bridgeDir} (stdin streaming enabled)`);
   }
