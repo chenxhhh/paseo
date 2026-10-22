@@ -22,12 +22,18 @@ export {
   PaseoConfigRawSchema,
   PaseoLifecycleCommandRawSchema,
   PaseoScriptEntryRawSchema,
+  PaseoWorktreeCheckoutModeSchema,
   PaseoWorktreeConfigRawSchema,
   PaseoConfigSchema,
   type PaseoConfig,
   type PaseoConfigRaw,
+  type PaseoWorktreeCheckoutMode,
 } from "@getpaseo/protocol/paseo-config-schema";
-import { PaseoConfigSchema, type PaseoConfig } from "@getpaseo/protocol/paseo-config-schema";
+import {
+  PaseoConfigSchema,
+  type PaseoConfig,
+  type PaseoWorktreeCheckoutMode,
+} from "@getpaseo/protocol/paseo-config-schema";
 import {
   createPaseoWorktreeChangeRequestHint,
   normalizeBaseRefName,
@@ -61,6 +67,12 @@ export interface WorktreeConfig {
 
 export interface CreatedWorktree extends WorktreeConfig {
   comparisonBaseRef: string | null;
+  /**
+   * `pending` means paseo.json opted into `worktree.checkout: "deferred"`, so the worktree is
+   * registered but its working tree is still being materialised in the background. Callers that
+   * need files on disk must await `waitForDeferredWorktreePreparation`.
+   */
+  preparation?: "ready" | "pending";
 }
 
 export interface WorktreeRuntimeEnv {
@@ -220,6 +232,8 @@ export interface CreateWorktreeOptions {
   runSetup: boolean;
   paseoHome?: string;
   worktreesRoot?: string;
+  /** Overrides `worktree.checkout` from paseo.json; defaults to that config value or `eager`. */
+  checkoutMode?: PaseoWorktreeCheckoutMode;
 }
 
 export class BranchAlreadyCheckedOutError extends Error {
@@ -291,6 +305,40 @@ export function getWorktreeSetupCommands(repoRoot: string): string[] {
 
 export function getWorktreeTeardownCommands(repoRoot: string): string[] {
   return readPaseoConfigOrThrow(repoRoot)?.worktree?.teardown ?? [];
+}
+
+/**
+ * Whether `git worktree add` should materialise the working tree immediately (`eager`, the
+ * historical behaviour) or register the worktree first and check files out afterwards
+ * (`deferred`). Repositories with hundreds of thousands of files use `deferred` so the create
+ * request is not held hostage by a multi-minute checkout.
+ */
+export function getWorktreeCheckoutMode(repoRoot: string): PaseoWorktreeCheckoutMode {
+  // A malformed paseo.json must not block worktree creation — the setup step reports that
+  // separately with a proper workspace-level error. Fall back to the historical behaviour.
+  const result = readPaseoConfig(repoRoot);
+  if (!result.ok) {
+    return "eager";
+  }
+  return result.config?.worktree?.checkout ?? "eager";
+}
+
+const DEFAULT_WORKTREE_GIT_TIMEOUT_MS = 120_000;
+
+/**
+ * `git worktree add` cost scales with the tracked file count, so a fixed 120s budget fails on
+ * multi-gigabyte monorepos (13GB / 200k files takes minutes). Override with
+ * `PASEO_WORKTREE_GIT_TIMEOUT_MS` instead of a source change.
+ */
+export function resolveWorktreeGitTimeoutMs(): number {
+  const raw = process.env.PASEO_WORKTREE_GIT_TIMEOUT_MS?.trim();
+  if (!raw) {
+    return DEFAULT_WORKTREE_GIT_TIMEOUT_MS;
+  }
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0
+    ? parsed
+    : DEFAULT_WORKTREE_GIT_TIMEOUT_MS;
 }
 
 export function getWorktreeTerminalSpecs(repoRoot: string): WorktreeTerminalConfig[] {
@@ -1224,6 +1272,7 @@ export const createWorktree = async ({
   runSetup,
   paseoHome,
   worktreesRoot,
+  checkoutMode,
 }: CreateWorktreeOptions): Promise<CreatedWorktree> => {
   const sourcePlan = await resolveWorktreeSourcePlan({ cwd, source, desiredSlug: worktreeSlug });
   let worktreePath = join(await getPaseoWorktreesRoot(cwd, paseoHome, worktreesRoot), worktreeSlug);
@@ -1237,11 +1286,30 @@ export const createWorktree = async ({
     pathSuffix++;
   }
 
+  const resolvedCheckoutMode = checkoutMode ?? getWorktreeCheckoutMode(cwd);
+  const deferredCheckout = resolvedCheckoutMode === "deferred";
+  const gitTimeout = resolveWorktreeGitTimeoutMs();
+
+  // Registration and materialisation are deliberately separate. `git worktree add` writes every
+  // tracked file into the new working tree, so its cost scales with repository size — on a 13GB /
+  // 200k-file repo that alone blows past the git timeout. `--no-checkout` registers the worktree
+  // without touching the working tree, which is cheap; the expensive part then runs afterwards so
+  // it cannot fail the create request.
+  //
   // Primitive owner for `git worktree add`; callers route through createWorktreeCore.
-  await runGitCommand(["worktree", "add", finalWorktreePath, ...sourcePlan.addArguments], {
-    cwd,
-    timeout: 120_000,
-  });
+  await runGitCommand(
+    [
+      "worktree",
+      "add",
+      ...(deferredCheckout ? ["--no-checkout"] : []),
+      finalWorktreePath,
+      ...sourcePlan.addArguments,
+    ],
+    {
+      cwd,
+      timeout: gitTimeout,
+    },
+  );
   worktreePath = normalizePathForOwnership(finalWorktreePath);
 
   if (sourcePlan.pushRemote) {
@@ -1269,7 +1337,14 @@ export const createWorktree = async ({
 
   await seedPaseoConfigFile({ sourceCwd: cwd, targetCwd: worktreePath });
 
-  if (runSetup) {
+  if (deferredCheckout) {
+    scheduleDeferredWorktreePreparation({
+      worktreePath,
+      branchName: sourcePlan.branchName,
+      runSetup,
+      gitTimeout,
+    });
+  } else if (runSetup) {
     await runWorktreeSetupCommands({
       worktreePath,
       branchName: sourcePlan.branchName,
@@ -1281,8 +1356,89 @@ export const createWorktree = async ({
     branchName: sourcePlan.branchName,
     worktreePath,
     comparisonBaseRef: sourcePlan.metadataBaseRef ?? sourcePlan.metadataBaseRefName,
+    // Only present for deferred checkout, so eager worktrees keep their exact previous shape.
+    ...(deferredCheckout ? { preparation: "pending" as const } : {}),
   };
 };
+
+const deferredWorktreePreparations = new Map<string, Promise<void>>();
+
+/**
+ * Runs after `createWorktree` has already returned, so it must never reject into the caller.
+ * Failures are recorded and rethrown to whoever awaits `waitForDeferredWorktreePreparation`, so
+ * setup never silently runs against an empty working tree.
+ */
+function scheduleDeferredWorktreePreparation(options: {
+  worktreePath: string;
+  branchName: string;
+  runSetup: boolean;
+  gitTimeout: number;
+}): void {
+  const { worktreePath } = options;
+  const task = materializeDeferredWorktree(options).catch((error: unknown) => {
+    process.emitWarning(
+      `Deferred worktree checkout failed for ${worktreePath}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+      "PaseoWarning",
+    );
+    throw error;
+  });
+  // Swallow the rejection on this copy so an unobserved background task cannot crash the process,
+  // while the map still hands the rejecting promise to explicit waiters.
+  deferredWorktreePreparations.set(worktreePath, task);
+  task.catch(() => undefined).finally(() => {
+    deferredWorktreePreparations.delete(worktreePath);
+  });
+}
+
+async function materializeDeferredWorktree(options: {
+  worktreePath: string;
+  branchName: string;
+  runSetup: boolean;
+  gitTimeout: number;
+}): Promise<void> {
+  // `--no-checkout` leaves HEAD pointing at the target branch with an empty index, so a hard reset
+  // to HEAD is what actually writes the files. No local edits can exist yet, so this is safe.
+  await runGitCommand(["reset", "--hard", "HEAD"], {
+    cwd: options.worktreePath,
+    timeout: options.gitTimeout,
+  });
+
+  if (!options.runSetup) {
+    return;
+  }
+  // `cleanupOnFailure: false` because the worktree is already visible to callers; deleting it
+  // behind their back would discard a branch they may have started using.
+  await runWorktreeSetupCommands({
+    worktreePath: options.worktreePath,
+    branchName: options.branchName,
+    cleanupOnFailure: false,
+  });
+}
+
+/** Resolves once a deferred worktree finished materialising (immediately if it already had). */
+export async function waitForDeferredWorktreePreparation(
+  worktreePath: string,
+  timeoutMs = 15 * 60_000,
+): Promise<void> {
+  const pending = deferredWorktreePreparations.get(worktreePath);
+  if (!pending) {
+    return;
+  }
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`Timed out after ${timeoutMs}ms waiting for worktree checkout`)),
+      timeoutMs,
+    );
+  });
+  try {
+    await Promise.race([pending, timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 interface ResolveWorktreeSourcePlanOptions {
   cwd: string;

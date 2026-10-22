@@ -35,6 +35,20 @@ export function normalizeLifecycleCommands(commands: unknown): string[] {
 
 export const PaseoLifecycleCommandRawSchema = z.union([z.string(), z.array(z.string())]);
 
+/**
+ * How a new worktree's working tree is materialised.
+ *
+ * - `eager` (default): `git worktree add` checks every file out before it returns. Correct, but on
+ *   multi-gigabyte repositories with hundreds of thousands of files this exceeds the git command
+ *   timeout and fails the whole create request.
+ * - `deferred`: `git worktree add --no-checkout` registers the worktree immediately (fast), then the
+ *   working tree is materialised afterwards. This keeps the create request responsive on huge
+ *   repositories and moves the expensive part off the critical path.
+ */
+export const PaseoWorktreeCheckoutModeSchema = z.enum(["eager", "deferred"]);
+
+export type PaseoWorktreeCheckoutMode = z.infer<typeof PaseoWorktreeCheckoutModeSchema>;
+
 export const PaseoScriptEntryRawSchema = z
   .object({
     type: z.unknown().optional(),
@@ -49,6 +63,7 @@ export const PaseoWorktreeConfigRawSchema = z
     teardown: PaseoLifecycleCommandRawSchema.optional(),
     terminals: z.unknown().optional(),
     servicePorts: PaseoServicePortAllocationSchema.optional(),
+    checkout: PaseoWorktreeCheckoutModeSchema.optional(),
   })
   .passthrough();
 

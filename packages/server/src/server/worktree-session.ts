@@ -33,6 +33,7 @@ import {
   runWorktreeSetupCommands,
   slugify,
   validateBranchSlug,
+  waitForDeferredWorktreePreparation,
   type WorktreeConfig,
   type WorktreeSetupCommandResult,
   WorktreeSetupError,
@@ -890,6 +891,11 @@ export async function runWorktreeSetupInBackground(
   try {
     try {
       emitSetupProgress("running", null);
+
+      // A `worktree.checkout: "deferred"` worktree is registered before its files exist. Setup
+      // commands (npm ci, build, codegen) would fail against an empty working tree, so wait for
+      // the background checkout to land first. No-op for eager worktrees.
+      await waitForDeferredWorktreePreparation(worktree.worktreePath);
 
       if (!options.shouldBootstrap) {
         emitSetupProgress("completed", null);
