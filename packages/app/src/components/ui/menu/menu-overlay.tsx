@@ -23,6 +23,7 @@ import { Keyframe, runOnJS } from "react-native-reanimated";
 import { StyleSheet } from "react-native-unistyles";
 import { FloatingScrollView, FloatingSurface } from "@/components/ui/floating";
 import { isWeb } from "@/constants/platform";
+import { shouldDisableEntryExitAnimations } from "@/lib/layout-animations";
 import type { KeyboardFocusScope } from "@/keyboard/actions";
 import {
   getOverlayRoot,
@@ -387,7 +388,7 @@ export function AnchoredSurface({
         dataSet={surfaceDataSet}
         style={styles.content}
         frameStyle={frameStyle}
-        entering={placed ? contentEntering : undefined}
+        entering={placed && !shouldDisableEntryExitAnimations ? contentEntering : undefined}
         exiting={
           !placed || isWeb || !onExited
             ? undefined

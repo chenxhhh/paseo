@@ -28,8 +28,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { EditingTextInputHandle } from "@/components/ui/text-input";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
+import { entryExitFadeIn, entryExitFadeOut } from "@/lib/layout-animations";
 import { BottomSheetScrollView, type BottomSheetBackgroundProps } from "@gorhom/bottom-sheet";
-import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
+import Animated from "react-native-reanimated";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { Check, File, Folder, Search } from "lucide-react-native";
 import {
@@ -1204,8 +1205,8 @@ function DesktopComboboxBody(props: DesktopBodyProps): ReactElement {
         <Pressable style={styles.desktopBackdrop} onPress={props.handleClose} />
         <FloatingSurface
           testID="combobox-desktop-container"
-          entering={props.shouldUseDesktopFade ? FadeIn.duration(100) : undefined}
-          exiting={props.shouldUseDesktopFade ? FadeOut.duration(100) : undefined}
+          entering={props.shouldUseDesktopFade ? entryExitFadeIn(100) : undefined}
+          exiting={props.shouldUseDesktopFade ? entryExitFadeOut(100) : undefined}
           style={styles.desktopContainer}
           frameStyle={props.desktopFrameStyle}
           ref={setFloatingRef}

@@ -11,7 +11,6 @@ import {
   type RefObject,
 } from "react";
 import { Dimensions, View, type Role, type StyleProp, type ViewStyle } from "react-native";
-import { FadeIn, FadeOut } from "react-native-reanimated";
 import { StyleSheet } from "react-native-unistyles";
 import { Portal } from "@gorhom/portal";
 import { useBottomSheetModalInternal } from "@gorhom/bottom-sheet";
@@ -22,6 +21,7 @@ import {
 } from "@/lib/overlay-root";
 import { FloatingSurface } from "@/components/ui/floating";
 import { isWeb } from "@/constants/platform";
+import { entryExitFadeIn, entryExitFadeOut } from "@/lib/layout-animations";
 import { useHoverSafeZone } from "@/hooks/use-hover-safe-zone";
 import {
   computePosition,
@@ -381,8 +381,8 @@ function HoverCardSurface({
       <View pointerEvents="box-none" style={[styles.portalOverlay, { zIndex: layer }]}>
         <FloatingSurface
           ref={contentRef}
-          entering={FadeIn.duration(80)}
-          exiting={FadeOut.duration(80)}
+          entering={entryExitFadeIn(80)}
+          exiting={entryExitFadeOut(80)}
           collapsable={false}
           onLayout={handleLayout}
           role={role}

@@ -8,15 +8,16 @@ import {
   ToastAndroid,
   View,
 } from "react-native";
-import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
+import Animated from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { Theme } from "@/styles/theme";
 import { useTranslation } from "react-i18next";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isWeb } from "@/constants/platform";
-import { AlertTriangle, CheckCircle2, Info } from "lucide-react-native";
+import { entryExitFadeIn, entryExitFadeOut } from "@/lib/layout-animations";
 import { getOverlayRoot, OVERLAY_Z } from "@/lib/overlay-root";
+import { AlertTriangle, CheckCircle2, Info } from "lucide-react-native";
 import {
   HEADER_INNER_HEIGHT,
   HEADER_INNER_HEIGHT_MOBILE,
@@ -53,8 +54,8 @@ type ToastViewportPlacement = "app-shell" | "panel";
 
 const DEFAULT_DURATION_MS = 2200;
 const TOAST_MAX_WIDTH = 480;
-const toastEntering = FadeIn.duration(140);
-const toastExiting = FadeOut.duration(140);
+const toastEntering = entryExitFadeIn(140);
+const toastExiting = entryExitFadeOut(140);
 const ThemedCheckCircle = withUnistyles(CheckCircle2);
 const ThemedInfo = withUnistyles(Info);
 const ThemedWarning = withUnistyles(AlertTriangle);
