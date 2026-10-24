@@ -1,5 +1,6 @@
 import { memo, useCallback } from "react";
-import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
+import { Text, View, type PressableStateCallbackType } from "react-native";
+import { PressHighlight } from "@/components/ui/press-highlight";
 import { StyleSheet } from "react-native-unistyles";
 import { StatusRing } from "@/components/status-ring";
 import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
@@ -36,7 +37,7 @@ export const BoardCard = memo(function BoardCard({
   );
 
   return (
-    <Pressable
+    <PressHighlight
       onPress={handlePress}
       onLongPress={onOpenMenu ? handleLongPress : undefined}
       delayLongPress={250}
@@ -60,7 +61,7 @@ export const BoardCard = memo(function BoardCard({
       <Text style={styles.meta} numberOfLines={1}>
         {[workspace.projectName, workspace.currentBranch].filter(Boolean).join(" · ")}
       </Text>
-    </Pressable>
+    </PressHighlight>
   );
 });
 

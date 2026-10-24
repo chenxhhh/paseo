@@ -1,5 +1,6 @@
 import { useCallback, useState, type ReactElement } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
+import { PressHighlight } from "@/components/ui/press-highlight";
 import { StyleSheet } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import { ChevronLeft, ChevronRight, ChevronsRight } from "lucide-react-native";
@@ -85,7 +86,7 @@ function NativeCollapsedRail({ columns }: { columns: readonly BoardColumn[] }): 
       </View>
       <View style={styles.collapsedRailItems}>
         {columns.map((column) => (
-          <Pressable
+          <PressHighlight
             key={column.key}
             onPress={column.onToggleCollapsed}
             accessibilityRole="button"
@@ -100,7 +101,7 @@ function NativeCollapsedRail({ columns }: { columns: readonly BoardColumn[] }): 
             <View style={styles.collapsedCountWrap}>
               <Text style={styles.columnHeaderCount}>{column.workspaces.length}</Text>
             </View>
-          </Pressable>
+          </PressHighlight>
         ))}
       </View>
     </View>
@@ -129,7 +130,7 @@ function NativeBoardColumn({
         ]}
       >
         {column.onToggleCollapsed ? (
-          <Pressable
+          <PressHighlight
             onPress={column.onToggleCollapsed}
             hitSlop={4}
             accessibilityRole="button"
@@ -137,7 +138,7 @@ function NativeBoardColumn({
             testID={`board-column-collapse-${column.key}`}
           >
             <ChevronLeft size={16} color={MUTED_ICON_COLOR} />
-          </Pressable>
+          </PressHighlight>
         ) : null}
         {column.status ? (
           <View style={styles.columnHeaderDotWrap}>

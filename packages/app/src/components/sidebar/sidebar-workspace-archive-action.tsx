@@ -1,12 +1,12 @@
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  Pressable,
   Text,
   View,
   type GestureResponderEvent,
   type PressableStateCallbackType,
 } from "react-native";
+import { PressHighlight } from "@/components/ui/press-highlight";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { Archive, X } from "lucide-react-native";
 import { isWeb } from "@/constants/platform";
@@ -70,7 +70,7 @@ export function SidebarWorkspaceArchiveAction({
   if (confirming) {
     return (
       <View style={[styles.confirmGroup, disabled && styles.disabled]}>
-        <Pressable
+        <PressHighlight
           onPress={handleCancel}
           disabled={disabled}
           hitSlop={4}
@@ -84,21 +84,21 @@ export function SidebarWorkspaceArchiveAction({
               uniProps={hovered ? foregroundColorMapping : foregroundMutedColorMapping}
             />
           )}
-        </Pressable>
-        <Pressable
+        </PressHighlight>
+        <PressHighlight
           onPress={handleConfirm}
           disabled={disabled}
           accessibilityRole={isWeb ? undefined : "button"}
           testID={`sidebar-workspace-archive-confirm-${workspaceKey}`}
         >
           <Text style={styles.confirmText}>{t("sidebar.workspace.actions.archiveConfirm")}</Text>
-        </Pressable>
+        </PressHighlight>
       </View>
     );
   }
 
   return (
-    <Pressable
+    <PressHighlight
       onPress={handleArm}
       disabled={disabled}
       hitSlop={8}
@@ -113,7 +113,7 @@ export function SidebarWorkspaceArchiveAction({
           uniProps={hovered ? foregroundColorMapping : foregroundMutedColorMapping}
         />
       )}
-    </Pressable>
+    </PressHighlight>
   );
 }
 

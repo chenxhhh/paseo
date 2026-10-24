@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState, type MutableRefObject, type ReactElement } from "react";
-import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
+import { Text, View, type PressableStateCallbackType } from "react-native";
+import { PressHighlight } from "@/components/ui/press-highlight";
 import { type GestureType } from "react-native-gesture-handler";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { ChevronDown, ChevronRight, GitBranch } from "lucide-react-native";
@@ -65,7 +66,7 @@ function WorktreeGroupHeader({
 
   return (
     <View onPointerEnter={handleHoverIn} onPointerLeave={handleHoverOut}>
-      <Pressable
+      <PressHighlight
         accessibilityRole={platformIsWeb ? undefined : "button"}
         accessibilityLabel={`${group.label} group`}
         accessibilityState={accessibilityState}
@@ -88,7 +89,7 @@ function WorktreeGroupHeader({
             ) : null}
           </View>
         </View>
-      </Pressable>
+      </PressHighlight>
     </View>
   );
 }

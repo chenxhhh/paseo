@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState, type ReactElement } from "react";
 import { useTranslation } from "react-i18next";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
+import { PressHighlight } from "@/components/ui/press-highlight";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { ArrowLeft, ArrowRight, Check, Pencil, Plus, Trash2 } from "lucide-react-native";
 import type { WorkspaceLabelColor } from "@getpaseo/protocol/workspace-labels";
@@ -97,14 +98,14 @@ export function BoardManageSheet({
               onRemove={removeStatus}
             />
           ))}
-          <Pressable style={styles.addButton} onPress={openCreating} testID="board-manage-add">
+          <PressHighlight style={styles.addButton} onPress={openCreating} testID="board-manage-add">
             <ThemedPlus size={14} uniProps={mutedIconMapping} />
             <Text style={styles.addButtonText}>{t("workspaceStatus.manage.add")}</Text>
-          </Pressable>
-          <Pressable style={styles.doneButton} onPress={onClose} testID="board-manage-done">
+          </PressHighlight>
+          <PressHighlight style={styles.doneButton} onPress={onClose} testID="board-manage-done">
             <ThemedCheck size={14} uniProps={accentIconMapping} />
             <Text style={styles.doneButtonText}>{t("workspaceStatus.manage.done")}</Text>
-          </Pressable>
+          </PressHighlight>
         </View>
       </AdaptiveModalSheet>
       <AdaptiveRenameModal
@@ -166,7 +167,7 @@ function ManageStatusRow({
     <>
       <View style={styles.statusRow}>
         <View style={styles.statusRowMain}>
-          <Pressable
+          <PressHighlight
             style={styles.statusNameButton}
             onPress={openRenaming}
             testID={`board-manage-rename-${status.id}`}
@@ -175,7 +176,7 @@ function ManageStatusRow({
               {status.label}
             </Text>
             <ThemedPencil size={12} uniProps={mutedIconMapping} />
-          </Pressable>
+          </PressHighlight>
           <WorkspaceLabelSwatchRow
             value={status.color}
             onChange={changeColor}
@@ -183,7 +184,7 @@ function ManageStatusRow({
           />
         </View>
         <View style={styles.statusRowActions}>
-          <Pressable
+          <PressHighlight
             hitSlop={6}
             disabled={index === 0}
             onPress={moveLeft}
@@ -191,8 +192,8 @@ function ManageStatusRow({
             testID={`board-manage-left-${status.id}`}
           >
             <ThemedArrowLeft size={14} uniProps={index === 0 ? undefined : mutedIconMapping} />
-          </Pressable>
-          <Pressable
+          </PressHighlight>
+          <PressHighlight
             hitSlop={6}
             disabled={isLast}
             onPress={moveRight}
@@ -200,8 +201,8 @@ function ManageStatusRow({
             testID={`board-manage-right-${status.id}`}
           >
             <ThemedArrowRight size={14} uniProps={isLast ? undefined : mutedIconMapping} />
-          </Pressable>
-          <Pressable
+          </PressHighlight>
+          <PressHighlight
             hitSlop={6}
             disabled={!canRemove}
             onPress={remove}
@@ -209,7 +210,7 @@ function ManageStatusRow({
             testID={`board-manage-remove-${status.id}`}
           >
             <ThemedTrash2 size={14} uniProps={canRemove ? mutedIconMapping : undefined} />
-          </Pressable>
+          </PressHighlight>
         </View>
       </View>
       <AdaptiveRenameModal

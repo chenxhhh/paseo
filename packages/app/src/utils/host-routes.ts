@@ -501,6 +501,7 @@ export const SETTINGS_SECTION_SLUGS = [
   "terminal",
   "browser",
   "editor",
+  "files",
   "shortcuts",
   "integrations",
   "notifications",

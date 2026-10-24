@@ -1,5 +1,6 @@
 import { useCallback, useState, type ReactElement, type Ref } from "react";
-import { Pressable, ScrollView, Text, View, type ViewStyle } from "react-native";
+import { ScrollView, Text, View, type ViewStyle } from "react-native";
+import { PressHighlight } from "@/components/ui/press-highlight";
 import { StyleSheet } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import {
@@ -115,7 +116,7 @@ function CollapsedRailView({ columns }: { columns: readonly BoardColumn[] }): Re
       </View>
       <View style={styles.collapsedRailItems}>
         {columns.map((column) => (
-          <Pressable
+          <PressHighlight
             key={column.key}
             onPress={column.onToggleCollapsed}
             accessibilityRole="button"
@@ -130,7 +131,7 @@ function CollapsedRailView({ columns }: { columns: readonly BoardColumn[] }): Re
             <View style={styles.collapsedCountWrap}>
               <Text style={styles.columnHeaderCount}>{column.workspaces.length}</Text>
             </View>
-          </Pressable>
+          </PressHighlight>
         ))}
       </View>
     </View>
@@ -167,7 +168,7 @@ function BoardColumnView({
         ]}
       >
         {column.onToggleCollapsed ? (
-          <Pressable
+          <PressHighlight
             onPress={column.onToggleCollapsed}
             hitSlop={4}
             accessibilityRole="button"
@@ -175,7 +176,7 @@ function BoardColumnView({
             testID={`board-column-collapse-${column.key}`}
           >
             <ChevronLeft size={16} color={MUTED_ICON_COLOR} />
-          </Pressable>
+          </PressHighlight>
         ) : null}
         {column.status ? (
           <View style={styles.columnHeaderDotWrap}>

@@ -1,13 +1,6 @@
 import { execFile } from "child_process";
 import { promisify } from "util";
-import {
-  constants as fsConstants,
-  existsSync,
-  mkdirSync,
-  realpathSync,
-  rmSync,
-  statSync,
-} from "fs";
+import { constants as fsConstants, existsSync, mkdirSync, realpathSync, statSync } from "fs";
 import { copyFile, rm, stat } from "fs/promises";
 import { join, basename, dirname, isAbsolute, resolve, sep } from "path";
 import net from "node:net";
@@ -229,7 +222,6 @@ export interface CreateWorktreeOptions {
   cwd: string;
   worktreeSlug: string;
   source: WorktreeSource;
-  runSetup: boolean;
   paseoHome?: string;
   worktreesRoot?: string;
   /** Overrides `worktree.checkout` from paseo.json; defaults to that config value or `eager`. */
@@ -336,9 +328,7 @@ export function resolveWorktreeGitTimeoutMs(): number {
     return DEFAULT_WORKTREE_GIT_TIMEOUT_MS;
   }
   const parsed = Number(raw);
-  return Number.isFinite(parsed) && parsed > 0
-    ? parsed
-    : DEFAULT_WORKTREE_GIT_TIMEOUT_MS;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_WORKTREE_GIT_TIMEOUT_MS;
 }
 
 export function getWorktreeTerminalSpecs(repoRoot: string): WorktreeTerminalConfig[] {
@@ -691,7 +681,6 @@ async function inferRepoRootPathFromWorktreePath(worktreePath: string): Promise<
 export async function runWorktreeSetupCommands(options: {
   worktreePath: string;
   branchName: string;
-  cleanupOnFailure: boolean;
   repoRootPath?: string;
   runtimeEnv?: WorktreeRuntimeEnv;
   signal?: AbortSignal;
@@ -731,16 +720,6 @@ export async function runWorktreeSetupCommands(options: {
     results.push(result);
 
     if (result.exitCode !== 0) {
-      if (options.cleanupOnFailure) {
-        try {
-          await runGitCommand(["worktree", "remove", options.worktreePath, "--force"], {
-            cwd: options.worktreePath,
-            timeout: 120_000,
-          });
-        } catch {
-          rmSync(options.worktreePath, { recursive: true, force: true });
-        }
-      }
       throw new WorktreeSetupError(
         `Worktree setup command failed: ${cmd}\n${result.stderr}`.trim(),
         results,
@@ -1269,7 +1248,6 @@ export const createWorktree = async ({
   cwd,
   source,
   worktreeSlug,
-  runSetup,
   paseoHome,
   worktreesRoot,
   checkoutMode,
@@ -1340,15 +1318,7 @@ export const createWorktree = async ({
   if (deferredCheckout) {
     scheduleDeferredWorktreePreparation({
       worktreePath,
-      branchName: sourcePlan.branchName,
-      runSetup,
       gitTimeout,
-    });
-  } else if (runSetup) {
-    await runWorktreeSetupCommands({
-      worktreePath,
-      branchName: sourcePlan.branchName,
-      cleanupOnFailure: true,
     });
   }
 
@@ -1370,8 +1340,6 @@ const deferredWorktreePreparations = new Map<string, Promise<void>>();
  */
 function scheduleDeferredWorktreePreparation(options: {
   worktreePath: string;
-  branchName: string;
-  runSetup: boolean;
   gitTimeout: number;
 }): void {
   const { worktreePath } = options;
@@ -1387,33 +1355,24 @@ function scheduleDeferredWorktreePreparation(options: {
   // Swallow the rejection on this copy so an unobserved background task cannot crash the process,
   // while the map still hands the rejecting promise to explicit waiters.
   deferredWorktreePreparations.set(worktreePath, task);
-  task.catch(() => undefined).finally(() => {
-    deferredWorktreePreparations.delete(worktreePath);
-  });
+  task
+    .catch(() => undefined)
+    .finally(() => {
+      deferredWorktreePreparations.delete(worktreePath);
+    });
 }
 
 async function materializeDeferredWorktree(options: {
   worktreePath: string;
-  branchName: string;
-  runSetup: boolean;
   gitTimeout: number;
 }): Promise<void> {
   // `--no-checkout` leaves HEAD pointing at the target branch with an empty index, so a hard reset
   // to HEAD is what actually writes the files. No local edits can exist yet, so this is safe.
+  // Setup is not run here: it belongs to the workspace workflow, which awaits
+  // `waitForDeferredWorktreePreparation` before launching commands.
   await runGitCommand(["reset", "--hard", "HEAD"], {
     cwd: options.worktreePath,
     timeout: options.gitTimeout,
-  });
-
-  if (!options.runSetup) {
-    return;
-  }
-  // `cleanupOnFailure: false` because the worktree is already visible to callers; deleting it
-  // behind their back would discard a branch they may have started using.
-  await runWorktreeSetupCommands({
-    worktreePath: options.worktreePath,
-    branchName: options.branchName,
-    cleanupOnFailure: false,
   });
 }
 

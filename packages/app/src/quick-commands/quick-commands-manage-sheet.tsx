@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
+import { PressHighlight } from "@/components/ui/press-highlight";
 import type { PressableStateCallbackType } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { FolderOpen, Globe, Zap } from "lucide-react-native";
@@ -374,7 +375,7 @@ function CommandRow({
     [withBorder],
   );
   return (
-    <Pressable
+    <PressHighlight
       style={rowStyle}
       onPress={handlePress}
       accessibilityRole="button"
@@ -393,7 +394,7 @@ function CommandRow({
         </Text>
       </View>
       <ScopeBadge scope={command.scope} projectName={projectName} />
-    </Pressable>
+    </PressHighlight>
   );
 }
 

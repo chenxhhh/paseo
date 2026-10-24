@@ -14,7 +14,6 @@ import {
   Modal,
   Platform,
   Pressable,
-  StatusBar,
   View,
   type StyleProp,
   type ViewStyle,
@@ -53,6 +52,11 @@ const contentExiting = new Keyframe({
   0: { opacity: 1, transform: [{ scale: 1 }] },
   100: { opacity: 0, transform: [{ scale: 0.97 }] },
 }).duration(100);
+
+// Kept out of `AnchoredSurface` so the extra guard does not push its complexity over the limit.
+function resolveContentEntering(placed: boolean, animation: typeof contentEntering) {
+  return placed && !shouldDisableEntryExitAnimations ? animation : undefined;
+}
 
 function releaseFixedMenuHeight(surfaceNativeID: string): void {
   if (!isWeb) return;
@@ -163,16 +167,13 @@ export function useAnchoredPosition({
       return undefined;
     }
 
-    // Capture status bar height synchronously before async measurement, so it cannot change
-    // or read back null between the measure call and its resolution.
-    const statusBarHeight = Platform.OS === "android" ? (StatusBar.currentHeight ?? 0) : 0;
     let cancelled = false;
 
+    // The app draws edge-to-edge, so measureInWindow and the full-screen Modal share one
+    // coordinate space that starts at the screen top; no status bar offset applies.
     void measureElement(anchorRef.current).then((rect) => {
       if (cancelled) return undefined;
-      // On Android with statusBarTranslucent, measureInWindow returns coordinates relative to
-      // below the status bar while Modal content starts at the screen top.
-      setTriggerRect({ ...rect, y: rect.y + statusBarHeight });
+      setTriggerRect(rect);
       return undefined;
     });
 
@@ -388,7 +389,7 @@ export function AnchoredSurface({
         dataSet={surfaceDataSet}
         style={styles.content}
         frameStyle={frameStyle}
-        entering={placed && !shouldDisableEntryExitAnimations ? contentEntering : undefined}
+        entering={resolveContentEntering(placed, contentEntering)}
         exiting={
           !placed || isWeb || !onExited
             ? undefined
@@ -528,7 +529,7 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
   },
   overlayWeb: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     pointerEvents: "auto" as const,
   },
   backdrop: {

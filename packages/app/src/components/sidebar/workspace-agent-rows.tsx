@@ -1,5 +1,6 @@
 import { memo, useCallback } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
+import { PressHighlight } from "@/components/ui/press-highlight";
 import { StyleSheet } from "react-native-unistyles";
 import { StatusRing } from "@/components/status-ring";
 import { formatCompactTimeAgo } from "@/utils/time";
@@ -68,14 +69,14 @@ function AgentActivityRow({
   }
 
   return (
-    <Pressable
+    <PressHighlight
       onPress={handlePress}
       testID={`sidebar-workspace-agent-row-${agent.agentId}`}
       accessibilityRole="button"
       accessibilityLabel={label}
     >
       {body}
-    </Pressable>
+    </PressHighlight>
   );
 }
 

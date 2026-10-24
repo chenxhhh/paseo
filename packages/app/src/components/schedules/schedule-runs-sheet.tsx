@@ -2,12 +2,12 @@ import { useRouter, type Href } from "expo-router";
 import * as Clipboard from "expo-clipboard";
 import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
 import {
-  Pressable,
   Text,
   View,
   type GestureResponderEvent,
   type PressableStateCallbackType,
 } from "react-native";
+import { PressHighlight } from "@/components/ui/press-highlight";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { ChevronRight, Copy, ExternalLink } from "lucide-react-native";
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
@@ -173,7 +173,7 @@ function OpenScheduleRunsSheet({
         title: "Run output",
         back: { onPress: handleBack, label: "Run history" },
         actions: (
-          <Pressable
+          <PressHighlight
             onPress={handleCopy}
             disabled={!detailRun?.output}
             hitSlop={8}
@@ -183,7 +183,7 @@ function OpenScheduleRunsSheet({
             testID="schedule-runs-copy"
           >
             <ThemedCopy size={16} uniProps={mutedColorMapping} />
-          </Pressable>
+          </PressHighlight>
         ),
       };
     }
@@ -463,7 +463,7 @@ function ScheduleRunRow({
       onPointerEnter={handlePointerEnter}
       onPointerLeave={handlePointerLeave}
     >
-      <Pressable
+      <PressHighlight
         style={rowStyle}
         onPress={handleOpen}
         accessibilityRole="button"
@@ -489,7 +489,7 @@ function ScheduleRunRow({
           {run.agentId ? <OpenRunAgentButton serverId={serverId} run={run} /> : null}
           <ThemedChevronRight size={16} uniProps={mutedColorMapping} />
         </View>
-      </Pressable>
+      </PressHighlight>
     </View>
   );
 }
@@ -524,7 +524,7 @@ function OpenRunAgentButton({
   );
 
   return (
-    <Pressable
+    <PressHighlight
       onPress={handlePress}
       hitSlop={8}
       style={buttonStyle}
@@ -533,7 +533,7 @@ function OpenRunAgentButton({
       testID={`schedule-run-open-agent-${run.id}`}
     >
       <ThemedExternalLink size={14} uniProps={mutedColorMapping} />
-    </Pressable>
+    </PressHighlight>
   );
 }
 
@@ -586,7 +586,7 @@ function RunDetailMetaCard({
         </View>
       ) : null}
       {run.agentId ? (
-        <Pressable
+        <PressHighlight
           style={agentRowStyle}
           onPress={handleOpenAgent}
           accessibilityRole="button"
@@ -595,7 +595,7 @@ function RunDetailMetaCard({
         >
           <Text style={settingsStyles.rowTitle}>Open agent</Text>
           <ThemedChevronRight size={16} uniProps={mutedColorMapping} />
-        </Pressable>
+        </PressHighlight>
       ) : null}
     </View>
   );
