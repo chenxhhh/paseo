@@ -783,6 +783,33 @@ export default function contribute(plugin: unknown) {
     }
   });
 
+  test("downgrades newer MCP-Protocol-Version headers in rawHeaders on /mcp/agents", async () => {
+    const daemonHandle = await createTestPaseoDaemon();
+
+    try {
+      const response = await fetch(`http://127.0.0.1:${daemonHandle.port}/mcp/agents`, {
+        method: "POST",
+        headers: {
+          Accept: "application/json, text/event-stream",
+          "Content-Type": "application/json",
+          "MCP-Protocol-Version": "2026-07-28",
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/list",
+          params: {},
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      const body = await response.text();
+      expect(body).not.toContain("Unsupported protocol version");
+    } finally {
+      await daemonHandle.close();
+    }
+  });
+
   test("starts when OpenAI speech provider is configured without credentials", async () => {
     const paseoHomeRoot = await mkdtemp(path.join(os.tmpdir(), "paseo-openai-config-"));
     const paseoHome = path.join(paseoHomeRoot, ".paseo");

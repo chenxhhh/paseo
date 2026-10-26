@@ -266,6 +266,33 @@ function resolveAgentMcpClientHost(host: string): string {
   return host;
 }
 
+const MAX_SUPPORTED_MCP_PROTOCOL_VERSION = "2025-11-25";
+
+function downgradeUnsupportedMcpProtocolVersion(req: express.Request): void {
+  const mcpProtocolVersion = req.headers["mcp-protocol-version"];
+  if (
+    typeof mcpProtocolVersion !== "string" ||
+    mcpProtocolVersion <= MAX_SUPPORTED_MCP_PROTOCOL_VERSION
+  ) {
+    return;
+  }
+  req.headers["mcp-protocol-version"] = MAX_SUPPORTED_MCP_PROTOCOL_VERSION;
+  if (!Array.isArray(req.rawHeaders)) {
+    return;
+  }
+  for (let i = 0; i < req.rawHeaders.length; i += 2) {
+    const key = req.rawHeaders[i]?.toLowerCase();
+    const val = req.rawHeaders[i + 1];
+    if (
+      key === "mcp-protocol-version" &&
+      typeof val === "string" &&
+      val > MAX_SUPPORTED_MCP_PROTOCOL_VERSION
+    ) {
+      req.rawHeaders[i + 1] = MAX_SUPPORTED_MCP_PROTOCOL_VERSION;
+    }
+  }
+}
+
 function createAgentMcpBaseUrl(listenTarget: ListenTarget | null): string | null {
   if (!listenTarget || listenTarget.type !== "tcp") {
     return null;
@@ -1653,10 +1680,7 @@ export async function createPaseoDaemon(
           void server.close();
         });
 
-        const mcpProtocolVersion = req.headers["mcp-protocol-version"];
-        if (typeof mcpProtocolVersion === "string" && mcpProtocolVersion > "2025-11-25") {
-          req.headers["mcp-protocol-version"] = "2025-11-25";
-        }
+        downgradeUnsupportedMcpProtocolVersion(req);
 
         await transport.handleRequest(
           req as unknown as IncomingMessage,

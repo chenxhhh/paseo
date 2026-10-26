@@ -38,9 +38,76 @@ config.resolver.extraNodeModules = {
   "react/jsx-runtime": path.join(appNodeModulesRoot, "react/jsx-runtime"),
   "react/jsx-dev-runtime": path.join(appNodeModulesRoot, "react/jsx-dev-runtime"),
 };
-config.resolver.blockList = new RegExp(
-  `(^${escapedAppSrcRoot}${pathSeparatorPattern}.*\\.(test|spec)\\.(ts|tsx)$|${pathSeparatorPattern}__tests__${pathSeparatorPattern}.*)$`,
-);
+const defaultBlockList = Array.isArray(config.resolver.blockList)
+  ? config.resolver.blockList
+  : config.resolver.blockList
+    ? [config.resolver.blockList]
+    : [];
+
+config.resolver.blockList = [
+  ...defaultBlockList,
+  new RegExp(
+    `(^${escapedAppSrcRoot}${pathSeparatorPattern}.*\\.(test|spec)\\.(ts|tsx)$|${pathSeparatorPattern}__tests__${pathSeparatorPattern}.*|${pathSeparatorPattern}\\.dev${pathSeparatorPattern}.*|${pathSeparatorPattern}\\.claude${pathSeparatorPattern}worktrees${pathSeparatorPattern}.*)$`,
+  ),
+];
+
+function wrapCacheStoreWithConcurrencyLimit(store, maxConcurrent = 64) {
+  if (!store || typeof store.get !== "function" || typeof store.set !== "function") {
+    return store;
+  }
+  let active = 0;
+  const queue = [];
+  const acquire = () =>
+    new Promise((resolveSlot) => {
+      if (active < maxConcurrent) {
+        active += 1;
+        resolveSlot();
+      } else {
+        queue.push(resolveSlot);
+      }
+    });
+  const release = () => {
+    const next = queue.shift();
+    if (next) {
+      next();
+    } else {
+      active -= 1;
+    }
+  };
+  const runWithRetry = async (fn, isRead) => {
+    await acquire();
+    try {
+      for (let attempt = 0; ; attempt += 1) {
+        try {
+          return await fn();
+        } catch (err) {
+          const code = err && err.code;
+          const isTransientFsError = code === "EMFILE" || code === "ENFILE" || code === "EBUSY";
+          if (isTransientFsError && attempt < 4) {
+            await new Promise((r) => setTimeout(r, 15 * (attempt + 1)));
+            continue;
+          }
+          if (isTransientFsError && isRead) {
+            return null;
+          }
+          throw err;
+        }
+      }
+    } finally {
+      release();
+    }
+  };
+
+  const originalGet = store.get.bind(store);
+  const originalSet = store.set.bind(store);
+  store.get = (key) => runWithRetry(() => originalGet(key), true);
+  store.set = (key, value) => runWithRetry(() => originalSet(key, value), false);
+  return store;
+}
+
+if (Array.isArray(config.cacheStores)) {
+  config.cacheStores = config.cacheStores.map((store) => wrapCacheStoreWithConcurrencyLimit(store));
+}
 
 function isLocalModuleImport(moduleName) {
   return (

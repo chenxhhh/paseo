@@ -115,7 +115,7 @@ const WORKING_TREE_KNOWN_DIRECTORIES_MAX = 50_000;
 // retains subprocess and event-loop headroom during large workspace reconciliation bursts.
 export const WORKSPACE_GIT_REFRESH_CONCURRENCY = 4;
 export const WORKSPACE_GIT_OBSERVATION_SETUP_CONCURRENCY = 2;
-export const WORKSPACE_GIT_WATCHER_SUBSCRIBE_TIMEOUT_MS = 10_000;
+export const WORKSPACE_GIT_WATCHER_SUBSCRIBE_TIMEOUT_MS = 30_000;
 const WATCH_RECOVERY_BASE_DELAY_MS = 30_000;
 // Giving up permanently leaves polling as the only behaviour until a daemon
 // restart, which kills running agents. Back off, but keep trying.
