@@ -42,8 +42,8 @@ describe("workspace-draft-agent-config", () => {
       initialPrompt: "  hello world  ",
       clientMessageId: "draft_1:initial-message",
     };
-    const retryWorkspaceCreation = vi.fn(async (agent) => ({ id: "agent_1", agent }));
-    const createAgentInWorkspace = vi.fn(async (request) => ({ id: "agent_2", request }));
+    const retryWorkspaceCreation = vi.fn(async (_agent) => ({ id: "agent_1" }));
+    const createAgentInWorkspace = vi.fn(async (_request) => ({ id: "agent_2" }));
 
     await retryWorkspaceInitialAgentCreation({
       draftId: "draft_1",
@@ -83,7 +83,7 @@ describe("workspace-draft-agent-config", () => {
       clientMessageId: "draft_1:initial-message",
     };
     const retryWorkspaceCreation = vi.fn(async () => ({ id: "agent_ws" }));
-    const createAgentInWorkspace = vi.fn(async (request) => ({ id: "agent_direct", request }));
+    const createAgentInWorkspace = vi.fn(async (_request) => ({ id: "agent_direct" }));
 
     const modifiedRequest = {
       idempotencyKey: "draft_1",
