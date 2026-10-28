@@ -29,7 +29,8 @@ export interface RegisterBrowserToolsOptions {
   resolveCallerAgent: () => CallerAgentContext | null;
 }
 
-const HTTP_URL_ONLY_MESSAGE = "URL must use http/https only";
+const HTTP_URL_ONLY_MESSAGE =
+  "URL must use http/https only (file:// is not supported; serve local files over a local HTTP server such as python -m http.server first)";
 const WORKSPACE_CONTEXT_MESSAGE =
   "This browser tool needs a workspace. Start the agent from a Paseo workspace before calling browser_new_tab or browser_list_tabs.";
 const URL_WHITESPACE_PATTERN = /\s/;
@@ -48,7 +49,10 @@ const BrowserHttpUrlInputSchema = z
       return z.NEVER;
     }
     return normalized;
-  });
+  })
+  .describe(
+    "HTTP(S) URL or scheme-less host URL (treated as http). file:// URLs are not supported; serve local files over a local HTTP server first.",
+  );
 const BrowserRefInputSchema = z.string().regex(/^@e\d+$/);
 const BrowserClickButtonInputSchema = z.enum(["left", "right", "middle"]);
 const BrowserClickModifierInputSchema = z.enum(["Alt", "Control", "Meta", "Shift"]);
@@ -96,7 +100,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Create browser tab",
       description:
-        "Create a new Paseo browser tab in this agent's workspace on the most recently connected browser automation host, opened in the background without switching the user's view. Pass an http(s) URL or a scheme-less host URL, which is treated as http; the returned browserId is used by tab-scoped tools.",
+        "Create a new Paseo browser tab in this agent's workspace on the most recently connected browser automation host, opened in the background without switching the user's view. Pass an http(s) URL or a scheme-less host URL, which is treated as http (file:// is not supported; serve local files over a local HTTP server first); the returned browserId is used by tab-scoped tools.",
       inputSchema: {
         url: BrowserHttpUrlInputSchema.optional(),
       },
@@ -315,7 +319,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Navigate browser",
       description:
-        "Navigate a Paseo browser tab to a URL. Use browserId from browser_new_tab or browser_list_tabs; pass an http(s) URL or a scheme-less host URL, which is treated as http.",
+        "Navigate a Paseo browser tab to a URL. Use browserId from browser_new_tab or browser_list_tabs; pass an http(s) URL or a scheme-less host URL, which is treated as http (file:// is not supported; serve local files over a local HTTP server first).",
       inputSchema: { url: BrowserHttpUrlInputSchema, browserId: BrowserAutomationBrowserIdSchema },
     },
     async ({ url, browserId }) => {

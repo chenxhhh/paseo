@@ -13,7 +13,8 @@ const BROWSER_ID = "11111111-1111-4111-8111-111111111111";
 const BROWSER_ID_MESSAGE =
   "browserId must be a real id returned by browser_new_tab or browser_list_tabs";
 const WAIT_CONDITION_MESSAGE = "browser_wait requires exactly one of text or url";
-const HTTP_URL_MESSAGE = "URL must use http/https only";
+const HTTP_URL_MESSAGE =
+  "URL must use http/https only (file:// is not supported; serve local files over a local HTTP server such as python -m http.server first)";
 const WORKSPACE_CONTEXT_MESSAGE =
   "This browser tool needs a workspace. Start the agent from a Paseo workspace before calling browser_new_tab or browser_list_tabs.";
 
