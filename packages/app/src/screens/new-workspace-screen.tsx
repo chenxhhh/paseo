@@ -127,6 +127,11 @@ import {
 } from "./workspace/terminals/state";
 import { captureWorkspaceDraftCleanup } from "./new-workspace/background-handoff";
 import { useNewWorkspaceScreenPresence } from "./new-workspace/screen-presence";
+import {
+  buildWorkspaceDraftAgentConfig,
+  resolveWorkspaceCreationIdempotencyKey,
+  retryWorkspaceInitialAgentCreation,
+} from "./workspace/workspace-draft-agent-config";
 
 function useIsNewWorkspaceDraftHandoffActive(input: {
   draftId: string | undefined;
@@ -324,19 +329,28 @@ async function createMultiplicityWorkspace(input: {
     prompt: input.prompt,
     attachments: input.attachments,
   });
+  const source = multiplicityWorkspaceSource({
+    isolation: input.isolation,
+    sourceDirectory: input.sourceDirectory,
+    existingWorktreePath: input.existingWorktreePath,
+    projectId,
+    checkoutRequest: input.checkoutRequest,
+    chooseWorktreeMessage: input.chooseWorktreeMessage,
+    worktreeSlug: input.worktreeSlug,
+  });
+  const idempotencyKey = resolveWorkspaceCreationIdempotencyKey({
+    draftId: input.idempotencyKey,
+    request: {
+      source,
+      ...(firstAgentContext ? { firstAgentContext } : {}),
+      ...(input.agent ? { agent: input.agent } : {}),
+    },
+  });
   const payload = await input.client.createWorkspace({
-    idempotencyKey: input.idempotencyKey,
+    idempotencyKey,
     agent: input.agent,
     onEvent: input.onEvent,
-    source: multiplicityWorkspaceSource({
-      isolation: input.isolation,
-      sourceDirectory: input.sourceDirectory,
-      existingWorktreePath: input.existingWorktreePath,
-      projectId,
-      checkoutRequest: input.checkoutRequest,
-      chooseWorktreeMessage: input.chooseWorktreeMessage,
-      worktreeSlug: input.worktreeSlug,
-    }),
+    source,
     ...(firstAgentContext ? { firstAgentContext } : {}),
   });
   if (payload.error || !payload.workspace) {
@@ -459,16 +473,17 @@ async function createWorkspaceChatAgent(input: CreateChatAgentInput): Promise<Su
   });
   const images = await encodeImages(wirePayload.images);
   let navigated = false;
+  let createdWorkspaceId: string | null = null;
   let outcome: SubmitOutcome = "background";
   const initialAgent: NonNullable<CreateWorkspaceRequestOptions["agent"]> = {
-    config: {
+    config: buildWorkspaceDraftAgentConfig({
       provider,
       cwd,
       modeId: composerState.effectiveModeId || undefined,
       model: composerState.effectiveModelId || undefined,
       thinkingOptionId: composerState.effectiveThinkingOptionId || undefined,
       featureValues: composerState.featureValues,
-    },
+    }),
     initialPrompt: text,
     clientMessageId: `${input.draftId}:initial-message`,
     images: images?.length ? images : undefined,
@@ -482,7 +497,9 @@ async function createWorkspaceChatAgent(input: CreateChatAgentInput): Promise<Su
       withInitialAgent: true,
       agent: requestedAgent,
       onEvent: (snapshot) => {
-        if (!snapshot.workspace || navigated) return;
+        if (!snapshot.workspace) return;
+        createdWorkspaceId = snapshot.workspace.id;
+        if (navigated) return;
         navigated = true;
         if (!input.isStillOnCreateScreen()) return;
         const workspace = normalizeWorkspaceDescriptor(snapshot.workspace);
@@ -522,13 +539,13 @@ async function createWorkspaceChatAgent(input: CreateChatAgentInput): Promise<Su
   const agentCreation = {
     result: Promise.resolve().then(() => execute()),
     retry: (request: CreateAgentRequestOptions) =>
-      execute({
-        ...initialAgent,
-        config: { ...request.config!, cwd },
-        initialPrompt: request.initialPrompt ?? "",
-        clientMessageId: initialAgent.clientMessageId,
-        images: request.images,
-        attachments: request.attachments,
+      retryWorkspaceInitialAgentCreation({
+        draftId: input.draftId ?? "",
+        createdWorkspaceId,
+        initialAgent,
+        retryRequest: request,
+        retryWorkspaceCreation: (agent) => execute(agent),
+        createAgentInWorkspace: (nextRequest) => input.resolveClient().createAgent(nextRequest),
       }),
   };
   await agentCreation.result;

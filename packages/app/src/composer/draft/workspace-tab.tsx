@@ -17,7 +17,11 @@ import type { CreateAgentInitialValues } from "@/hooks/use-agent-form-state";
 import { useDraftAgentCreateFlow, type DraftCreateAttempt } from "@/composer/draft/create-flow";
 import { resolveTurnPresentation, TURN_LIVENESS_IDLE } from "@/timeline/turn-liveness";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
-import { buildWorkspaceDraftAgentConfig } from "@/screens/workspace/workspace-draft-agent-config";
+import {
+  buildWorkspaceDraftAgentConfig,
+  clearDraftRequestIdempotencyKeys,
+  resolveDraftAgentRequestIdempotencyKey,
+} from "@/screens/workspace/workspace-draft-agent-config";
 import { buildDraftStoreKey } from "@/stores/draft-keys";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
 import type { Agent } from "@/stores/session-store";
@@ -185,7 +189,15 @@ async function submitDraftCreateRequest(input: {
     ...(attachmentsArray && attachmentsArray.length > 0 ? { attachments: attachmentsArray } : {}),
   };
   const creation = useWorkspaceDraftSubmissionStore.getState().creationByDraftId[input.draftId];
-  const result = creation ? await creation.retry(options) : await client.createAgent(options);
+  const result = creation
+    ? await creation.retry(options)
+    : await client.createAgent({
+        ...options,
+        idempotencyKey: resolveDraftAgentRequestIdempotencyKey({
+          draftId: input.draftId,
+          request: options,
+        }),
+      });
 
   return {
     agentId: result.id,
@@ -489,6 +501,7 @@ export function WorkspaceDraftAgentTab({
     onCreateSuccess: ({ result }) => {
       clearDraftInput("sent");
       clearWorkspaceAttachments({ scopeKey: draftAttachmentScopeKey });
+      clearDraftRequestIdempotencyKeys(draftId);
       useWorkspaceDraftSubmissionStore.getState().clearDraftSetup({ draftId });
       onCreated(result);
     },
