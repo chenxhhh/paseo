@@ -9,6 +9,7 @@ import {
   readWindowChromeUpdate,
   readWindowTheme,
   resolveWindowBounds,
+  setupWindowResizeEvents,
 } from "./window-manager";
 
 describe("window-manager", () => {
@@ -143,6 +144,42 @@ describe("window-manager", () => {
         width: 1024,
         height: 720,
       });
+    });
+  });
+
+  describe("setupWindowResizeEvents", () => {
+    it("skips sending resize events when the renderer has crashed or its mainFrame is disposed", () => {
+      const handlers = new Map<string, () => void>();
+      const send = vi.fn();
+      let isCrashed = false;
+      let mainFrame: object | null = {};
+      const win = {
+        isDestroyed: () => false,
+        on: (event: string, cb: () => void) => {
+          handlers.set(event, cb);
+        },
+        webContents: {
+          isDestroyed: () => false,
+          isCrashed: () => isCrashed,
+          get mainFrame() {
+            return mainFrame;
+          },
+          send,
+        },
+      };
+
+      setupWindowResizeEvents(win as never);
+      handlers.get("resize")?.();
+      expect(send).toHaveBeenCalledTimes(1);
+
+      isCrashed = true;
+      handlers.get("resize")?.();
+      expect(send).toHaveBeenCalledTimes(1);
+
+      isCrashed = false;
+      mainFrame = null;
+      handlers.get("resize")?.();
+      expect(send).toHaveBeenCalledTimes(1);
     });
   });
 });

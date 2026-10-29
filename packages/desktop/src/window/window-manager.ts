@@ -215,14 +215,24 @@ export function registerWindowManager(input: { mode: DesktopWindowChromeMode }):
 }
 
 export function setupWindowResizeEvents(win: BrowserWindow): void {
-  // A resize/fullscreen event can fire while the window is tearing down; sending
-  // to a destroyed webContents throws. Guard so multi-window close doesn't surface
-  // "Object has been destroyed" exceptions.
+  // A resize/fullscreen event can fire while the window is tearing down or
+  // after its renderer process has crashed; sending to a destroyed webContents
+  // or disposed mainFrame throws. Guard so multi-window close or renderer OOM
+  // doesn't surface unhandled exceptions.
   const notifyResized = () => {
-    if (win.isDestroyed() || win.webContents.isDestroyed()) {
+    if (
+      win.isDestroyed() ||
+      win.webContents.isDestroyed() ||
+      win.webContents.isCrashed() ||
+      !win.webContents.mainFrame
+    ) {
       return;
     }
-    win.webContents.send("paseo:window:resized", {});
+    try {
+      win.webContents.send("paseo:window:resized", {});
+    } catch {
+      // Ignore if the render frame was disposed mid-flight.
+    }
   };
 
   win.on("resize", notifyResized);

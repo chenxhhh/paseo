@@ -4,9 +4,11 @@
 // such as @xterm/headless reading navigator.userAgent, need them installed here.
 import { polyfillCrypto } from "./crypto";
 import { polyfillNavigator } from "./navigator";
+import { polyfillPerformanceMeasureGuard } from "./performance-measure-guard";
 import { polyfillScreenOrientation } from "./screen-orientation";
 
 polyfillCrypto();
 polyfillNavigator();
+polyfillPerformanceMeasureGuard();
 // Polyfill screen.orientation for WebKitGTK desktop runtimes that lack the API.
 polyfillScreenOrientation();

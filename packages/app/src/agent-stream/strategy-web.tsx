@@ -573,17 +573,36 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     return resized;
   });
 
+  const flushVirtualizedRowMeasurements = useStableEvent(() => {
+    const elements = contentRef.current?.querySelectorAll<HTMLElement>(
+      "[data-history-row-id][data-index]",
+    );
+    if (!elements || elements.length === 0) return false;
+    const pendingResizes: Array<{ index: number; height: number }> = [];
+    for (const element of elements) {
+      const index = Number(element.dataset.index);
+      const height = measureVirtualElement(element, undefined, rowVirtualizer);
+      if (rowVirtualizer.measurementsCache[index]?.size === height) continue;
+      pendingResizes.push({ index, height });
+    }
+    if (pendingResizes.length === 0) return false;
+    flushSync(() => {
+      for (const { index, height } of pendingResizes) {
+        rowVirtualizer.resizeItem(index, height);
+      }
+    });
+    return true;
+  });
+
   // Measure the committed DOM rather than queued observer entries: flushSync can
   // also commit an image's pending intrinsic dimensions, invalidating those entries.
   const virtualRowObserver = useMemo(
     () =>
       new ResizeObserver(() => {
         if (!isActiveRef.current) return;
-        flushSync(() => {
-          measureVirtualizedRows();
-        });
+        flushVirtualizedRowMeasurements();
       }),
-    [measureVirtualizedRows],
+    [flushVirtualizedRowMeasurements],
   );
   const measureVirtualizedRowElement = useCallback(
     (node: HTMLDivElement | null) => {
@@ -954,9 +973,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
       evaluateHistoryStart();
     }
     const observer = new ResizeObserver(() => {
-      flushSync(() => {
-        measureVirtualizedRows();
-      });
+      flushVirtualizedRowMeasurements();
       const nextGeometry = getObservedViewportGeometry(scrollContainer);
       if (pendingResumeGeometryCheckRef.current) {
         pendingResumeGeometryCheckRef.current = false;
@@ -1006,7 +1023,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     scheduleHistoryStartPrependSettle,
     forceStickToBottom,
     updateScrollMetrics,
-    measureVirtualizedRows,
+    flushVirtualizedRowMeasurements,
   ]);
 
   useLayoutEffect(() => {

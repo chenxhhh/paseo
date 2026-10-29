@@ -718,6 +718,41 @@ async function createWindow(
       agentNavigationInbox.windowLoading(webContentsId);
     }
   });
+  let rendererCrashReloadCount = 0;
+  let lastRendererCrashAt = 0;
+  mainWindow.webContents.on("render-process-gone", (_event, details) => {
+    log.error("[window] renderer process gone", {
+      webContentsId,
+      reason: details.reason,
+      exitCode: details.exitCode,
+    });
+    if (
+      details.reason === "clean-exit" ||
+      details.reason === "killed" ||
+      mainWindow.isDestroyed() ||
+      mainWindow.webContents.isDestroyed()
+    ) {
+      return;
+    }
+    const now = Date.now();
+    if (now - lastRendererCrashAt > 60_000) {
+      rendererCrashReloadCount = 0;
+    }
+    lastRendererCrashAt = now;
+    if (rendererCrashReloadCount < 3) {
+      rendererCrashReloadCount += 1;
+      log.warn("[window] reloading after unexpected renderer crash", {
+        webContentsId,
+        attempt: rendererCrashReloadCount,
+        reason: details.reason,
+      });
+      setTimeout(() => {
+        if (!mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+          mainWindow.webContents.reload();
+        }
+      }, 300);
+    }
+  });
   mainWindow.on("closed", () => {
     options.onClosed?.(webContentsId);
     agentNavigationInbox.removeWindow(webContentsId);
@@ -1026,7 +1061,19 @@ void runDesktopStartup({
 
 function showDaemonShutdownDialog(): void {
   for (const win of BrowserWindow.getAllWindows()) {
-    win.webContents.send("paseo:event:quitting", {});
+    if (
+      win.isDestroyed() ||
+      win.webContents.isDestroyed() ||
+      win.webContents.isCrashed() ||
+      !win.webContents.mainFrame
+    ) {
+      continue;
+    }
+    try {
+      win.webContents.send("paseo:event:quitting", {});
+    } catch {
+      // Ignore if the render frame was disposed mid-flight.
+    }
   }
 }
 
