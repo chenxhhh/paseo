@@ -2,10 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  getWorktreeCheckoutMode,
-  resolveWorktreeGitTimeoutMs,
-} from "./worktree.js";
+import { getWorktreeCheckoutMode, resolveWorktreeGitTimeoutMs } from "./worktree.js";
 
 function writePaseoJson(dir: string, config: unknown): void {
   writeFileSync(join(dir, "paseo.json"), JSON.stringify(config), "utf8");
@@ -28,30 +25,30 @@ describe("worktree checkout mode", () => {
     }
   });
 
-  it("defaults to eager when paseo.json is absent", () => {
-    expect(getWorktreeCheckoutMode(repoDir)).toBe("eager");
+  it("defaults to eager when paseo.json is absent", async () => {
+    await expect(getWorktreeCheckoutMode(repoDir)).resolves.toBe("eager");
   });
 
-  it("defaults to eager when worktree.checkout is not configured", () => {
+  it("defaults to eager when worktree.checkout is not configured", async () => {
     writePaseoJson(repoDir, { worktree: { setup: ["npm ci"] } });
-    expect(getWorktreeCheckoutMode(repoDir)).toBe("eager");
+    await expect(getWorktreeCheckoutMode(repoDir)).resolves.toBe("eager");
   });
 
-  it("reads worktree.checkout: deferred", () => {
+  it("reads worktree.checkout: deferred", async () => {
     writePaseoJson(repoDir, { worktree: { checkout: "deferred" } });
-    expect(getWorktreeCheckoutMode(repoDir)).toBe("deferred");
+    await expect(getWorktreeCheckoutMode(repoDir)).resolves.toBe("deferred");
   });
 
-  it("falls back to eager instead of throwing on a malformed paseo.json", () => {
+  it("falls back to eager instead of throwing on a malformed paseo.json", async () => {
     // A broken project config must not be able to block worktree creation; setup reports it
     // separately as a workspace-level error.
     writeFileSync(join(repoDir, "paseo.json"), "{ not json", "utf8");
-    expect(getWorktreeCheckoutMode(repoDir)).toBe("eager");
+    await expect(getWorktreeCheckoutMode(repoDir)).resolves.toBe("eager");
   });
 
-  it("falls back to eager on an unsupported checkout value", () => {
+  it("falls back to eager on an unsupported checkout value", async () => {
     writePaseoJson(repoDir, { worktree: { checkout: "lazy" } });
-    expect(getWorktreeCheckoutMode(repoDir)).toBe("eager");
+    await expect(getWorktreeCheckoutMode(repoDir)).resolves.toBe("eager");
   });
 });
 

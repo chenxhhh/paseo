@@ -38,11 +38,13 @@ config.resolver.extraNodeModules = {
   "react/jsx-runtime": path.join(appNodeModulesRoot, "react/jsx-runtime"),
   "react/jsx-dev-runtime": path.join(appNodeModulesRoot, "react/jsx-dev-runtime"),
 };
-const defaultBlockList = Array.isArray(config.resolver.blockList)
-  ? config.resolver.blockList
-  : config.resolver.blockList
-    ? [config.resolver.blockList]
-    : [];
+const existingBlockList = config.resolver.blockList;
+let defaultBlockList = [];
+if (Array.isArray(existingBlockList)) {
+  defaultBlockList = existingBlockList;
+} else if (existingBlockList) {
+  defaultBlockList = [existingBlockList];
+}
 
 config.resolver.blockList = [
   ...defaultBlockList,

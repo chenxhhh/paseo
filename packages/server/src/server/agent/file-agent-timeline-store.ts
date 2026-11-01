@@ -7,7 +7,7 @@ import { z } from "zod";
 
 import { AgentTimelineItemPayloadSchema } from "@getpaseo/protocol/messages";
 import type { AgentTimelineItem } from "./agent-sdk-types.js";
-import { TimelineProjection, selectProjectedTimelinePage } from "./timeline-projection.js";
+import { TimelineProjection } from "./timeline-projection.js";
 import type {
   AgentTimelineFetchOptions,
   AgentTimelineFetchResult,
@@ -129,8 +129,7 @@ export class FileAgentTimelineStore implements AgentTimelineStore {
       projected.length > 0 &&
       cursor.seq < minSeq - 1;
     const reset = staleCursor || gap;
-    const page = selectProjectedTimelinePage({
-      rows: projected,
+    const page = projection.selectPage({
       bounds: { minSeq, maxSeq: nextSeq - 1 },
       direction: reset ? "tail" : direction,
       cursorSeq: cursor?.seq,

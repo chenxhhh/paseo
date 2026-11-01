@@ -115,9 +115,10 @@ export function WorktreeGroupSection({
   useNestable: boolean;
   dragGestureHostPresented?: boolean;
 }) {
-  const { visibleItems, expanded, canToggle, toggleExpanded } = useLimitedSidebarGroup(
-    group.workspaces,
-  );
+  const { visibleItems, expanded, canToggle, toggleExpanded } = useLimitedSidebarGroup({
+    items: group.workspaces,
+    selection: null,
+  });
   const handleToggleCollapsed = useCallback(() => {
     onToggleWorktreeGroupCollapsed(group.key);
   }, [group.key, onToggleWorktreeGroupCollapsed]);
