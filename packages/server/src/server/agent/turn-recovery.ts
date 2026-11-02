@@ -169,6 +169,32 @@ function endedWithDeliveredAnswer(lastTimelineItem: AgentTimelineItem | null): b
  *   failures as the last message instead of failing the turn). Numbers that
  *   merely look like status codes inside a real report do not.
  */
+function classifyCompletedToolCallEnding(
+  item: Extract<AgentTimelineItem, { type: "tool_call" }>,
+  hadToolActivity: boolean | undefined,
+): TurnRecoveryDecision {
+  if (item.agentMessage) {
+    return { retryable: false };
+  }
+  if (item.status === "running" || item.status === "failed" || item.status === "canceled") {
+    return {
+      retryable: true,
+      reason: "abnormal_end",
+      detail: `tool ${item.name} did not complete`,
+    };
+  }
+  // A completed tool call as the very last item: only suspicious when the
+  // session is agentic (the model normally closes such turns with a message).
+  if (hadToolActivity) {
+    return {
+      retryable: true,
+      reason: "abnormal_end",
+      detail: `turn ended right after tool ${item.name}`,
+    };
+  }
+  return { retryable: false };
+}
+
 export function classifyTurnEnding(input: ClassifyTurnEndingInput): TurnRecoveryDecision {
   const { outcome, error, lastTimelineItem, hadToolActivity } = input;
 
@@ -204,27 +230,7 @@ export function classifyTurnEnding(input: ClassifyTurnEndingInput): TurnRecovery
     return { retryable: false };
   }
   if (lastTimelineItem?.type === "tool_call") {
-    if (
-      lastTimelineItem.status === "running" ||
-      lastTimelineItem.status === "failed" ||
-      lastTimelineItem.status === "canceled"
-    ) {
-      return {
-        retryable: true,
-        reason: "abnormal_end",
-        detail: `tool ${lastTimelineItem.name} did not complete`,
-      };
-    }
-    // A completed tool call as the very last item: only suspicious when the
-    // session is agentic (the model normally closes such turns with a message).
-    if (hadToolActivity) {
-      return {
-        retryable: true,
-        reason: "abnormal_end",
-        detail: `turn ended right after tool ${lastTimelineItem.name}`,
-      };
-    }
-    return { retryable: false };
+    return classifyCompletedToolCallEnding(lastTimelineItem, hadToolActivity);
   }
   // reasoning / todo / null / an unfinished (loading) compaction → the model
   // never got to speak after its last action. Retry.

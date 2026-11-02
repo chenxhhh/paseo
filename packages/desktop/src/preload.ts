@@ -12,6 +12,14 @@ const PASEO_BROWSER_PROFILE_PARTITION = "persist:paseo-browser";
 
 type EventHandler = (payload: unknown) => void;
 
+const eventChannelSubscriptions = new Map<
+  string,
+  {
+    listener: (_ipcEvent: Electron.IpcRendererEvent, payload: unknown) => void;
+    handlers: Set<EventHandler>;
+  }
+>();
+
 function readWindowChromeMode(): DesktopWindowChromeMode {
   const prefix = "--paseo-window-chrome-mode=";
   const value = process.argv.find((argument) => argument.startsWith(prefix))?.slice(prefix.length);
@@ -45,12 +53,30 @@ contextBridge.exposeInMainWorld("paseoDesktop", {
   },
   events: {
     on: (event: string, handler: EventHandler): Promise<() => void> => {
-      const listener = (_ipcEvent: Electron.IpcRendererEvent, payload: unknown) => {
-        handler(payload);
-      };
-      ipcRenderer.on(`paseo:event:${event}`, listener);
+      const channel = `paseo:event:${event}`;
+      let subscription = eventChannelSubscriptions.get(channel);
+      if (!subscription) {
+        const handlers = new Set<EventHandler>();
+        const listener = (_ipcEvent: Electron.IpcRendererEvent, payload: unknown) => {
+          for (const registeredHandler of Array.from(handlers)) {
+            registeredHandler(payload);
+          }
+        };
+        subscription = { listener, handlers };
+        eventChannelSubscriptions.set(channel, subscription);
+        ipcRenderer.on(channel, listener);
+      }
+      subscription.handlers.add(handler);
       return Promise.resolve(() => {
-        ipcRenderer.removeListener(`paseo:event:${event}`, listener);
+        const current = eventChannelSubscriptions.get(channel);
+        if (!current) {
+          return;
+        }
+        current.handlers.delete(handler);
+        if (current.handlers.size === 0) {
+          eventChannelSubscriptions.delete(channel);
+          ipcRenderer.removeListener(channel, current.listener);
+        }
       });
     },
   },

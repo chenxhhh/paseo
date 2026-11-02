@@ -3222,7 +3222,9 @@ function createToolCatalog(
         content: [],
         structuredContent: ensureValidJson({
           agentId,
-          ...summarizeAgentActivity(timeline, limit),
+          ...summarizeAgentActivity(timeline, limit, {
+            persistedOnly: persistedTimeline !== null,
+          }),
           currentModeId: snapshot?.currentModeId ?? null,
         }),
       };

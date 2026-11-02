@@ -9,7 +9,7 @@ import {
 } from "react-native";
 import { PressHighlight } from "@/components/ui/press-highlight";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { ChevronRight, Copy, ExternalLink } from "lucide-react-native";
+import { ChevronLeft, ChevronRight, Copy, ExternalLink } from "lucide-react-native";
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { MarkdownRenderer } from "@/components/markdown/renderer";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ import { SegmentedControl } from "@/components/ui/segmented-control";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { useToast } from "@/contexts/toast-context";
 import { useIsCompactFormFactor } from "@/constants/layout";
+import { isNative } from "@/constants/platform";
 import { useScheduleMutations } from "@/hooks/use-schedule-mutations";
 import { useScheduleRuns } from "@/hooks/use-schedule-runs";
 import { settingsStyles } from "@/styles/settings";
@@ -44,6 +45,7 @@ import {
 
 // Themed lucide wrappers — module-scope so only the icon re-renders on theme
 // change (never call useUnistyles in render). See docs/unistyles.md.
+const ThemedChevronLeft = withUnistyles(ChevronLeft);
 const ThemedChevronRight = withUnistyles(ChevronRight);
 const ThemedExternalLink = withUnistyles(ExternalLink);
 const ThemedCopy = withUnistyles(Copy);
@@ -161,6 +163,51 @@ function OpenScheduleRunsSheet({
     [detailRun],
   );
 
+  const navRuns = useMemo(
+    () => (result.status === "loaded" ? filterScheduleRuns(result.runs, statusFilter) : []),
+    [result, statusFilter],
+  );
+  const currentRunIndex = useMemo(
+    () =>
+      view.kind === "detail" ? navRuns.findIndex((candidate) => candidate.id === view.runId) : -1,
+    [navRuns, view],
+  );
+  const prevRunId = currentRunIndex > 0 ? navRuns[currentRunIndex - 1]?.id : undefined;
+  const nextRunId =
+    currentRunIndex >= 0 && currentRunIndex < navRuns.length - 1
+      ? navRuns[currentRunIndex + 1]?.id
+      : undefined;
+
+  const handlePrevRun = useCallback(() => {
+    if (prevRunId) {
+      setView({ kind: "detail", runId: prevRunId });
+    }
+  }, [prevRunId]);
+
+  const handleNextRun = useCallback(() => {
+    if (nextRunId) {
+      setView({ kind: "detail", runId: nextRunId });
+    }
+  }, [nextRunId]);
+
+  const prevButtonStyle = useCallback(
+    ({ hovered, pressed }: PressableStateCallbackType) => [
+      styles.headerIconButton,
+      (Boolean(hovered) || pressed) && styles.headerIconButtonHovered,
+      prevRunId ? null : styles.headerIconButtonDisabled,
+    ],
+    [prevRunId],
+  );
+
+  const nextButtonStyle = useCallback(
+    ({ hovered, pressed }: PressableStateCallbackType) => [
+      styles.headerIconButton,
+      (Boolean(hovered) || pressed) && styles.headerIconButtonHovered,
+      nextRunId ? null : styles.headerIconButtonDisabled,
+    ],
+    [nextRunId],
+  );
+
   // Rerender time-dependent labels (elapsed running time, "latest X ago")
   // whenever fresh run data arrives — the query polls every 5s while a run is
   // in flight. The dep is the result identity, not a value read inside.
@@ -171,19 +218,51 @@ function OpenScheduleRunsSheet({
     if (view.kind === "detail") {
       return {
         title: "Run output",
+        subtitle: resolveScheduleTitle(schedule),
         back: { onPress: handleBack, label: "Run history" },
         actions: (
-          <PressHighlight
-            onPress={handleCopy}
-            disabled={!detailRun?.output}
-            hitSlop={8}
-            style={copyButtonStyle}
-            accessibilityRole="button"
-            accessibilityLabel="Copy run output"
-            testID="schedule-runs-copy"
-          >
-            <ThemedCopy size={16} uniProps={mutedColorMapping} />
-          </PressHighlight>
+          <View style={styles.detailHeaderActions}>
+            {navRuns.length > 1 && currentRunIndex >= 0 ? (
+              <View style={styles.runNavGroup}>
+                <PressHighlight
+                  onPress={handlePrevRun}
+                  disabled={!prevRunId}
+                  hitSlop={6}
+                  style={prevButtonStyle}
+                  accessibilityRole="button"
+                  accessibilityLabel="Newer run"
+                  testID="schedule-runs-prev"
+                >
+                  <ThemedChevronLeft size={16} uniProps={mutedColorMapping} />
+                </PressHighlight>
+                <Text
+                  style={styles.runNavCounter}
+                >{`${currentRunIndex + 1}/${navRuns.length}`}</Text>
+                <PressHighlight
+                  onPress={handleNextRun}
+                  disabled={!nextRunId}
+                  hitSlop={6}
+                  style={nextButtonStyle}
+                  accessibilityRole="button"
+                  accessibilityLabel="Older run"
+                  testID="schedule-runs-next"
+                >
+                  <ThemedChevronRight size={16} uniProps={mutedColorMapping} />
+                </PressHighlight>
+              </View>
+            ) : null}
+            <PressHighlight
+              onPress={handleCopy}
+              disabled={!detailRun?.output}
+              hitSlop={8}
+              style={copyButtonStyle}
+              accessibilityRole="button"
+              accessibilityLabel="Copy run output"
+              testID="schedule-runs-copy"
+            >
+              <ThemedCopy size={16} uniProps={mutedColorMapping} />
+            </PressHighlight>
+          </View>
         ),
       };
     }
@@ -197,7 +276,24 @@ function OpenScheduleRunsSheet({
         ? `${resolveScheduleTitle(schedule)} · ${runsLabel}`
         : resolveScheduleTitle(schedule),
     };
-  }, [copyButtonStyle, detailRun, handleBack, handleCopy, now, result, schedule, view.kind]);
+  }, [
+    copyButtonStyle,
+    currentRunIndex,
+    detailRun,
+    handleBack,
+    handleCopy,
+    handleNextRun,
+    handlePrevRun,
+    navRuns.length,
+    nextButtonStyle,
+    nextRunId,
+    now,
+    prevButtonStyle,
+    prevRunId,
+    result,
+    schedule,
+    view.kind,
+  ]);
 
   const reconnecting = result.status === "connecting";
 
@@ -240,8 +336,11 @@ function OpenScheduleRunsSheet({
       onClose={onClose}
       onBackdropPress={handleBackdropPress}
       // Runs carry long output and a multi-row list, so the sheet is larger
-      // than the default modal.
-      desktopMaxWidth={760}
+      // than the default modal and supports drag-resizing on desktop.
+      desktopMaxWidth={820}
+      desktopHeight={620}
+      resizable
+      resizeStorageKey="paseo:schedule-runs-sheet-size"
       snapPoints={["70%", "94%"]}
       testID="schedule-runs-sheet"
     >
@@ -528,7 +627,7 @@ function OpenRunAgentButton({
       onPress={handlePress}
       hitSlop={8}
       style={buttonStyle}
-      accessibilityRole="button"
+      accessibilityRole={isNative ? "button" : undefined}
       accessibilityLabel="Open agent"
       testID={`schedule-run-open-agent-${run.id}`}
     >
@@ -729,6 +828,22 @@ const styles = StyleSheet.create((theme) => ({
   },
   headerIconButtonDisabled: {
     opacity: 0.4,
+  },
+  detailHeaderActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+  },
+  runNavGroup: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+  },
+  runNavCounter: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+    minWidth: 28,
+    textAlign: "center",
   },
   metaRow: {
     gap: theme.spacing[3],

@@ -2540,7 +2540,7 @@ describe("create_agent MCP tool", () => {
       expect(receivedInputs[0]?.projectId).toBeUndefined();
     });
 
-    it("inherits the caller workspace project when create_agent cuts a worktree", async () => {
+    it("inherits the caller workspace project when create_workspace omits both path and projectId", async () => {
       const { receivedInputs, createPaseoWorktree } = stubWorktreeCreate();
       const { server } = await createScopedServer({
         callerAgentId: "caller-agent",
@@ -2549,16 +2549,12 @@ describe("create_agent MCP tool", () => {
         createPaseoWorktree,
       });
 
-      await registeredTool(server, "create_agent").handler({
-        ...detachedWorktreeWorkspace(REPO_CWD, {
-          kind: "branch-off",
-          worktreeSlug: "inherited",
-          branchName: "feature/inherited",
-          baseBranch: "main",
-        }),
-        title: "Inherited worktree agent",
-        provider: "codex/gpt-5.4",
-        initialPrompt: "Do work",
+      await invokeToolWithParsedInput(registeredTool(server, "create_workspace"), {
+        isolation: "worktree",
+        mode: "branch-off",
+        worktreeSlug: "inherited",
+        branchName: "feature/inherited",
+        baseBranch: "main",
       });
 
       expect(receivedInputs[0]?.projectId).toBe(CALLER_PROJECT_ID);

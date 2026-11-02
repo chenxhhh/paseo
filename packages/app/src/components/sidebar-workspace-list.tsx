@@ -702,6 +702,7 @@ function WorkspaceRowRightGroup({
                   workspaceKey={workspace.workspaceKey}
                   serverId={workspace.serverId}
                   workspaceId={workspace.workspaceId}
+                  workspaceUserStatus={workspace.userStatus}
                   workspaceLabels={workspace.labels}
                   onCopyPath={onCopyPath}
                   onCopyBranchName={onCopyBranchName}

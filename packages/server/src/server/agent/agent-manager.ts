@@ -5251,7 +5251,9 @@ export class AgentManager {
 
     const timeline = this.timelineStore.getItems(agent.id);
     const lastItem = timeline.length > 0 ? timeline[timeline.length - 1] : null;
-    const hadToolActivity = timeline.some((item) => item.type === "tool_call");
+    const hadToolActivity = timeline.some(
+      (item) => item.type === "tool_call" && !item.agentMessage,
+    );
     const decision =
       terminal.type === "turn_failed"
         ? classifyTurnEnding({

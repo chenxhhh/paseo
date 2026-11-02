@@ -3074,8 +3074,34 @@ class ClaudeAgentSession implements AgentSession {
   }
 
   async listCommands(): Promise<AgentSlashCommand[]> {
-    const q = await this.ensureQuery();
-    const commands = await q.supportedCommands();
+    const resumedSessionId = this.claudeSessionId;
+    let commands: Awaited<ReturnType<Query["supportedCommands"]>>;
+    try {
+      const q = await this.ensureQuery();
+      commands = await q.supportedCommands();
+    } catch (error) {
+      await this.awaitRecentStderrAfterProcessExit(error);
+      if (
+        resumedSessionId &&
+        (this.claudeSessionId === null ||
+          this.hasMissingResumedConversationError(errorToMessageString(error), resumedSessionId) ||
+          this.hasMissingResumedConversationError(
+            this.getRecentStderrDiagnostic(),
+            resumedSessionId,
+          ))
+      ) {
+        this.logger.warn(
+          { claudeSessionId: resumedSessionId, err: error },
+          "Claude resumed session no longer exists during listCommands; retrying with fresh session",
+        );
+        await this.retireQuery();
+        this.invalidateMissingResumedSession();
+        const freshQuery = await this.ensureQuery();
+        commands = await freshQuery.supportedCommands();
+      } else {
+        throw error;
+      }
+    }
     const commandMap = new Map<string, AgentSlashCommand>();
     for (const cmd of commands) {
       if (!commandMap.has(cmd.name)) {
@@ -3520,6 +3546,7 @@ class ClaudeAgentSession implements AgentSession {
     const options = await this.buildOptions(launchMode);
     this.logger.debug({ options: summarizeClaudeOptionsForLog(options) }, "claude query");
     this.input = input;
+    this.clearRecentStderr();
     this.runtimeSafety.reset();
     // A fresh Claude process has no turn of its own in flight.
     this.mainTurnInFlight = false;
@@ -4108,6 +4135,14 @@ class ClaudeAgentSession implements AgentSession {
     // failing against a dead transport forever.
     this.query = null;
     this.input = null;
+    if (this.hasMissingResumedConversationError(this.getRecentStderrDiagnostic())) {
+      this.logger.warn(
+        { agentId: this.agentId, claudeSessionId: this.claudeSessionId },
+        "Claude resumed session no longer exists on idle runtime exit; invalidating persisted session",
+      );
+      this.invalidateMissingResumedSession();
+      return;
+    }
     this.dispatchEvents([
       this.buildTurnFailedEvent(
         `Claude stopped unexpectedly (${signal ? `signal ${signal}` : `exit code ${code ?? "unknown"}`}). Any background shells, monitors or other work it had running were terminated with it.`,
@@ -4462,18 +4497,40 @@ class ClaudeAgentSession implements AgentSession {
       this.query = null;
       this.input = null;
     }
-    this.persistence = null;
-    this.persistedHistory = [];
-    this.persistedProviderSubagentEvents = [];
-    this.historyPending = false;
-    this.cachedRuntimeInfo = null;
-    this.queryRestartNeeded = false;
+    this.invalidateMissingResumedSession();
     this.autonomousTurn = null;
     this.activeForegroundTurnId = null;
     this.activeForegroundQuery = null;
     this.activeForegroundInput = null;
     this.syncTurnState("missing resumed conversation");
     return true;
+  }
+
+  private invalidateMissingResumedSession(): void {
+    this.claudeSessionId = null;
+    this.pendingFreshSessionId = null;
+    this.persistence = null;
+    this.persistedHistory = [];
+    this.persistedProviderSubagentEvents = [];
+    this.historyPending = false;
+    this.cachedRuntimeInfo = null;
+    this.queryRestartNeeded = false;
+  }
+
+  private hasMissingResumedConversationError(
+    text: string | undefined,
+    expectedSessionId: string | null = this.claudeSessionId,
+  ): boolean {
+    if (!text || !expectedSessionId) {
+      return false;
+    }
+    for (const line of text.split(/\r?\n/)) {
+      const match = line.trim().match(/No conversation found with session ID:\s*(.+)$/);
+      if (match && match[1]?.trim() === expectedSessionId) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**

@@ -303,7 +303,64 @@ describe("Claude runtime exit", () => {
 
       // MCP children of the retired process outlive it unless the tree is killed.
       await vi.waitFor(() => expect(child.killSignals.length).toBeGreaterThan(0));
+      expect(session.describePersistence()).toBeNull();
       expect(queryFactory).toHaveBeenCalledTimes(1);
+    } finally {
+      await session.close();
+    }
+  });
+
+  test("recovers listCommands without turn_failed when a resumed conversation is missing", async () => {
+    let callCount = 0;
+    let capturedOptions: Options | undefined;
+    const child = createChildProcessStub();
+    const failStaleSupportedCommands = async () => {
+      capturedOptions?.stderr?.("No conversation found with session ID: stale-claude-session\n");
+      capturedOptions?.spawnClaudeCodeProcess?.(SPAWN_OPTIONS);
+      child.emit("exit", 1, null);
+      throw new Error("Claude Code process exited with code 1");
+    };
+    const listFreshSupportedCommands = async () => [
+      { name: "compact", description: "Compact context", argumentHint: "" },
+    ];
+    const queryFactory = vi.fn(({ options }: ClaudeQueryInput) => {
+      callCount += 1;
+      capturedOptions = options;
+      const query = createQueryMock([]);
+      if (callCount === 1) {
+        expect(options.resume).toBe("stale-claude-session");
+        query.supportedCommands = vi.fn(failStaleSupportedCommands);
+      } else {
+        expect(options.resume).toBeUndefined();
+        query.supportedCommands = vi.fn(listFreshSupportedCommands);
+      }
+      return query;
+    });
+    vi.spyOn(spawnUtils, "spawnProcess").mockReturnValue(child);
+    const client = new ClaudeAgentClient({
+      logger: createTestLogger(),
+      queryFactory,
+      resolveBinary: async () => "/test/claude/bin",
+    });
+    const session = await client.resumeSession(
+      {
+        provider: "claude",
+        sessionId: "stale-claude-session",
+        cwd: process.cwd(),
+      },
+      { cwd: process.cwd() },
+    );
+
+    try {
+      const events: AgentStreamEvent[] = [];
+      session.subscribe((event) => events.push(event));
+
+      const commands = await session.listCommands();
+
+      expect(commands.map((cmd) => cmd.name)).toContain("compact");
+      expect(events.some((event) => event.type === "turn_failed")).toBe(false);
+      expect(session.describePersistence()).toBeNull();
+      expect(queryFactory).toHaveBeenCalledTimes(2);
     } finally {
       await session.close();
     }

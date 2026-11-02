@@ -304,7 +304,7 @@ function RowHistoryButton({
       onPress={handlePress}
       hitSlop={8}
       style={buttonStyle}
-      accessibilityRole="button"
+      accessibilityRole={isNative ? "button" : undefined}
       accessibilityLabel="View run history"
       testID={`schedule-row-history-${scheduleId}`}
     >

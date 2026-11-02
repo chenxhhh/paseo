@@ -1598,6 +1598,7 @@ export class ACPAgentClient implements AgentClient {
       async sessionUpdate(params): Promise<void> {
         await onSessionUpdate?.(params);
       },
+      async extNotification(): Promise<void> {},
       async readTextFile(params: ReadTextFileRequest) {
         const content = await fs.readFile(params.path, "utf8");
         return { content };

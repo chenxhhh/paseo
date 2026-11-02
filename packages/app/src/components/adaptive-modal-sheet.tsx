@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ComponentProps, ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
@@ -19,7 +19,7 @@ import {
 } from "@gorhom/bottom-sheet";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated from "react-native-reanimated";
-import { ArrowLeft, Search, X, type LucideIcon } from "lucide-react-native";
+import { ArrowLeft, Maximize2, Minimize2, Search, X, type LucideIcon } from "lucide-react-native";
 import {
   IsolatedBottomSheetModal,
   SheetVisibleFrame,
@@ -130,6 +130,10 @@ const styles = StyleSheet.create((theme) => ({
   title: {
     fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.medium,
+  },
+  subtitle: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.foregroundMuted,
   },
   headerActions: {
     flexDirection: "row",
@@ -353,11 +357,15 @@ export function SheetHeaderView({
   header,
   onClose,
   showCloseButton = true,
+  isMaximized,
+  onToggleMaximize,
   testID,
 }: {
   header: SheetHeader;
   onClose: () => void;
   showCloseButton?: boolean;
+  isMaximized?: boolean;
+  onToggleMaximize?: () => void;
   testID?: string;
 }) {
   const { theme } = useUnistyles();
@@ -401,9 +409,23 @@ export function SheetHeaderView({
           <Text style={titleStyle} numberOfLines={1}>
             {header.title}
           </Text>
-          {header.subtitle}
+          {typeof header.subtitle === "string" || typeof header.subtitle === "number" ? (
+            <Text style={styles.subtitle} numberOfLines={1}>
+              {header.subtitle}
+            </Text>
+          ) : (
+            header.subtitle
+          )}
         </View>
         {header.actions ? <View style={styles.headerActions}>{header.actions}</View> : null}
+        {onToggleMaximize ? (
+          <SheetHeaderIconButton
+            icon={isMaximized ? Minimize2 : Maximize2}
+            accessibilityLabel={isMaximized ? "Restore window size" : "Maximize window"}
+            onPress={onToggleMaximize}
+            testID="sheet-header-maximize"
+          />
+        ) : null}
         {showCloseButton ? (
           <SheetHeaderIconButton
             icon={X}
@@ -514,6 +536,10 @@ export interface AdaptiveModalSheetProps {
   desktopMaxWidth?: number;
   /** Bound an author-owned list without changing content-sized first-party dialogs. */
   desktopHeight?: DimensionValue;
+  /** Allow dragging edges/corners and toggling maximize on desktop web. */
+  resizable?: boolean;
+  /** Optional localStorage key used to persist custom desktop dimensions when resizable. */
+  resizeStorageKey?: string;
   /** Whether the host supplies the scroll container. Caller-owned lists still share sheet gestures. */
   scrollable?: boolean;
   presentation?: "push" | "replace";
@@ -595,6 +621,315 @@ function CompactSheetBody({
   );
 }
 
+type ResizeDirection = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
+
+interface StoredSheetDimensions {
+  width?: number;
+  height?: number;
+  isMaximized?: boolean;
+}
+
+const MIN_RESIZABLE_WIDTH = 440;
+const MIN_RESIZABLE_HEIGHT = 340;
+const VIEWPORT_MARGIN = 32;
+
+const RESIZE_HANDLE_N_STYLE: React.CSSProperties = {
+  position: "absolute",
+  top: 0,
+  left: 12,
+  right: 12,
+  height: 6,
+  cursor: "ns-resize",
+  zIndex: 20,
+};
+const RESIZE_HANDLE_S_STYLE: React.CSSProperties = {
+  position: "absolute",
+  bottom: 0,
+  left: 12,
+  right: 12,
+  height: 6,
+  cursor: "ns-resize",
+  zIndex: 20,
+};
+const RESIZE_HANDLE_W_STYLE: React.CSSProperties = {
+  position: "absolute",
+  left: 0,
+  top: 12,
+  bottom: 12,
+  width: 6,
+  cursor: "ew-resize",
+  zIndex: 20,
+};
+const RESIZE_HANDLE_E_STYLE: React.CSSProperties = {
+  position: "absolute",
+  right: 0,
+  top: 12,
+  bottom: 12,
+  width: 6,
+  cursor: "ew-resize",
+  zIndex: 20,
+};
+const RESIZE_HANDLE_NW_STYLE: React.CSSProperties = {
+  position: "absolute",
+  top: 0,
+  left: 0,
+  width: 12,
+  height: 12,
+  cursor: "nwse-resize",
+  zIndex: 21,
+};
+const RESIZE_HANDLE_NE_STYLE: React.CSSProperties = {
+  position: "absolute",
+  top: 0,
+  right: 0,
+  width: 12,
+  height: 12,
+  cursor: "nesw-resize",
+  zIndex: 21,
+};
+const RESIZE_HANDLE_SW_STYLE: React.CSSProperties = {
+  position: "absolute",
+  bottom: 0,
+  left: 0,
+  width: 12,
+  height: 12,
+  cursor: "nesw-resize",
+  zIndex: 21,
+};
+const RESIZE_HANDLE_SE_STYLE: React.CSSProperties = {
+  position: "absolute",
+  bottom: 0,
+  right: 0,
+  width: 16,
+  height: 16,
+  cursor: "nwse-resize",
+  zIndex: 21,
+  display: "flex",
+  alignItems: "flex-end",
+  justifyContent: "flex-end",
+  padding: 3,
+  opacity: 0.45,
+};
+
+function readStoredSheetDimensions(storageKey: string | undefined): StoredSheetDimensions | null {
+  if (!isWeb || !storageKey || typeof window === "undefined") {
+    return null;
+  }
+  try {
+    const raw = window.localStorage.getItem(storageKey);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as StoredSheetDimensions;
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredSheetDimensions(
+  storageKey: string | undefined,
+  value: StoredSheetDimensions,
+): void {
+  if (!isWeb || !storageKey || typeof window === "undefined") {
+    return;
+  }
+  try {
+    window.localStorage.setItem(storageKey, JSON.stringify(value));
+  } catch {
+    // ignore storage quota / privacy mode errors
+  }
+}
+
+function readInitialCustomSize(
+  storageKey: string | undefined,
+): { width: number; height: number } | null {
+  const stored = readStoredSheetDimensions(storageKey);
+  if (
+    stored &&
+    typeof stored.width === "number" &&
+    Number.isFinite(stored.width) &&
+    typeof stored.height === "number" &&
+    Number.isFinite(stored.height)
+  ) {
+    return { width: stored.width, height: stored.height };
+  }
+  return null;
+}
+
+function computeResizedDimensions(input: {
+  direction: ResizeDirection;
+  startWidth: number;
+  startHeight: number;
+  dx: number;
+  dy: number;
+}): { width: number; height: number } {
+  const { direction, startWidth, startHeight, dx, dy } = input;
+  const maxWidth = Math.max(MIN_RESIZABLE_WIDTH, window.innerWidth - VIEWPORT_MARGIN);
+  const maxHeight = Math.max(MIN_RESIZABLE_HEIGHT, window.innerHeight - VIEWPORT_MARGIN);
+  let nextWidth = startWidth;
+  let nextHeight = startHeight;
+  if (direction.includes("e")) {
+    nextWidth = startWidth + dx * 2;
+  } else if (direction.includes("w")) {
+    nextWidth = startWidth - dx * 2;
+  }
+  if (direction.includes("s")) {
+    nextHeight = startHeight + dy * 2;
+  } else if (direction.includes("n")) {
+    nextHeight = startHeight - dy * 2;
+  }
+  return {
+    width: Math.round(Math.min(maxWidth, Math.max(MIN_RESIZABLE_WIDTH, nextWidth))),
+    height: Math.round(Math.min(maxHeight, Math.max(MIN_RESIZABLE_HEIGHT, nextHeight))),
+  };
+}
+
+function useResizableSheet(input: {
+  canResizeWeb: boolean;
+  resizeStorageKey?: string;
+  desktopMaxWidth?: number;
+  desktopHeight?: DimensionValue;
+}) {
+  const { canResizeWeb, resizeStorageKey, desktopMaxWidth, desktopHeight } = input;
+  const [customSize, setCustomSize] = useState<{ width: number; height: number } | null>(() =>
+    readInitialCustomSize(resizeStorageKey),
+  );
+  const [isMaximized, setIsMaximized] = useState<boolean>(() =>
+    Boolean(readStoredSheetDimensions(resizeStorageKey)?.isMaximized),
+  );
+  const cardElementRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (!canResizeWeb || !resizeStorageKey) return;
+    writeStoredSheetDimensions(resizeStorageKey, {
+      ...(customSize ? { width: customSize.width, height: customSize.height } : {}),
+      isMaximized,
+    });
+  }, [canResizeWeb, customSize, isMaximized, resizeStorageKey]);
+
+  const handleToggleMaximize = useCallback(() => {
+    setIsMaximized((prev) => !prev);
+  }, []);
+
+  const handleResizePointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (!canResizeWeb || isMaximized || typeof window === "undefined") {
+        return;
+      }
+      const direction = event.currentTarget.dataset.resizeDir as ResizeDirection | undefined;
+      if (!direction) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      const rect = cardElementRef.current?.getBoundingClientRect();
+      const fallbackWidth = desktopMaxWidth ?? 520;
+      const fallbackHeight =
+        typeof desktopHeight === "number" ? desktopHeight : Math.round(window.innerHeight * 0.75);
+      const startWidth = customSize?.width ?? rect?.width ?? fallbackWidth;
+      const startHeight = customSize?.height ?? rect?.height ?? fallbackHeight;
+      const startX = event.clientX;
+      const startY = event.clientY;
+
+      const onPointerMove = (moveEvent: PointerEvent) => {
+        setCustomSize(
+          computeResizedDimensions({
+            direction,
+            startWidth,
+            startHeight,
+            dx: moveEvent.clientX - startX,
+            dy: moveEvent.clientY - startY,
+          }),
+        );
+      };
+
+      const onPointerUp = () => {
+        window.removeEventListener("pointermove", onPointerMove);
+        window.removeEventListener("pointerup", onPointerUp);
+      };
+
+      window.addEventListener("pointermove", onPointerMove);
+      window.addEventListener("pointerup", onPointerUp);
+    },
+    [canResizeWeb, customSize, desktopHeight, desktopMaxWidth, isMaximized],
+  );
+
+  const attachCardElement = useCallback((node: unknown) => {
+    cardElementRef.current = node instanceof HTMLElement ? node : null;
+  }, []);
+
+  const desktopCardStyle = useMemo<StyleProp<ViewStyle>>(
+    () => [
+      styles.desktopCard,
+      desktopHeight != null && { height: desktopHeight },
+      desktopMaxWidth != null && { maxWidth: desktopMaxWidth },
+      canResizeWeb && { position: "relative" as const },
+      canResizeWeb &&
+        customSize != null &&
+        !isMaximized && {
+          width: customSize.width,
+          maxWidth: "96%" as DimensionValue,
+          height: customSize.height,
+          maxHeight: "92%" as DimensionValue,
+        },
+      canResizeWeb &&
+        isMaximized && {
+          width: "96%" as DimensionValue,
+          maxWidth: "96%" as DimensionValue,
+          height: "92%" as DimensionValue,
+          maxHeight: "92%" as DimensionValue,
+        },
+    ],
+    [canResizeWeb, customSize, desktopMaxWidth, desktopHeight, isMaximized],
+  );
+
+  const hasFixedDesktopHeight =
+    desktopHeight != null || (canResizeWeb && (customSize != null || isMaximized));
+
+  return {
+    isMaximized: canResizeWeb ? isMaximized : undefined,
+    handleToggleMaximize: canResizeWeb ? handleToggleMaximize : undefined,
+    showResizeHandles: canResizeWeb && !isMaximized,
+    desktopCardStyle,
+    hasFixedDesktopHeight,
+    attachCardElement,
+    handleResizePointerDown,
+  };
+}
+
+function SheetResizeHandles({
+  onPointerDown,
+}: {
+  onPointerDown: (event: React.PointerEvent<HTMLDivElement>) => void;
+}) {
+  return (
+    <>
+      <div data-resize-dir="n" onPointerDown={onPointerDown} style={RESIZE_HANDLE_N_STYLE} />
+      <div data-resize-dir="s" onPointerDown={onPointerDown} style={RESIZE_HANDLE_S_STYLE} />
+      <div data-resize-dir="w" onPointerDown={onPointerDown} style={RESIZE_HANDLE_W_STYLE} />
+      <div data-resize-dir="e" onPointerDown={onPointerDown} style={RESIZE_HANDLE_E_STYLE} />
+      <div data-resize-dir="nw" onPointerDown={onPointerDown} style={RESIZE_HANDLE_NW_STYLE} />
+      <div data-resize-dir="ne" onPointerDown={onPointerDown} style={RESIZE_HANDLE_NE_STYLE} />
+      <div data-resize-dir="sw" onPointerDown={onPointerDown} style={RESIZE_HANDLE_SW_STYLE} />
+      <div
+        data-testid="sheet-resize-handle-se"
+        data-resize-dir="se"
+        onPointerDown={onPointerDown}
+        title="Drag to resize"
+        style={RESIZE_HANDLE_SE_STYLE}
+      >
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+          <path
+            d="M9 1L1 9M9 5L5 9"
+            stroke="currentColor"
+            strokeWidth="1.25"
+            strokeLinecap="round"
+          />
+        </svg>
+      </div>
+    </>
+  );
+}
+
 export function AdaptiveModalSheet({
   header,
   visible,
@@ -608,6 +943,8 @@ export function AdaptiveModalSheet({
   testID,
   desktopMaxWidth,
   desktopHeight,
+  resizable = false,
+  resizeStorageKey,
   scrollable = true,
   presentation,
   contentStyle,
@@ -622,6 +959,21 @@ export function AdaptiveModalSheet({
     () => (footer ? <View style={[styles.footer, footerContainerStyle]}>{footer}</View> : null),
     [footer, footerContainerStyle],
   );
+  const canResizeWeb = Boolean(resizable && isWeb && !isMobile);
+  const {
+    isMaximized,
+    handleToggleMaximize,
+    showResizeHandles,
+    desktopCardStyle,
+    hasFixedDesktopHeight,
+    attachCardElement,
+    handleResizePointerDown,
+  } = useResizableSheet({
+    canResizeWeb,
+    resizeStorageKey,
+    desktopMaxWidth,
+    desktopHeight,
+  });
   useEffect(() => {
     if (!isWeb && visible) {
       // A newly opened sheet owns input. A keyboard belonging to the sheet below
@@ -643,14 +995,6 @@ export function AdaptiveModalSheet({
     onDismiss?.();
   }, [handleSheetDismiss, onDismiss]);
 
-  const desktopCardStyle = useMemo(
-    () => [
-      styles.desktopCard,
-      desktopHeight != null && { height: desktopHeight },
-      desktopMaxWidth != null && { maxWidth: desktopMaxWidth },
-    ],
-    [desktopMaxWidth, desktopHeight],
-  );
   const desktopOverlayStyle = useMemo(
     () => [
       styles.desktopOverlay,
@@ -684,6 +1028,13 @@ export function AdaptiveModalSheet({
     layer: modalLayer,
     onKeyDown: handleWebOverlayKeyDown,
   });
+  const setCardRef = useCallback(
+    (node: unknown) => {
+      setWebOverlayScope(node);
+      attachCardElement(node);
+    },
+    [attachCardElement, setWebOverlayScope],
+  );
 
   useEffect(() => {
     if (!isWeb || isMobile) return;
@@ -737,11 +1088,17 @@ export function AdaptiveModalSheet({
     );
   }
 
-  const desktopStaticStyle =
-    desktopHeight == null ? styles.desktopStaticContent : styles.compactStaticContent;
+  const desktopStaticStyle = !hasFixedDesktopHeight
+    ? styles.desktopStaticContent
+    : styles.compactStaticContent;
   const cardInner = (
     <OverlayLayerProvider layer={modalLayer}>
-      <SheetHeaderView header={header} onClose={onClose} />
+      <SheetHeaderView
+        header={header}
+        onClose={onClose}
+        isMaximized={isMaximized}
+        onToggleMaximize={handleToggleMaximize}
+      />
       <View style={[scrollable ? styles.desktopScrollContainer : desktopStaticStyle, bodyStyle]}>
         {scrollable ? (
           <ScrollView
@@ -757,6 +1114,7 @@ export function AdaptiveModalSheet({
         )}
       </View>
       {footerView}
+      {showResizeHandles ? <SheetResizeHandles onPointerDown={handleResizePointerDown} /> : null}
     </OverlayLayerProvider>
   );
 
@@ -767,13 +1125,7 @@ export function AdaptiveModalSheet({
         style={ABSOLUTE_FILL_STYLE}
         onPress={handleBackdropPress}
       />
-      <View
-        ref={setWebOverlayScope}
-        style={desktopCardStyle}
-        role="dialog"
-        aria-modal
-        tabIndex={-1}
-      >
+      <View ref={setCardRef} style={desktopCardStyle} role="dialog" aria-modal tabIndex={-1}>
         {cardInner}
       </View>
     </View>

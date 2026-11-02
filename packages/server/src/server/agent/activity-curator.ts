@@ -207,7 +207,11 @@ export function curateAgentActivity(
     : "No activity to display.";
 }
 
-export function summarizeAgentActivity(timeline: AgentTimelineItem[], limit?: number) {
+export function summarizeAgentActivity(
+  timeline: AgentTimelineItem[],
+  limit?: number,
+  options?: { persistedOnly?: boolean },
+) {
   const selection = selectItemsByProjectedLimit({
     items: timeline,
     direction: "tail",
@@ -219,9 +223,12 @@ export function summarizeAgentActivity(timeline: AgentTimelineItem[], limit?: nu
     limit && shownProjected < totalProjected
       ? `Showing ${shownProjected} of ${totalProjected} ${noun} (limited to ${limit})`
       : `Showing all ${totalProjected} ${noun}`;
+  const runtimeNotice = options?.persistedOnly
+    ? "\n\nSaved history only. Provider runtime was not resumed; this does not verify whether the native session can resume."
+    : "";
   return {
     updateCount: timeline.length,
-    content: `${countHeader}\n\n${curateAgentActivity(selection.items)}`,
+    content: `${countHeader}${runtimeNotice}\n\n${curateAgentActivity(selection.items)}`,
   };
 }
 
