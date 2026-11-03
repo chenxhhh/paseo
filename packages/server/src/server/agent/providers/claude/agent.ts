@@ -3728,7 +3728,12 @@ class ClaudeAgentSession implements AgentSession {
       settingSources: CLAUDE_SETTING_SOURCES,
       stderr: (data: string) => {
         this.captureStderr(data);
-        this.logger.error({ stderr: data.trim() }, "Claude Agent SDK stderr");
+        const trimmed = data.trim();
+        if (trimmed.startsWith("[claude-code:unrecognized_model]")) {
+          this.logger.debug({ stderr: trimmed }, "Claude Agent SDK stderr");
+          return;
+        }
+        this.logger.error({ stderr: trimmed }, "Claude Agent SDK stderr");
       },
       // Required for provider-level /rewind support.
       enableFileCheckpointing: true,

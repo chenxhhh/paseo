@@ -25,6 +25,26 @@ describe("remapDraftCwdToWorkspace", () => {
       }),
     ).toBe("/worktrees/fork");
   });
+
+  it("remaps project source root to an existing worktree directory", () => {
+    expect(
+      remapDraftCwdToWorkspace({
+        cwd: "D:\\UGit\\jevgamer",
+        sourceDirectory: "D:\\UGit\\jevgamer",
+        workspaceDirectory: "C:\\Users\\user\\.paseo\\worktrees\\3u5hm9fz\\web-runtime-mode-a",
+      }),
+    ).toBe("C:\\Users\\user\\.paseo\\worktrees\\3u5hm9fz\\web-runtime-mode-a");
+  });
+
+  it("preserves a path that is already inside the target workspace directory", () => {
+    expect(
+      remapDraftCwdToWorkspace({
+        cwd: "C:\\Users\\user\\.paseo\\worktrees\\3u5hm9fz\\web-runtime-mode-a\\packages\\web",
+        sourceDirectory: "D:\\UGit\\jevgamer",
+        workspaceDirectory: "C:\\Users\\user\\.paseo\\worktrees\\3u5hm9fz\\web-runtime-mode-a",
+      }),
+    ).toBe("C:\\Users\\user\\.paseo\\worktrees\\3u5hm9fz\\web-runtime-mode-a\\packages\\web");
+  });
 });
 
 describe("getWorkspaceNamingAttachments", () => {

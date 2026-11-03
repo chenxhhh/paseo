@@ -338,17 +338,31 @@ async function createMultiplicityWorkspace(input: {
     chooseWorktreeMessage: input.chooseWorktreeMessage,
     worktreeSlug: input.worktreeSlug,
   });
+  const sourceDirectoryForAgent = source.kind === "directory" ? source.path : input.sourceDirectory;
+  const agent = input.agent?.config?.cwd
+    ? {
+        ...input.agent,
+        config: {
+          ...input.agent.config,
+          cwd: remapDraftCwdToWorkspace({
+            cwd: input.agent.config.cwd,
+            sourceDirectory: input.sourceDirectory,
+            workspaceDirectory: sourceDirectoryForAgent,
+          }),
+        },
+      }
+    : input.agent;
   const idempotencyKey = resolveWorkspaceCreationIdempotencyKey({
     draftId: input.idempotencyKey,
     request: {
       source,
       ...(firstAgentContext ? { firstAgentContext } : {}),
-      ...(input.agent ? { agent: input.agent } : {}),
+      ...(agent ? { agent } : {}),
     },
   });
   const payload = await input.client.createWorkspace({
     idempotencyKey,
-    agent: input.agent,
+    agent,
     onEvent: input.onEvent,
     source,
     ...(firstAgentContext ? { firstAgentContext } : {}),
@@ -475,10 +489,17 @@ async function createWorkspaceChatAgent(input: CreateChatAgentInput): Promise<Su
   let navigated = false;
   let createdWorkspaceId: string | null = null;
   let outcome: SubmitOutcome = "background";
+  const initialAgentCwd = input.forkDraftSetup
+    ? remapDraftCwdToWorkspace({
+        cwd: input.forkDraftSetup.setup.cwd,
+        sourceDirectory: input.forkDraftSetup.sourceDirectory,
+        workspaceDirectory: cwd,
+      })
+    : cwd;
   const initialAgent: NonNullable<CreateWorkspaceRequestOptions["agent"]> = {
     config: buildWorkspaceDraftAgentConfig({
       provider,
-      cwd,
+      cwd: initialAgentCwd,
       modeId: composerState.effectiveModeId || undefined,
       model: composerState.effectiveModelId || undefined,
       thinkingOptionId: composerState.effectiveThinkingOptionId || undefined,

@@ -22,14 +22,34 @@ export function remapDraftCwdToWorkspace(input: {
   const cwd = input.cwd.trim();
   const sourceDirectory = input.sourceDirectory?.trim();
   const workspaceDirectory = input.workspaceDirectory.trim();
-  if (!cwd || !sourceDirectory) {
+  if (!cwd) {
     return workspaceDirectory;
   }
   const normalizedCwd = cwd.replace(/\\/g, "/").replace(/\/+$/, "");
-  const normalizedSource = sourceDirectory.replace(/\\/g, "/").replace(/\/+$/, "");
+  const normalizedWorkspace = workspaceDirectory.replace(/\\/g, "/").replace(/\/+$/, "");
   const compareCaseInsensitively =
-    isLikelyWindowsPath(normalizedCwd) || isLikelyWindowsPath(normalizedSource);
+    isLikelyWindowsPath(normalizedCwd) ||
+    isLikelyWindowsPath(normalizedWorkspace) ||
+    (sourceDirectory ? isLikelyWindowsPath(sourceDirectory.replace(/\\/g, "/")) : false);
   const comparableCwd = compareCaseInsensitively ? normalizedCwd.toLowerCase() : normalizedCwd;
+  const comparableWorkspace = compareCaseInsensitively
+    ? normalizedWorkspace.toLowerCase()
+    : normalizedWorkspace;
+  const separator =
+    workspaceDirectory.includes("\\") && !workspaceDirectory.includes("/") ? "\\" : "/";
+  if (comparableCwd === comparableWorkspace) {
+    return workspaceDirectory;
+  }
+  if (comparableCwd.startsWith(`${comparableWorkspace}/`)) {
+    const existingRelative = normalizedCwd.slice(normalizedWorkspace.length + 1);
+    return [workspaceDirectory.replace(/[\\/]+$/, ""), ...existingRelative.split("/")]
+      .filter(Boolean)
+      .join(separator);
+  }
+  if (!sourceDirectory) {
+    return workspaceDirectory;
+  }
+  const normalizedSource = sourceDirectory.replace(/\\/g, "/").replace(/\/+$/, "");
   const comparableSource = compareCaseInsensitively
     ? normalizedSource.toLowerCase()
     : normalizedSource;
@@ -42,8 +62,6 @@ export function remapDraftCwdToWorkspace(input: {
   if (!relativePath) {
     return workspaceDirectory;
   }
-  const separator =
-    workspaceDirectory.includes("\\") && !workspaceDirectory.includes("/") ? "\\" : "/";
   return [workspaceDirectory.replace(/[\\/]+$/, ""), ...relativePath.split("/")]
     .filter(Boolean)
     .join(separator);

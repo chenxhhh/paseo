@@ -28,7 +28,17 @@ export async function writeFileAtomic(
     `.${path.basename(filePath)}.${process.pid}.${Date.now()}.${randomUUID()}.tmp`,
   );
   try {
-    await fs.writeFile(tempPath, data, "utf8");
+    const handle = await fs.open(tempPath, "w");
+    try {
+      if (typeof data === "string") {
+        await handle.writeFile(data, "utf8");
+      } else {
+        await handle.writeFile(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+      }
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
     await replaceFile(tempPath, filePath, operations);
   } catch (error) {
     await fs.rm(tempPath, { force: true });
