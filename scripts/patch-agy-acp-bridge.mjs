@@ -137,6 +137,7 @@ function spawnAgy(args, options = {}) {
     const commandArgs = isWindows && isJsScript ? [AGY_EXECUTABLE, ...args] : args;
     return spawn(command, commandArgs, {
         ...options,
+        windowsHide: true,
         env: sanitizeAgyEnv(options?.env ?? process.env),
         shell: options?.shell ?? isBatchScript,
     });
@@ -151,8 +152,40 @@ function spawnAgy(args, options = {}) {
     modified = true;
   }
 
+  // Installs already carrying the sanitizeAgyEnv patch (0.3.10+) still spawn
+  // agy without windowsHide. A console-less daemon chain makes Windows allocate
+  // a visible console for every agy spawn; windowsHide suppresses it.
+  const sanitizedSpawnAgy = `function spawnAgy(args, options = {}) {
+    const isWindows = process.platform === "win32";
+    const isJsScript = /\\.(mjs|js|cjs)$/i.test(AGY_EXECUTABLE);
+    const isBatchScript = isWindows && /\\.(cmd|bat)$/i.test(AGY_EXECUTABLE);
+    const command = isWindows && isJsScript ? process.execPath : AGY_EXECUTABLE;
+    const commandArgs = isWindows && isJsScript ? [AGY_EXECUTABLE, ...args] : args;
+    return spawn(command, commandArgs, {
+        ...options,
+        env: sanitizeAgyEnv(options?.env ?? process.env),
+        shell: options?.shell ?? isBatchScript,
+    });
+}`;
+
+  const hiddenSpawnAgy = sanitizedSpawnAgy.replace(
+    "        ...options,\n",
+    "        ...options,\n        windowsHide: true,\n",
+  );
+
+  if (indexJs.includes(sanitizedSpawnAgy)) {
+    if (!fs.existsSync(`${indexPath}.bak`)) {
+      fs.copyFileSync(indexPath, `${indexPath}.bak`);
+    }
+    indexJs = indexJs.replace(sanitizedSpawnAgy, hiddenSpawnAgy);
+    fs.writeFileSync(indexPath, indexJs, "utf8");
+    modified = true;
+  }
+
   if (modified) {
-    console.log(`[Paseo] Auto-patched agy-acp-bridge at ${bridgeDir} (stdin streaming enabled)`);
+    console.log(
+      `[Paseo] Auto-patched agy-acp-bridge at ${bridgeDir} (stdin streaming + hidden windows enabled)`,
+    );
   }
 }
 
