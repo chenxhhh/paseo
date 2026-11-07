@@ -133,6 +133,7 @@ vi.mock("@/components/sidebar/sidebar-workspace-menu", () => {
     return undefined;
   }
   return {
+    ARCHIVE_BUTTON_SIZE: 18,
     SidebarWorkspaceContextMenu: ({
       children,
       testID,

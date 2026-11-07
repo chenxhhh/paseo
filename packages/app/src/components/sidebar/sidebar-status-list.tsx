@@ -889,6 +889,7 @@ function StatusWorkspaceRowInnerContent({
         const {
           trailingPresentation,
           showKebab: showKebabInSlot,
+          showArchiveButton,
           showScrim,
           renderSlot,
           reserveSlotWidth,
@@ -968,6 +969,7 @@ function StatusWorkspaceRowInnerContent({
                     trailing={trailing}
                     trailingPresentation={trailingPresentation}
                     showKebab={showKebabInSlot}
+                    showArchiveButton={showArchiveButton}
                     showScrim={showScrim}
                     reserveSlotWidth={reserveSlotWidth}
                     isPinned={isPinned}
@@ -1000,6 +1002,7 @@ function StatusWorkspaceActionSlot({
   trailing,
   trailingPresentation,
   showKebab,
+  showArchiveButton,
   showScrim,
   reserveSlotWidth,
   isPinned,
@@ -1020,6 +1023,7 @@ function StatusWorkspaceActionSlot({
   trailing: SidebarWorkspaceTrailing;
   trailingPresentation: SidebarWorkspaceTrailingPresentation;
   showKebab: boolean;
+  showArchiveButton: boolean;
   showScrim: boolean;
   reserveSlotWidth: boolean;
   isPinned?: boolean;
@@ -1044,6 +1048,8 @@ function StatusWorkspaceActionSlot({
       <SidebarWorkspaceTrailingActionOverlay
         visible={kebab.showKebab}
         scrimBackdrop={showScrim ? backdrop : undefined}
+        workspaceKey={workspace.workspaceKey}
+        onArchiveButtonPress={showArchiveButton ? onArchive : undefined}
       >
         {kebab.showKebab && onArchive ? (
           <View style={sidebarWorkspaceRowStyles.trailingActionsRow}>

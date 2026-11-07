@@ -2,7 +2,8 @@ import type { TFunction } from "i18next";
 import type { ComposerTrackPillSegment } from "@/composer/tracks";
 import type { PanelTerminalStatus } from "@/panels/panel-registry";
 import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
-import { deriveSidebarStateBucket, STATUS_BUCKET_ORDER } from "@/utils/sidebar-agent-state";
+import type { AgentLifecycleStatus } from "@getpaseo/protocol/agent-lifecycle";
+import { STATUS_BUCKET_ORDER } from "@/utils/sidebar-agent-state";
 import type { SubagentRow } from "./select";
 import { isFinishedSubagent } from "./archive-finished";
 import { providerSubagentLifecycleStatus } from "./provider-store";
@@ -18,6 +19,23 @@ function presentationStatus(row: SubagentRow) {
 function presentationTerminalStatus(row: SubagentRow): PanelTerminalStatus | undefined {
   if (row.kind !== "provider") return undefined;
   return row.status === "completed" || row.status === "canceled" ? row.status : undefined;
+}
+
+/**
+ * A child's mark reports what it is doing, not whether anyone read it: the track is where a
+ * failed child stays visible after the parent's own attention is cleared.
+ */
+export function deriveSubagentStatusBucket(
+  status: AgentLifecycleStatus,
+  backgroundWork?: { count: number } | null,
+  requiresAttention?: boolean,
+): SidebarStateBucket {
+  if (status === "error") return "failed";
+  if (status === "running" || (backgroundWork?.count ?? 0) > 0) return "running";
+  // A managed child that finished carries server-side attention until its pane is viewed, so its
+  // dot stays in the review state even though the mark itself is about activity.
+  if (requiresAttention) return "attention";
+  return "done";
 }
 
 export interface SubagentRowPresentationData {
@@ -45,14 +63,11 @@ export function buildSubagentRowPresentationData(row: SubagentRow): SubagentRowP
     label: label ?? "",
     subtitle: subtitle ?? "",
     titleState: label ? "ready" : "loading",
-    // A managed subagent that finished carries server-side attention until its pane is viewed, so
-    // the row reports it here and the pill counts it as ready to review. Provider rows derive
-    // requiresAttention from failure alone, which the error-status branch above already decides,
-    // so passing it through changes nothing for them.
-    statusBucket: deriveSidebarStateBucket({
+    statusBucket: deriveSubagentStatusBucket(
       status,
-      requiresAttention: row.requiresAttention,
-    }),
+      row.kind === "paseo" ? row.backgroundWork : undefined,
+      row.requiresAttention,
+    ),
     terminalStatus: presentationTerminalStatus(row),
   };
 }

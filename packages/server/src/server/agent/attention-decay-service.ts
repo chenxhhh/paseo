@@ -35,7 +35,7 @@ export interface AttentionDecayAgentAccess {
 
 export interface AttentionDecayServiceOptions {
   agentManager: AttentionDecayAgentAccess;
-  agentStorage: Pick<AgentStorage, "list" | "upsert">;
+  agentStorage: Pick<AgentStorage, "listAll" | "upsert">;
   logger: Logger;
   /** Registered provider ids, for the same provider-availability projection sessions send. */
   registeredProviderIds: () => Iterable<AgentProvider>;
@@ -57,7 +57,7 @@ export interface AttentionDecayServiceOptions {
  */
 export class AttentionDecayService {
   private readonly agentManager: AttentionDecayAgentAccess;
-  private readonly agentStorage: Pick<AgentStorage, "list" | "upsert">;
+  private readonly agentStorage: Pick<AgentStorage, "listAll" | "upsert">;
   private readonly logger: Logger;
   private readonly registeredProviderIds: () => Iterable<AgentProvider>;
   private readonly broadcast: (message: SessionOutboundMessage) => void;
@@ -105,7 +105,7 @@ export class AttentionDecayService {
 
   async runSweep(): Promise<number> {
     const now = this.now().getTime();
-    const records = await this.agentStorage.list();
+    const records = await this.agentStorage.listAll();
     const touchedWorkspaceIds = new Set<string>();
     let decayedCount = 0;
 

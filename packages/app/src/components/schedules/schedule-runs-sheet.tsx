@@ -469,7 +469,7 @@ function ScheduleRunsList({
   return (
     <View style={styles.list}>
       <SegmentedControl
-        size="xs"
+        size="sm"
         value={statusFilter}
         onValueChange={onStatusFilterChange}
         options={RUN_STATUS_FILTER_OPTIONS}
